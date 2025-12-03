@@ -10,8 +10,7 @@
       from a microphone or file. The destination can play the audio or save it
       to an mp3 file.
    </description>
-   <maintainer email="namniart@gmail.com">Austin Hendrix</maintainer>
-   <maintainer email="shingogo.5511@gmail.com">Shingo Kitagawa</maintainer>
+   <maintainer email="kent@caspia.com">R. Kent James</maintainer>
    <author>Nate Koenig</author>
    <license>BSD</license>
    <url type="website">http://ros.org/wiki/audio_capture</url>
