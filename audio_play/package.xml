@@ -11,9 +11,7 @@
    <maintainer email="kent@caspia.com">R. Kent James</maintainer>
    <author>Nate Koenig</author>
    <license>BSD</license>
-   <url type="website">http://ros.org/wiki/audio_play</url>
-   <url type="repository">https://github.com/ros-drivers/audio_common</url>
-   <url type="bugtracker">https://github.com/ros-drivers/audio_common/issues</url>
+   <url type="repository">https://github.com/rkent/audio2</url>
 
    <buildtool_depend>ament_cmake</buildtool_depend>
 
