@@ -32,7 +32,7 @@
 *  POSSIBILITY OF SUCH DAMAGE.
 *********************************************************************/
 
-#include <sound_play/sound_play.h>
+#include <sound2_play/sound2_play.h>
 #include <unistd.h>
 
 void sleepok(int t, ros::NodeHandle &nh)
@@ -43,11 +43,11 @@ void sleepok(int t, ros::NodeHandle &nh)
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "sound_play_test");
+  ros::init(argc, argv, "sound2_play_test");
 
   ros::NodeHandle nh;
-  sound_play::SoundClient sc;
-  sound_play::SoundClient quiet_sc;
+  sound2_play::SoundClient sc;
+  sound2_play::SoundClient quiet_sc;
 
   sleepok(1, nh);
   
@@ -79,67 +79,67 @@ int main(int argc, char **argv)
     sleepok(4, nh);
     quiet_sc.stopWave(str2);
 
-    sc.play(sound_play::SoundRequest::NEEDS_UNPLUGGING);
+    sc.play(sound2_play::SoundRequest::NEEDS_UNPLUGGING);
     sleepok(2, nh);
-    quiet_sc.play(sound_play::SoundRequest::NEEDS_UNPLUGGING);
-    sleepok(2, nh);
-
-    sc.play(sound_play::SoundRequest::NEEDS_UNPLUGGING);
-    sleepok(2, nh);
-    quiet_sc.play(sound_play::SoundRequest::NEEDS_UNPLUGGING);
+    quiet_sc.play(sound2_play::SoundRequest::NEEDS_UNPLUGGING);
     sleepok(2, nh);
 
-    sc.start(sound_play::SoundRequest::BACKINGUP);
+    sc.play(sound2_play::SoundRequest::NEEDS_UNPLUGGING);
+    sleepok(2, nh);
+    quiet_sc.play(sound2_play::SoundRequest::NEEDS_UNPLUGGING);
+    sleepok(2, nh);
+
+    sc.start(sound2_play::SoundRequest::BACKINGUP);
     sleepok(4, nh);
-    sc.stop(sound_play::SoundRequest::BACKINGUP);
-    quiet_sc.start(sound_play::SoundRequest::BACKINGUP);
+    sc.stop(sound2_play::SoundRequest::BACKINGUP);
+    quiet_sc.start(sound2_play::SoundRequest::BACKINGUP);
     sleepok(4, nh);
-    quiet_sc.stop(sound_play::SoundRequest::BACKINGUP);
+    quiet_sc.stop(sound2_play::SoundRequest::BACKINGUP);
 
     sleepok(2, nh);
-    sound_play::Sound s1 = sc.waveSound("/usr/share/xemacs21/xemacs-packages/etc/sounds/boing.wav");
+    sound2_play::Sound s1 = sc.waveSound("/usr/share/xemacs21/xemacs-packages/etc/sounds/boing.wav");
     s1.repeat();
     sleepok(1, nh);
     s1.stop();
 
     sleepok(2, nh);
-    sound_play::Sound s2 = quiet_sc.waveSound("/usr/share/xemacs21/xemacs-packages/etc/sounds/boing.wav");
+    sound2_play::Sound s2 = quiet_sc.waveSound("/usr/share/xemacs21/xemacs-packages/etc/sounds/boing.wav");
     s2.repeat();
     sleepok(1, nh);
     s2.stop();
 		
     sleepok(2, nh);
-    sound_play::Sound s3 = sc.voiceSound("This is a really long sentence that will get cut off.");
+    sound2_play::Sound s3 = sc.voiceSound("This is a really long sentence that will get cut off.");
     s3.play();
     sleepok(1, nh);
     s3.stop();
 
     sleepok(2, nh);
-    sound_play::Sound s4 = quiet_sc.voiceSound("This is a really long sentence that will get cut off.");
+    sound2_play::Sound s4 = quiet_sc.voiceSound("This is a really long sentence that will get cut off.");
     s4.play();
     sleepok(1, nh);
     s4.stop();
 
     sleepok(2, nh);
-    sound_play::Sound s5 = sc.builtinSound(sound_play::SoundRequest::NEEDS_UNPLUGGING_BADLY);
+    sound2_play::Sound s5 = sc.builtinSound(sound2_play::SoundRequest::NEEDS_UNPLUGGING_BADLY);
     s5.play();
     sleepok(1, nh);
     s5.stop();
 
     sleepok(2, nh);
-    sound_play::Sound s6 = quiet_sc.builtinSound(sound_play::SoundRequest::NEEDS_UNPLUGGING_BADLY);
+    sound2_play::Sound s6 = quiet_sc.builtinSound(sound2_play::SoundRequest::NEEDS_UNPLUGGING_BADLY);
     s6.play();
     sleepok(1, nh);
     s6.stop();
 
     sleepok(2, nh);
-    sound_play::Sound s7 = sc.waveSoundFromPkg("sound_play", "sounds/BACKINGUP.ogg");
+    sound2_play::Sound s7 = sc.waveSoundFromPkg("sound2_play", "sounds/BACKINGUP.ogg");
     s7.play();
     sleepok(1, nh);
     s7.stop();
 
     sleepok(2, nh);
-    sound_play::Sound s8 = quiet_sc.waveSoundFromPkg("sound_play", "sounds/BACKINGUP.ogg");
+    sound2_play::Sound s8 = quiet_sc.waveSoundFromPkg("sound2_play", "sounds/BACKINGUP.ogg");
     s8.play();
     sleepok(1, nh);
     s8.stop();

@@ -11,7 +11,7 @@
   <arg name="audio_topic" default="audio" />
 
 
-  <include file="$(find-pkg-share audio_capture)/launch/capture.launch.xml">
+  <include file="$(find-pkg-share audio2_capture)/launch/capture.launch.xml">
     <arg name="dst" value="$(var dst)"/>
     <arg name="device" value="$(var device)"/>
     <arg name="format" value="$(var format)"/>

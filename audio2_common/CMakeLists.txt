@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(audio_common)
+project(audio2_common)
 
 find_package(ament_cmake REQUIRED)
 

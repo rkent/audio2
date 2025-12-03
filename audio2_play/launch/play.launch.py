@@ -62,10 +62,10 @@ def generate_launch_description():
         default_value='audio'
     )
 
-    _audio_play_node = Node(
-        package='audio_play',
-        name='audio_play',
-        executable='audio_play_node',
+    _audio2_play_node = Node(
+        package='audio2_play',
+        name='audio2_play',
+        executable='audio2_play_node',
         namespace=_ns,
         remappings=[
             ('audio', _audio_topic),
@@ -95,5 +95,5 @@ def generate_launch_description():
         _sample_format_launch_arg,
         _ns_launch_arg,
         _audio_topic_launch_arg,
-        _audio_play_node,
+        _audio2_play_node,
     ])

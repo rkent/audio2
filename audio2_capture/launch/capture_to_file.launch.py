@@ -63,7 +63,7 @@ def generate_launch_description():
     _include_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
-                FindPackageShare('audio_capture'),
+                FindPackageShare('audio2_capture'),
                 'launch/capture.launch.py'
             ])
         ]),

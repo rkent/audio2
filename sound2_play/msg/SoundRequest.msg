@@ -1,6 +1,6 @@
 # IMPORTANT: You should never have to generate this message yourself.
-# Use the sound_play::SoundClient C++ helper or the
-# sound_play.libsoundplay.SoundClient Python helper.
+# Use the sound2_play::SoundClient C++ helper or the
+# sound2_play.libsoundplay.SoundClient Python helper.
 
 # Sounds
 int8 BACKINGUP = 1

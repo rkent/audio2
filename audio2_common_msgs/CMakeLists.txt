@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(audio_common_msgs)
+project(audio2_common_msgs)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(sound_play)
+project(sound2_play)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -11,10 +11,10 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
-find_package(audio_common_msgs REQUIRED)
+find_package(audio2_common_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 
-include_directories(rclcpp audio_common_msgs action_msgs builtin_interfaces)
+include_directories(rclcpp audio2_common_msgs action_msgs builtin_interfaces)
 
 set(msg_files
   "msg/SoundRequest.msg"
@@ -29,7 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   ${action_files}
   DEPENDENCIES
     action_msgs
-    audio_common_msgs
+    audio2_common_msgs
     builtin_interfaces
 )
 

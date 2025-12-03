@@ -40,7 +40,7 @@ import time
 import rclpy
 import rclpy.utilities
 
-from sound_play.libsoundplay import SoundClient
+from sound2_play.libsoundplay import SoundClient
 
 
 if __name__ == '__main__':
@@ -53,7 +53,7 @@ if __name__ == '__main__':
         print(
             'Plays an .OGG or .WAV file.'
             'The path to the file should be relative to the package, '
-            'and be valid on the computer on which sound_play is running.'
+            'and be valid on the computer on which sound2_play is running.'
         )
         print(
             'The (optional) volume parameter sets the volume for the sound '

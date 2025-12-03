@@ -1,4 +1,4 @@
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Changelog for package audio_capture
+Changelog for package audio2_capture
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

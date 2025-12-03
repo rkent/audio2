@@ -15,7 +15,7 @@
 
   <group>
     <push-ros-namespace namespace="$(var ns)"/>
-    <node name="audio_capture" pkg="audio_capture" exec="audio_capture_node" output="screen">
+    <node name="audio2_capture" pkg="audio2_capture" exec="audio2_capture_node" output="screen">
       <remap from="audio" to="$(var audio_topic)" />
       <param name="dst" value="$(var dst)"/>
       <param name="device" value="$(var device)"/>

@@ -1,4 +1,4 @@
-sound_play
+sound2_play
 =========
 
 ## Dependencies
@@ -50,13 +50,13 @@ Besides setting default device as system wide settings, you can also specify aud
 
 ``` xml
 <launch>
-  <node name="soundplay_node" pkg="sound_play" type="soundplay_node.py">
+  <node name="soundplay_node" pkg="sound2_play" type="soundplay_node.py">
     <param name="device" value="hw:1,0" />
   </node>
 </launch>
 ```
 
-or simply run: `rosrun sound_play soundplay_node.py _device:="hw:1,0"`
+or simply run: `rosrun sound2_play soundplay_node.py _device:="hw:1,0"`
 
 In the launch file above, `~device` parameter is set to `hw:1,0`, which tells `soundplay_node` to use audio device No. `0` connected to audio card No.`1`.
 To find card/device number which you want to use, execute:

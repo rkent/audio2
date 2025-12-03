@@ -1,4 +1,4 @@
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Changelog for package audio_play
+Changelog for package audio2_play
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -34,27 +34,27 @@
  ***********************************************************
  */
 
-#ifndef __SOUND_PLAY__SOUND_PLAY__H__
-#define __SOUND_PLAY__SOUND_PLAY__H__
+#ifndef __sound2_play__sound2_play__H__
+#define __sound2_play__sound2_play__H__
 
 #include <string>
 #include <ros/ros.h>
 #include <ros/node_handle.h>
-#include <sound_play/SoundRequest.h>
+#include <sound2_play/SoundRequest.h>
 #include <boost/thread.hpp>
 
-namespace sound_play
+namespace sound2_play
 {
 
-/** \brief Class that publishes messages to the sound_play node.
+/** \brief Class that publishes messages to the sound2_play node.
  *
- * This class is a helper class for communicating with the sound_play node
- * via the \ref sound_play::SoundRequest message. It has two ways of being used:
+ * This class is a helper class for communicating with the sound2_play node
+ * via the \ref sound2_play::SoundRequest message. It has two ways of being used:
  *
  * - It can create Sound classes that represent a particular sound which
  *   can be played, repeated or stopped.
  *
- * - It provides methods for each way in which the sound_play::SoundRequest
+ * - It provides methods for each way in which the sound2_play::SoundRequest
  *   message can be invoked.
  */
 
@@ -150,7 +150,7 @@ public:
    * Creates a Sound corresponding to indicated file.
    *
    * \param s File to play. Should be an absolute path that exists on the
-   * machine running the sound_play node.
+   * machine running the sound2_play node.
    * \param volume Volume at which to play the sound. 0 is mute, 1.0 is 100%.
    */
   Sound waveSound(const std::string &s, float volume = 1.0f)
@@ -164,7 +164,7 @@ public:
    *
    * \param p Package containing the sound file.
    * \param s Filename of the WAV or OGG file. Must be an path relative to the package valid
-   * on the computer on which the sound_play node is running
+   * on the computer on which the sound2_play node is running
    * \param volume Volume at which to play the sound. 0 is mute, 1.0 is 100%.
    */
   Sound waveSoundFromPkg(const std::string &p, const std::string &s, float volume = 1.0f)
@@ -227,7 +227,7 @@ public:
    * stopAll.
    *
    * \param s Filename of the WAV or OGG file. Must be an absolute path valid
-   * on the computer on which the sound_play node is running
+   * on the computer on which the sound2_play node is running
    * \param volume Volume at which to play the sound. 0 is mute, 1.0 is 100%.
    */
   void playWave(const std::string &s, float volume = 1.0f)
@@ -240,7 +240,7 @@ public:
    * Plays a WAV or OGG file repeatedly until stopWave or stopAll is used.
    *
    * \param s Filename of the WAV or OGG file. Must be an absolute path valid
-   * on the computer on which the sound_play node is running.
+   * on the computer on which the sound2_play node is running.
    * \param volume Volume at which to play the sound. 0 is mute, 1.0 is 100%.
    */
   void startWave(const std::string &s, float volume = 1.0f)
@@ -267,7 +267,7 @@ public:
    *
    * \param p Package name containing the sound file.
    * \param s Filename of the WAV or OGG file. Must be an path relative to the package valid
-   * on the computer on which the sound_play node is running
+   * on the computer on which the sound2_play node is running
    * \param volume Volume at which to play the sound. 0 is mute, 1.0 is 100%.
    */
   void playWaveFromPkg(const std::string &p, const std::string &s, float volume = 1.0f)
@@ -281,7 +281,7 @@ public:
    *
    * \param p Package name containing the sound file.
    * \param s Filename of the WAV or OGG file. Must be an path relative to the package valid
-   * on the computer on which the sound_play node is running
+   * on the computer on which the sound2_play node is running
    * \param volume Volume at which to play the sound. 0 is mute, 1.0 is 100%.
    */
   void startWaveFromPkg(const std::string &p, const std::string &s, float volume = 1.0f)
@@ -296,7 +296,7 @@ public:
    *
    * \param p Package name containing the sound file.
    * \param s Filename of the WAV or OGG file. Must be an path relative to the package valid
-   * on the computer on which the sound_play node is running
+   * on the computer on which the sound2_play node is running
    */
   void stopWaveFromPkg(const std::string &p, const std::string &s)
   {
@@ -366,7 +366,7 @@ private:
   void init(ros::NodeHandle nh, const std::string &topic)
   {
     nh_ = nh;
-    pub_ = nh.advertise<sound_play::SoundRequest>(topic, 5);
+    pub_ = nh.advertise<sound2_play::SoundRequest>(topic, 5);
     quiet_ = false;
   }
 

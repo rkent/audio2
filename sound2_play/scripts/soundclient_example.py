@@ -10,9 +10,9 @@ import time
 import rclpy
 import rclpy.utilities
 
-from sound_play.libsoundplay import SoundClient
+from sound2_play.libsoundplay import SoundClient
 
-from sound_play.msg import SoundRequest
+from sound2_play.msg import SoundRequest
 
 
 def play_explicit(node):

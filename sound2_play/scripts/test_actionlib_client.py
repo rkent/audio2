@@ -6,13 +6,13 @@ from ament_index_python.packages import get_package_share_directory
 import rclpy
 import rclpy.action
 
-from sound_play.action import SoundRequest as SoundRequestAction
-from sound_play.msg import SoundRequest
+from sound2_play.action import SoundRequest as SoundRequestAction
+from sound2_play.msg import SoundRequest
 
 
-def sound_play_client(node, volume=1.0):
+def sound2_play_client(node, volume=1.0):
     client = rclpy.action.ActionClient(
-        node, SoundRequestAction, 'sound_play')
+        node, SoundRequestAction, 'sound2_play')
     client.wait_for_server()
 
     node.get_logger().info("Need Unplugging")
@@ -49,7 +49,7 @@ def sound_play_client(node, volume=1.0):
     goal.sound_request.sound = SoundRequest.PLAY_FILE
     goal.sound_request.command = SoundRequest.PLAY_ONCE
     goal.sound_request.arg = os.path.join(
-        get_package_share_directory('sound_play'), 'sounds') + "/say-beep.wav"
+        get_package_share_directory('sound2_play'), 'sounds') + "/say-beep.wav"
     goal.sound_request.volume = volume
     future = client.send_goal_async(goal)
     rclpy.spin_until_future_complete(node, future)
@@ -59,4 +59,4 @@ def sound_play_client(node, volume=1.0):
 if __name__ == '__main__':
     rclpy.init()
     node = rclpy.create_node('soundplay_client_test')
-    sound_play_client(node)
+    sound2_play_client(node)

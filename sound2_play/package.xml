@@ -3,10 +3,10 @@
   href="http://download.ros.org/schema/package_format3.xsd"
   schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-   <name>sound_play</name>
+   <name>sound2_play</name>
    <version>0.1.0</version>
    <description>
-      sound_play provides a ROS node that translates commands on a ROS topic (<tt>robotsound</tt>) into sounds. The node supports built-in sounds, playing OGG/WAV files, and doing speech synthesis via festival. C++ and Python bindings allow this node to be used without understanding the details of the message format, allowing faster development and resilience to message format changes.
+      sound2_play provides a ROS node that translates commands on a ROS topic (<tt>robotsound</tt>) into sounds. The node supports built-in sounds, playing OGG/WAV files, and doing speech synthesis via festival. C++ and Python bindings allow this node to be used without understanding the details of the message format, allowing faster development and resilience to message format changes.
    </description>
    <maintainer email="kent@caspia.com">R. Kent James</maintainer>
    <author>Blaise Gassend</author>
@@ -20,12 +20,12 @@
    <buildtool_depend>python3-setuptools</buildtool_depend>
 
    <build_depend>action_msgs</build_depend>
-   <build_depend>audio_common_msgs</build_depend>
+   <build_depend>audio2_common_msgs</build_depend>
    <build_depend>boost</build_depend>
    <build_depend>builtin_interfaces</build_depend>
 
    <exec_depend>action_msgs</exec_depend>
-   <exec_depend>audio_common_msgs</exec_depend>
+   <exec_depend>audio2_common_msgs</exec_depend>
    <exec_depend>builtin_interfaces</exec_depend>
    <exec_depend>festival</exec_depend>
    <exec_depend>launch_xml</exec_depend>

@@ -8,17 +8,17 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
-#include "audio_common_msgs/msg/audio_data.hpp"
-#include "audio_common_msgs/msg/audio_data_stamped.hpp"
-#include "audio_common_msgs/msg/audio_info.hpp"
+#include "audio2_common_msgs/msg/audio_data.hpp"
+#include "audio2_common_msgs/msg/audio_data_stamped.hpp"
+#include "audio2_common_msgs/msg/audio_info.hpp"
 
-namespace audio_capture
+namespace audio2_capture
 {
   class AudioCaptureNode: public rclcpp::Node
   {
     public:
       AudioCaptureNode(const rclcpp::NodeOptions & options)
-      : Node("audio_capture_node", options), updater_(this), _desired_rate(-1.0)
+      : Node("audio2_capture_node", options), updater_(this), _desired_rate(-1.0)
       {
         gst_init(nullptr, nullptr);
 
@@ -55,19 +55,19 @@ namespace audio_capture
         this->declare_parameter<std::string>("device", "");
         this->get_parameter("device", device);
 
-        _pub = this->create_publisher<audio_common_msgs::msg::AudioData>("audio", 10);
+        _pub = this->create_publisher<audio2_common_msgs::msg::AudioData>("audio", 10);
         auto info_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local();
-        _pub_info = this->create_publisher<audio_common_msgs::msg::AudioInfo>("audio_info", info_qos);
+        _pub_info = this->create_publisher<audio2_common_msgs::msg::AudioInfo>("audio_info", info_qos);
 
-        rclcpp::Publisher<audio_common_msgs::msg::AudioDataStamped>::SharedPtr pub_stamped =
-          this->create_publisher<audio_common_msgs::msg::AudioDataStamped>("audio_stamped", 10);
+        rclcpp::Publisher<audio2_common_msgs::msg::AudioDataStamped>::SharedPtr pub_stamped =
+          this->create_publisher<audio2_common_msgs::msg::AudioDataStamped>("audio_stamped", 10);
 
         this->declare_parameter<double>("diagnostic_tolerance", 0.1);
         auto tolerance = this->get_parameter("diagnostic_tolerance").as_double();
 
         updater_.setHardwareID("microphone");
         _diagnosed_pub_stamped =
-          std::make_shared<diagnostic_updater::DiagnosedPublisher<audio_common_msgs::msg::AudioDataStamped>>(
+          std::make_shared<diagnostic_updater::DiagnosedPublisher<audio2_common_msgs::msg::AudioDataStamped>>(
             pub_stamped, updater_,
             diagnostic_updater::FrequencyStatusParam(&_desired_rate, &_desired_rate, tolerance, 10),
             diagnostic_updater::TimeStampStatusParam());
@@ -186,7 +186,7 @@ namespace audio_capture
 
       void publishInfo() {
 
-        audio_common_msgs::msg::AudioInfo info_msg;
+        audio2_common_msgs::msg::AudioInfo info_msg;
         info_msg.channels = _channels;
         info_msg.sample_rate = _sample_rate;
         info_msg.sample_format = _sample_format;
@@ -208,12 +208,12 @@ namespace audio_capture
         exit(code);
       }
 
-      void publish( const audio_common_msgs::msg::AudioData &msg )
+      void publish( const audio2_common_msgs::msg::AudioData &msg )
       {
         _pub->publish(msg);
       }
 
-      void publishStamped( const audio_common_msgs::msg::AudioDataStamped &msg )
+      void publishStamped( const audio2_common_msgs::msg::AudioDataStamped &msg )
       {
         _diagnosed_pub_stamped->publish(msg);
       }
@@ -228,8 +228,8 @@ namespace audio_capture
 
         GstBuffer *buffer = gst_sample_get_buffer(sample);
 
-        audio_common_msgs::msg::AudioData msg;
-        audio_common_msgs::msg::AudioDataStamped stamped_msg;
+        audio2_common_msgs::msg::AudioData msg;
+        audio2_common_msgs::msg::AudioDataStamped stamped_msg;
         GstClockTime buffer_time = gst_element_get_base_time(server->_source)+GST_BUFFER_PTS(buffer);
         stamped_msg.header.stamp.sec = RCL_NS_TO_S(buffer_time);
         stamped_msg.header.stamp.nanosec = buffer_time - RCL_S_TO_NS(stamped_msg.header.stamp.sec);
@@ -271,8 +271,8 @@ namespace audio_capture
       }
 
     private:
-      rclcpp::Publisher<audio_common_msgs::msg::AudioData>::SharedPtr _pub;
-      rclcpp::Publisher<audio_common_msgs::msg::AudioInfo>::SharedPtr _pub_info;
+      rclcpp::Publisher<audio2_common_msgs::msg::AudioData>::SharedPtr _pub;
+      rclcpp::Publisher<audio2_common_msgs::msg::AudioInfo>::SharedPtr _pub_info;
 
       rclcpp::TimerBase::SharedPtr _timer_info;
 
@@ -286,9 +286,9 @@ namespace audio_capture
 
       diagnostic_updater::Updater updater_;
       double _desired_rate;
-      std::shared_ptr<diagnostic_updater::DiagnosedPublisher<audio_common_msgs::msg::AudioDataStamped>>
+      std::shared_ptr<diagnostic_updater::DiagnosedPublisher<audio2_common_msgs::msg::AudioDataStamped>>
         _diagnosed_pub_stamped;
   };
 }
 
-RCLCPP_COMPONENTS_REGISTER_NODE(audio_capture::AudioCaptureNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(audio2_capture::AudioCaptureNode)

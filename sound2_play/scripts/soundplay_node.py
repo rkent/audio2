@@ -51,8 +51,8 @@ import rclpy.node
 from diagnostic_msgs.msg import DiagnosticArray
 from diagnostic_msgs.msg import DiagnosticStatus
 from diagnostic_msgs.msg import KeyValue
-from sound_play.action import SoundRequest as SoundRequestAction
-from sound_play.msg import SoundRequest
+from sound2_play.action import SoundRequest as SoundRequestAction
+from sound2_play.msg import SoundRequest
 
 
 try:
@@ -66,7 +66,7 @@ except Exception:
 Error opening pygst. Is gstreamer installed?
 **************************************************************
 """
-    rclpy.logging.get_logger('sound_play').fatal(str)
+    rclpy.logging.get_logger('sound2_play').fatal(str)
     exit(1)
 
 
@@ -208,7 +208,7 @@ class SoundType(object):
 
 class SoundPlayNode(rclpy.node.Node):
     def __init__(self):
-        super().__init__('sound_play')
+        super().__init__('sound2_play')
         Gst.init(None)
 
         # Start gobject thread to receive gstreamer messages
@@ -228,7 +228,7 @@ class SoundPlayNode(rclpy.node.Node):
         self.diagnostic_pub = self.create_publisher(
             DiagnosticArray, "/diagnostics", 1)
         rootdir = os.path.join(
-            get_package_share_directory('sound_play'), 'sounds')
+            get_package_share_directory('sound2_play'), 'sounds')
 
         self.builtinsoundparams = {
             SoundRequest.BACKINGUP:
@@ -251,7 +251,7 @@ class SoundPlayNode(rclpy.node.Node):
         self.sub = self.create_subscription(
             SoundRequest, "robotsound", self.callback, 10)
         self._as = rclpy.action.ActionServer(
-            self, SoundRequestAction, 'sound_play',
+            self, SoundRequestAction, 'sound2_play',
             execute_callback=self.execute_cb,
             handle_accepted_callback=self.handle_accepted_cb)
 
@@ -298,7 +298,7 @@ class SoundPlayNode(rclpy.node.Node):
                         self.get_logger().error(
                             'Error setting up to play "%s".'
                             'Does this file exist on the machine '
-                            'on which sound_play is running?'
+                            'on which sound2_play is running?'
                             % data.arg)
                         return
                 else:
@@ -326,7 +326,7 @@ class SoundPlayNode(rclpy.node.Node):
                         self.get_logger().error(
                             'Error setting up to play "%s" from package "%s"'
                             'Does this file exist on the machine '
-                            'on which sound_play is running?'
+                            'on which sound2_play is running?'
                             % (data.arg, data.arg2))
                         return
                 else:
@@ -348,9 +348,9 @@ class SoundPlayNode(rclpy.node.Node):
                 self.get_logger().debug(
                     'command for uncached text: "%s"' % voice_key)
                 txtfile = tempfile.NamedTemporaryFile(
-                    prefix='sound_play', suffix='.txt')
+                    prefix='sound2_play', suffix='.txt')
                 (wavfile, wavfilename) = tempfile.mkstemp(
-                    prefix='sound_play', suffix='.wav')
+                    prefix='sound2_play', suffix='.wav')
                 txtfilename = txtfile.name
                 os.close(wavfile)
                 encoding = 'ISO-8859-15'
@@ -384,9 +384,9 @@ class SoundPlayNode(rclpy.node.Node):
                         self.get_logger().error(
                             'Sound synthesis failed. Is festival installed?'
                             'Is a festival voice installed?'
-                            'Try running "rosdep satisfy sound_play|sh".'
+                            'Try running "rosdep satisfy sound2_play|sh".'
                             'Refer to '
-                            'http://wiki.ros.org/sound_play/Troubleshooting'
+                            'http://wiki.ros.org/sound2_play/Troubleshooting'
                         )
                         return
                     self.voicesounds[voice_key] = SoundType(
@@ -515,7 +515,7 @@ class SoundPlayNode(rclpy.node.Node):
             else:
                 ds.level = DiagnosticStatus.ERROR
                 ds.message = "Can't open sound device." + \
-                    "See http://wiki.ros.org/sound_play/Troubleshooting"
+                    "See http://wiki.ros.org/sound2_play/Troubleshooting"
             da.status.append(ds)
             da.header.stamp = self.get_clock().now().to_msg()
             self.diagnostic_pub.publish(da)
@@ -552,7 +552,7 @@ class SoundPlayNode(rclpy.node.Node):
                         goal_handle.publish_feedback(feedback)
                         if not goal_handle.is_active:
                             self.get_logger().info(
-                                'sound_play action: Preempted')
+                                'sound2_play action: Preempted')
                             sound.stop()
                             success = False
                             break
@@ -560,7 +560,7 @@ class SoundPlayNode(rclpy.node.Node):
                     if success:
                         result.playing = feedback.playing
                         result.stamp = feedback.stamp
-                        self.get_logger().info('sound_play action: Succeeded')
+                        self.get_logger().info('sound2_play action: Succeeded')
                         goal_handle.succeed()
             except Exception as e:
                 goal_handle.abort()
@@ -585,7 +585,7 @@ class SoundPlayNode(rclpy.node.Node):
         self.voicesounds = {}
         self.hotlist = []
         if not self.initialized:
-            self.get_logger().info('sound_play node is ready to play sound')
+            self.get_logger().info('sound2_play node is ready to play sound')
 
     def sleep(self, duration):
         time.sleep(duration)

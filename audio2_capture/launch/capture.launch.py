@@ -57,10 +57,10 @@ def generate_launch_description():
         default_value='audio'
     )
 
-    _audio_capture_node = Node(
-        package='audio_capture',
-        name='audio_capture',
-        executable='audio_capture_node',
+    _audio2_capture_node = Node(
+        package='audio2_capture',
+        name='audio2_capture',
+        executable='audio2_capture_node',
         namespace=_ns,
         remappings=[
             ('audio', _audio_topic),
@@ -88,5 +88,5 @@ def generate_launch_description():
         _sample_format_launch_arg,
         _ns_launch_arg,
         _audio_topic_launch_arg,
-        _audio_capture_node,
+        _audio2_capture_node,
     ])

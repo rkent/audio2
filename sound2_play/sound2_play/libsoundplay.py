@@ -39,19 +39,19 @@ import rclpy
 import rclpy.action
 
 from action_msgs.msg import GoalStatusArray
-from sound_play.action import SoundRequest as SoundRequestAction
-from sound_play.msg import SoundRequest
+from sound2_play.action import SoundRequest as SoundRequestAction
+from sound2_play.msg import SoundRequest
 
 
-# \brief Class that publishes messages to the sound_play node.
+# \brief Class that publishes messages to the sound2_play node.
 #
-# This class is a helper class for communicating with the sound_play node
-# via the \ref sound_play.SoundRequest message. It has two ways of being used:
+# This class is a helper class for communicating with the sound2_play node
+# via the \ref sound2_play.SoundRequest message. It has two ways of being used:
 #
 # - It can create Sound classes that represent a particular sound which
 #   can be played, repeated or stopped.
 #
-# - It provides methods for each way in which the sound_play.SoundRequest
+# - It provides methods for each way in which the sound2_play.SoundRequest
 #   message can be invoked.
 
 class Sound(object):
@@ -87,13 +87,13 @@ class Sound(object):
         self.client.sendMsg(self.snd, SoundRequest.PLAY_STOP, self.arg)
 
 
-# This class is a helper class for communicating with the sound_play node
-# via the \ref sound_play.SoundRequest message. There is a one-to-one mapping
-# between methods and invocations of the \ref sound_play.SoundRequest message.
+# This class is a helper class for communicating with the sound2_play node
+# via the \ref sound2_play.SoundRequest message. There is a one-to-one mapping
+# between methods and invocations of the \ref sound2_play.SoundRequest message.
 
 class SoundClient(object):
     def __init__(
-            self, node, blocking=False, sound_action='sound_play',
+            self, node, blocking=False, sound_action='sound2_play',
             sound_topic='robotsound'
     ):
         """Sound client for soundplay_node.
@@ -111,7 +111,7 @@ class SoundClient(object):
         (default = false)
         :param sound_action: Namespace of actionlib to play sound.
         The actionlib interface is used
-        only if blocking parameter is True. (default='sound_play')
+        only if blocking parameter is True. (default='sound2_play')
         :param sound_topic: Topic name to play sound.
         The topic interface is used only if blocking
         parameter is False. (default='robotsound')
@@ -146,12 +146,12 @@ class SoundClient(object):
     # Creates a Sound corresponding to indicated file.
     #
     # \param s File to play. Should be an absolute path that exists on the
-    # machine running the sound_play node.
+    # machine running the sound2_play node.
 
     def waveSound(self, sound, volume=1.0):
         if sound[0] != "/":
             rootdir = os.path.join(
-                get_package_share_directory('sound_play'), 'sounds')
+                get_package_share_directory('sound2_play'), 'sounds')
             sound = rootdir + "/" + sound
         return Sound(self, SoundRequest.PLAY_FILE, sound, volume=volume)
 
@@ -201,12 +201,12 @@ class SoundClient(object):
     # stopAll.
     #
     # \param sound Filename of the WAV or OGG file. Must be an absolute path
-    # valid on the computer on which the sound_play node is running
+    # valid on the computer on which the sound2_play node is running
 
     def playWave(self, sound, volume=1.0, **kwargs):
         if sound[0] != "/":
             rootdir = os.path.join(
-                 get_package_share_directory('sound_play'), 'sounds')
+                 get_package_share_directory('sound2_play'), 'sounds')
             sound = rootdir + "/" + sound
         self.sendMsg(SoundRequest.PLAY_FILE, SoundRequest.PLAY_ONCE, sound,
                      vol=volume, **kwargs)
@@ -216,12 +216,12 @@ class SoundClient(object):
     # Plays a WAV or OGG file repeatedly until stopWave or stopAll is used.
     #
     # \param sound Filename of the WAV or OGG file. Must be an absolute path
-    # valid on the computer on which the sound_play node is running.
+    # valid on the computer on which the sound2_play node is running.
 
     def startWave(self, sound, volume=1.0, **kwargs):
         if sound[0] != "/":
             rootdir = os.path.join(
-                get_package_share_directory('sound_play'), 'sounds')
+                get_package_share_directory('sound2_play'), 'sounds')
             sound = rootdir + "/" + sound
         self.sendMsg(SoundRequest.PLAY_FILE, SoundRequest.PLAY_START, sound,
                      vol=volume, **kwargs)
@@ -236,7 +236,7 @@ class SoundClient(object):
     def stopWave(self, sound):
         if sound[0] != "/":
             rootdir = os.path.join(
-                get_package_share_directory('sound_play'), 'sounds')
+                get_package_share_directory('sound2_play'), 'sounds')
             sound = rootdir + "/" + sound
         self.sendMsg(SoundRequest.PLAY_FILE, SoundRequest.PLAY_STOP, sound)
 
@@ -247,7 +247,7 @@ class SoundClient(object):
     #
     # \param package Package name containing the sound file.
     # \param sound Filename of the WAV or OGG file. Must be an path relative to
-    # the package valid on the computer on which the sound_play node is running
+    # the package valid on the computer on which the sound2_play node is running
 
     def playWaveFromPkg(self, package, sound, volume=1.0, **kwargs):
         self.sendMsg(
@@ -263,7 +263,7 @@ class SoundClient(object):
     # \param package Package name containing the sound file.
     # \param sound Filename of the WAV or OGG file.
     # Must be an path relative to the package valid
-    # on the computer on which the sound_play node is running
+    # on the computer on which the sound2_play node is running
 
     def startWaveFromPkg(self, package, sound, volume=1.0, **kwargs):
         self.sendMsg(SoundRequest.PLAY_FILE, SoundRequest.PLAY_START, sound,
@@ -277,7 +277,7 @@ class SoundClient(object):
     # \param package Package name containing the sound file.
     # \param sound Filename of the WAV or OGG file.
     # Must be an path relative to the package valid
-    # on the computer on which the sound_play node is running
+    # on the computer on which the sound2_play node is running
 
     def stopWaveFromPkg(self, sound, package):
         self.sendMsg(

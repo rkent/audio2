@@ -40,7 +40,7 @@ import time
 import rclpy
 import rclpy.utilities
 
-from sound_play.libsoundplay import SoundClient
+from sound2_play.libsoundplay import SoundClient
 
 
 if __name__ == '__main__':
@@ -52,7 +52,7 @@ if __name__ == '__main__':
         print()
         print(
             'Plays one of the built-in sounds based on its integer ID. '
-            'Look at the sound_play/SoundRequest message definition for IDs.'
+            'Look at the sound2_play/SoundRequest message definition for IDs.'
         )
         print(
             'The (optional) volume parameter sets the volume for the sound '
