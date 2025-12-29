@@ -42,6 +42,7 @@ add_library(
 add_executable(publish_file src/publish_file.cpp)
 add_executable(subscribe_file src/subscribe_file.cpp)
 add_executable(sndplay_node src/sndplay_node.cpp)
+add_executable(stream_file src/stream_file.cpp)
 
 # Set RPATH for executables to find the shared library
 ## TODO: This was added by claude to make it work, but should not be needed. Check why.
@@ -71,6 +72,14 @@ target_link_libraries(publish_file
     rclcpp::rclcpp
     ${sndplay_msgs_TARGETS}
 )
+target_link_libraries(stream_file
+  PRIVATE
+    ${PROJECT_NAME}
+    ${SNDFILE_LIBRARIES}
+    ALSA::ALSA
+    rclcpp::rclcpp
+    ${sndplay_msgs_TARGETS}
+)
 target_link_libraries(subscribe_file
   PRIVATE
     ${PROJECT_NAME}
@@ -79,7 +88,6 @@ target_link_libraries(subscribe_file
     rclcpp::rclcpp
     ${sndplay_msgs_TARGETS}
 )
-
 target_link_libraries(sndplay_node
   PRIVATE
     ${PROJECT_NAME}
@@ -110,6 +118,7 @@ install(TARGETS
 
 install(TARGETS
   publish_file
+  stream_file
   subscribe_file
   sndplay_node
   DESTINATION lib/${PROJECT_NAME})

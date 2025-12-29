@@ -36,4 +36,7 @@ PlayBufferParams get_file(char * file_path);
 
 void play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, std::atomic<bool>* shutdown_flag, std::atomic<bool>* data_available);
 
+int sfg_read(SNDFILE * sndfile, SF_INFO * sfinfo, void * buffer, int samples);
+int sample_size_from_format(int format);
+int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples);
 #endif // SNDPLAY_BUFFER_FILE_HPP

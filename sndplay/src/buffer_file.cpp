@@ -103,8 +103,11 @@ int open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
     return 0;
 }
 
-static int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples)
+int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples)
 {
+    if (samples <= 0) {
+        return 0;
+    }
     int subtype = format & SF_FORMAT_SUBMASK;
     switch (subtype) {
         case SF_FORMAT_PCM_16:
@@ -123,6 +126,47 @@ static int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples)
     }
 }
 
+int sample_size_from_format(int format)
+{
+    int subtype = format & SF_FORMAT_SUBMASK;
+    switch (subtype) {
+        case SF_FORMAT_PCM_16:
+        case SF_FORMAT_VORBIS:
+        case SF_FORMAT_OPUS:
+        case SF_FORMAT_MPEG_LAYER_III:
+            return sizeof(short);
+        case SF_FORMAT_PCM_32:
+            return sizeof(int);
+        case SF_FORMAT_FLOAT:
+            return sizeof(float);
+        case SF_FORMAT_DOUBLE:
+            return sizeof(double);
+        default:
+            return -1;
+    }
+}
+
+int sfg_read(SNDFILE * sndfile, SF_INFO * sfinfo, void * buffer, int samples)
+{
+    int format = sfinfo->format;
+    int subtype = format & SF_FORMAT_SUBMASK;
+    switch (subtype) {
+        case SF_FORMAT_PCM_16:
+        case SF_FORMAT_VORBIS:
+        case SF_FORMAT_OPUS:
+        case SF_FORMAT_MPEG_LAYER_III:
+            return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
+        case SF_FORMAT_PCM_32:
+            return sf_read_int(sndfile, reinterpret_cast<int*>(buffer), samples);
+        case SF_FORMAT_FLOAT:
+            return sf_read_float(sndfile, reinterpret_cast<float*>(buffer), samples);
+        case SF_FORMAT_DOUBLE:
+            return sf_read_double(sndfile, reinterpret_cast<double*>(buffer), samples);
+        default:
+            return -1;
+    }
+}
+
 int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate)
 {
     SF_INFO sfinfo;
@@ -134,27 +178,10 @@ int write_buffer(void* buffer, int format, int frames, int channels, int sample_
 
     printf("Preparing to write buffer: format=%x, frames=%d, channels=%d, sample_rate=%d\n", format, frames, channels, sample_rate);
     const int MAX_HEADER = 128;
-    int subtype = sfinfo.format & SF_FORMAT_SUBMASK;
-    int sample_size;
-    switch (subtype) {
-        case SF_FORMAT_PCM_16:
-        case SF_FORMAT_OPUS:
-        case SF_FORMAT_VORBIS:
-        case SF_FORMAT_MPEG_LAYER_III:
-            sample_size = sizeof(short);
-            break;
-        case SF_FORMAT_PCM_32:
-            sample_size = sizeof(int);
-            break;
-        case SF_FORMAT_FLOAT:
-            sample_size = sizeof(float);
-            break;
-        case SF_FORMAT_DOUBLE:
-            sample_size = sizeof(double);
-            break;
-        default:
-            RCLCPP_ERROR(rcl_logger, "Unsupported subtype format for writing to buffer");
-            return -1;
+    int sample_size = sample_size_from_format(sfinfo.format);
+    if (sample_size < 0) {
+        RCLCPP_ERROR(rcl_logger, "Unsupported format for writing buffer: %x", sfinfo.format);
+        return -1;
     }
     int file_size = sfinfo.frames * sfinfo.channels * sample_size + MAX_HEADER;
     printf("Allocating buffer of size %d bytes for writing\n", file_size);
