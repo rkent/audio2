@@ -147,9 +147,8 @@ int sample_size_from_format(int format)
     }
 }
 
-int sfg_read(SNDFILE * sndfile, SF_INFO * sfinfo, void * buffer, int samples)
+int sfg_read(SNDFILE * sndfile, int format, void * buffer, int samples)
 {
-    int format = sfinfo->format;
     int subtype = format & SF_FORMAT_SUBMASK;
     switch (subtype) {
         case SF_FORMAT_PCM_16:

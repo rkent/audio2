@@ -6,7 +6,7 @@
 #include "sndplay/alsaops.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#define	BUFFER_LEN			(2048)
+#define	BUFFER_LEN			(8192)
 
 // Scale factors for converting float to integer formats
 float SCALE_S8 = 1LL<<7;
@@ -146,7 +146,7 @@ int alsa_write(int readcount, snd_pcm_t* alsa_dev, void* data, int channels, snd
     }   
 }
 
-int sfg_read(SNDFILE *sndfile, void * r_buffer, int read_type, int buffer_len)
+int sfg_read2(SNDFILE *sndfile, void * r_buffer, int read_type, int buffer_len)
 {
     switch (read_type) {
         case SND_PCM_FORMAT_S16: {
@@ -414,8 +414,11 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     // Disable normalization since we are handling scaling ourselves.
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
     sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
+    printf("Starting ALSA playback: read_type=%x, alsa_format=%x, scale=%f\n", read_type, alsa_format, scale) ;
 
-    while ((readcount = sfg_read(sndfile, r_buffer, read_type, BUFFER_LEN)) != 0) {
+    do {
+        readcount = sfg_read2(sndfile, r_buffer, read_type, BUFFER_LEN);
+        printf("Read %d samples from sound file\n", readcount);
         if (readcount < 0) {
             return std::string("Error reading from sound file");
         }
@@ -423,13 +426,14 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
         if (scale_result != 0) {
             return std::string("Error scaling data for playback");
         }
-        alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
+        auto count = alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
+        printf("Wrote %d frames to ALSA\n", count) ;
 
         // Check if shutdown has been requested
         if (shutdown_flag && shutdown_flag->load()) {
             break;
         }
-    }
+    } while (readcount != 0);
 
     if (shutdown_flag && shutdown_flag->load()) {
         return std::string("Playback interrupted by shutdown signal");

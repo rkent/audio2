@@ -45,16 +45,22 @@ public:
 
         int file_sample_size_ = sample_size_from_format(file_sfinfo.format);
         const int MAX_HEADER = 128;
-        const int read_frames = 32000;
+        const int read_frames = 4096;
         int file_buffer_size = read_frames * file_sfinfo.channels * file_sample_size_ + MAX_HEADER;
         std::vector<unsigned char> file_buffer(file_buffer_size);
 
         // Virtual file for topic publish
-        VIO_SOUNDFILE f_vio_sndfile;
         SF_INFO topic_sfinfo;
         topic_sfinfo.samplerate = file_sfinfo.samplerate;
         topic_sfinfo.channels = file_sfinfo.channels;
-        topic_sfinfo.format = SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III;
+        topic_sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+        int topic_sample_size = sample_size_from_format(topic_sfinfo.format);
+        int topic_file_size = read_frames * topic_sfinfo.channels * topic_sample_size + MAX_HEADER;
+
+        RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(topic_sfinfo.format).c_str());
+
+        /*
+        VIO_SOUNDFILE f_vio_sndfile;
         f_vio_sndfile.vio_data.data = file_buffer.data();
         f_vio_sndfile.vio_data.length = 0;
         f_vio_sndfile.vio_data.offset = 0;
@@ -65,15 +71,23 @@ public:
             sf_close(file_);
             return;
         }
+        */
 
-        int topic_sample_size = sample_size_from_format(topic_sfinfo.format);
-        int topic_file_size = read_frames * topic_sfinfo.channels * topic_sample_size + MAX_HEADER;
         // printf("Allocating buffer of size %d bytes for writing\n", topic_file_size);
 
         int samples_read = 0;
+        AlsaHwParams hw_vals;
+        AlsaSwParams sw_vals;
+        snd_pcm_t * alsa_dev = alsa_open(hw_vals, sw_vals);
+        if (alsa_dev == nullptr) {
+            RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish");
+            return;
+        }
         do {
-            samples_read = sfg_read(file_, &file_sfinfo, file_buffer.data(), read_frames * file_sfinfo.channels);
+            samples_read = sfg_read(file_, topic_sfinfo.format, file_buffer.data(), read_frames * file_sfinfo.channels);
             printf("Read %d samples from file\n", samples_read);
+
+            // Create a virtual sound file in memory for topic publish
             std::vector<unsigned char> topic_buffer(topic_file_size);
             VIO_SOUNDFILE t_vio_sndfile;
             t_vio_sndfile.vio_data.data = topic_buffer.data();
@@ -81,7 +95,7 @@ public:
             t_vio_sndfile.vio_data.offset = 0;
             t_vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
             t_vio_sndfile.sfinfo = topic_sfinfo;
-            if (auto err = open_sndfile_from_buffer(t_vio_sndfile, SFM_WRITE)) {
+            if (auto err = open_sndfile_from_buffer(t_vio_sndfile, SFM_RDWR)) {
                 printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
@@ -92,8 +106,17 @@ public:
                 break;
             }
             printf("length after write: %ld offset: %ld capacity: %ld\n", t_vio_sndfile.vio_data.length, t_vio_sndfile.vio_data.offset, t_vio_sndfile.vio_data.capacity);
+    
+            sf_seek(t_vio_sndfile.sndfile, 0, SF_SEEK_SET);
+            auto err = alsa_play(t_vio_sndfile.sndfile, t_vio_sndfile.sfinfo, alsa_dev, hw_vals.format, &shutdown_flag);
+            if (err) {
+                RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
+            }
+            
             sf_close(t_vio_sndfile.sndfile);
         } while (samples_read > 0);
+        snd_pcm_drain(alsa_dev);
+        snd_pcm_close(alsa_dev);
         sf_close(file_);
         return;
     }
