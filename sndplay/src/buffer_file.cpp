@@ -74,6 +74,27 @@ static SF_VIRTUAL_IO vio = {
     vio_tell
 };
 
+// Convert sndfile format to human-readable string.
+std::string format_to_string(int format)
+{
+    SF_FORMAT_INFO major_info, subtype_info;
+    subtype_info.format = format & SF_FORMAT_SUBMASK;
+    major_info.format = format;
+
+    // Get major format info
+    if (sf_command (NULL, SFC_GET_FORMAT_INFO, &major_info, sizeof (major_info))) {
+        major_info.name = "Unknown";
+    }
+    // Get subtype format info
+    if (sf_command (NULL, SFC_GET_FORMAT_INFO, &subtype_info, sizeof (subtype_info))) {
+        subtype_info.name = "Unknown";
+    }
+    if (std::strcmp(major_info.name, subtype_info.name)) {
+        return std::string(major_info.name) + '(' + std::string(subtype_info.name) + ')';
+    }
+    return std::string(major_info.name);
+}
+
 int open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
 {
     vio_sndfile.sndfile = sf_open_virtual(&vio, mode, &vio_sndfile.sfinfo, &vio_sndfile.vio_data);
@@ -81,25 +102,6 @@ int open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
         RCLCPP_ERROR(rcl_logger, "Failed to open sound file from buffer: %s", sf_strerror(nullptr));
         return -1;
     }
-    
-    auto sfinfo = vio_sndfile.sfinfo;
-    auto sndfile = vio_sndfile.sndfile;
-    SF_FORMAT_INFO major_info, subtype_info;
-    subtype_info.format = sfinfo.format & SF_FORMAT_SUBMASK;
-    major_info.format = sfinfo.format;
-    
-    // Get major format info
-    if (sf_command (sndfile, SFC_GET_FORMAT_INFO, &major_info, sizeof (major_info))) {
-        RCLCPP_ERROR(rcl_logger, "sf_command SFC_GET_FORMAT_MAJOR failed");
-        printf("major_info format: %08x\n", major_info.format);
-        major_info.name = "Unknown";
-    }
-    // Get subtype format info
-    if (sf_command (sndfile, SFC_GET_FORMAT_INFO, &subtype_info, sizeof (subtype_info))) {
-        RCLCPP_ERROR(rcl_logger, "sf_command SFC_GET_FORMAT_SUBTYPE failed");
-        subtype_info.name = "Unknown";
-    }
-    RCLCPP_INFO(rcl_logger, "Opening type [%s %s], %d channels, %d Hz", major_info.name, subtype_info.name, sfinfo.channels, sfinfo.samplerate);
     return 0;
 }
 
@@ -205,31 +207,24 @@ int write_buffer(void* buffer, int format, int frames, int channels, int sample_
     return 0;
 }
 
-PlayBufferParams get_file(char * file_path)
+// Read an entire binary file into memory.
+std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<unsigned char>> & out_data)
 {
-    AlsaHwParams hw_vals;
-    AlsaSwParams sw_vals;
-
-    printf ("Playing file %s\n", file_path) ;
-
     // Read entire file into memory
     std::ifstream file(file_path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        printf("Error: Cannot open file %s\n", file_path);
-        return PlayBufferParams{nullptr, hw_vals, sw_vals};
+        return std::string("Cannot open file: ") + file_path;
     }
 
     std::streamsize file_size = file.tellg();
     file.seekg(0, std::ios::beg);
-
-    auto file_data = std::make_shared<std::vector<unsigned char>>(file_size);
-    if (!file.read(reinterpret_cast<char*>(file_data->data()), file_size)) {
-        printf("Error: Cannot read file %s\n", file_path);
-        return PlayBufferParams{nullptr, hw_vals, sw_vals};
+    out_data = std::make_shared<std::vector<unsigned char>>(file_size);
+    if (!file.read(reinterpret_cast<char*>(out_data->data()), file_size)) {
+        file.close();
+        return std::string("Cannot read file: ") + file_path;
     }
     file.close();
-    printf("File size %ld bytes\n", file_size);
-    return PlayBufferParams{file_data, hw_vals, sw_vals};
+    return std::nullopt;
 }
 
 //play_buffer thread function that listens to the audio_queue

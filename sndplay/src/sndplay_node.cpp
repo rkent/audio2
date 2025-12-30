@@ -47,11 +47,16 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char ** argv)
 
     // Enqueue all files from command line arguments
     for (int k = 1; k < argc; k++) {
-        PlayBufferParams params = get_file(argv[k]);
-        if (params.file_data == nullptr) {
-            RCLCPP_ERROR(rcl_logger, "Failed to load file %s", argv[k]);
-            continue; // Error reading file
+        std::shared_ptr<std::vector<unsigned char>> file_data;
+        auto error = get_file(argv[k], file_data);
+        if (error) {
+            RCLCPP_ERROR(rcl_logger, "Failed to load file %s: %s", argv[k], error->c_str());
+            continue; // Error reading file, got to next.
         }
+        PlayBufferParams params;
+        params.file_data = file_data;
+        RCLCPP_INFO(rcl_logger, "Loaded file %s of size %zu bytes", argv[k], file_data->size());
+        RCLCPP_INFO(rcl_logger, "playback with format: %s", format_to_string(params.hw_vals.format).c_str());
 
         // Wait until queue has space
         while (!audio_queue.push(params) && !shutdown_flag.load()) {

@@ -4,9 +4,17 @@
 #include <vector>
 #include <memory>
 #include <atomic>
+#include <optional>
 #include "boost/lockfree/spsc_queue.hpp"
 
 #include "sndplay/alsaops.hpp"
+
+/**
+ * Convert sndfile format to human-readable string.
+ * \param format The sndfile format integer.
+ * \return       A string representing the format.
+ */
+std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
 typedef struct {
@@ -32,7 +40,13 @@ int open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
 
 int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate);
 
-PlayBufferParams get_file(char * file_path);
+/**
+ * Read an entire binary file into memory.
+ * \param file_path The path to the file to read.
+ * \param out_data  Shared pointer to store the file data.
+ * \return          Optional error string if an error occurs.
+*/
+std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<unsigned char>> & out_data);
 
 void play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, std::atomic<bool>* shutdown_flag, std::atomic<bool>* data_available);
 

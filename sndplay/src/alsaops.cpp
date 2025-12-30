@@ -308,10 +308,8 @@ scale_data(int readcount, int read_type, snd_pcm_format_t alsa_format, void* r_b
     return 0;
 }
 
-
-/**/
 // debug write_buffer only
-#include "sndplay/buffer_file.hpp"
+// #include "sndplay/buffer_file.hpp"
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 PlaybackResult
@@ -320,31 +318,19 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     static char r_buffer [BUFFER_LEN] ; // read buffer
     static char w_buffer [BUFFER_LEN] ; // write buffer
 
-    int	readcount, subformat, read_type ;
+    int	readcount, read_type ;
     PlaybackResult result = {false, ""};
-
-    subformat = sfinfo.format & SF_FORMAT_SUBMASK ;
-    printf("File subformat is %x\n", subformat) ;
 
     switch (alsa_format) {
         case SND_PCM_FORMAT_S16:
-            puts("ALSA format is S16") ;
-            break;
         case SND_PCM_FORMAT_S24:
-            puts("ALSA format is S24") ;
-            break;
         case SND_PCM_FORMAT_S32:
-            puts("ALSA format is S32") ;
-            break;
         case SND_PCM_FORMAT_FLOAT:
-            puts("ALSA format is FLOAT") ;
-            break;
         case SND_PCM_FORMAT_FLOAT64:
-            puts("ALSA format is DOUBLE") ;
             break;
         default:
             result.error_message = "Unsupported ALSA format";
-            return result;
+        return result;
     }
 
     // When converting between float to integer formats, sndfile scaling typically relies on
@@ -352,12 +338,13 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     // a fixed scaling factor here to avoid extremely low volume playback.
 
     float scale = 1.0;
+    int subformat = sfinfo.format & SF_FORMAT_SUBMASK ;
     switch (subformat) {
         case SF_FORMAT_PCM_16:
         case SF_FORMAT_VORBIS:
         case SF_FORMAT_OPUS:
         case SF_FORMAT_MPEG_LAYER_III:
-            switch (alsa_format) {
+        switch (alsa_format) {
                 // For the integer file types, we rely on sndfile's native conversion.
                 case SND_PCM_FORMAT_S16:
                 case SND_PCM_FORMAT_S32:
@@ -438,13 +425,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
     sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
 
-    // Debug: write buffer for testing
-    //#define WRITE_SIZE 48000
-    //char chunk[WRITE_SIZE];  // testing buffer for write_buffer
-    //int chunk_offset = 0;
-
     while ((readcount = sfg_read(sndfile, r_buffer, read_type, BUFFER_LEN)) != 0) {
-        // printf("Read %d samples from sndfile\n", readcount) ;
         if (readcount < 0) {
             result.error_message = "Error reading from sound file";
             return result;
@@ -455,58 +436,15 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
             return result;
         }
         alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
-        // Debug: store first 5000 samples in chunk buffer
-        /*
-        if (chunk_offset < 5000) {
-            int writecount = MIN(readcount, 5000);
-            printf("Appending %d samples to chunk buffer\n", writecount) ;
-            memcpy(chunk + chunk_offset, w_buffer, writecount * sizeof(short) * sfinfo.channels);
-            chunk_offset += writecount * sizeof(short) * sfinfo.channels;
-        }
-        */
 
         // Check if shutdown has been requested
         if (shutdown_flag && shutdown_flag->load()) {
             RCLCPP_INFO(rcl_logger, "Playback interrupted by shutdown signal");
             break;
         }
-    } /* while */
-
-    result.success = true ;
-    //puts("Writing buffer for testing") ;
-    /*
-    struct SF_INFO
-    {	sf_count_t	frames ;
-        int			samplerate ;
-        int			channels ;
-        int			format ;
-        int			sections ;
-        int			seekable ;
-    } ;
-    */
-    /*
-
-    int w_format;
-    switch(read_type) {
-        case SND_PCM_FORMAT_S16:
-            w_format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
-            break;
-        case SND_PCM_FORMAT_S32:
-            w_format = SF_FORMAT_WAV | SF_FORMAT_PCM_32;
-            break;
-        case SND_PCM_FORMAT_FLOAT:
-            w_format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
-            break;
-        case SND_PCM_FORMAT_FLOAT64:
-            w_format = SF_FORMAT_WAV | SF_FORMAT_DOUBLE;
-            break;
-        default:
-            result.error_message = "Unsupported read type for buffer writing";
-            return result;
     }
 
-    write_buffer(chunk, w_format, chunk_offset / (sizeof(short) * sfinfo.channels), sfinfo.channels, sfinfo.samplerate);
-    */
+    result.success = true ;
     return result ;
 } /* alsa_play */
 
