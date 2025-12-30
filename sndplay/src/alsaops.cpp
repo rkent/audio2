@@ -308,18 +308,14 @@ scale_data(int readcount, int read_type, snd_pcm_format_t alsa_format, void* r_b
     return 0;
 }
 
-// debug write_buffer only
-// #include "sndplay/buffer_file.hpp"
-
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
-PlaybackResult
+// Play audio from a SNDFILE using ALSA
+std::optional<std::string> 
 alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
     static char r_buffer [BUFFER_LEN] ; // read buffer
     static char w_buffer [BUFFER_LEN] ; // write buffer
 
     int	readcount, read_type ;
-    PlaybackResult result = {false, ""};
 
     switch (alsa_format) {
         case SND_PCM_FORMAT_S16:
@@ -329,8 +325,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
         case SND_PCM_FORMAT_FLOAT64:
             break;
         default:
-            result.error_message = "Unsupported ALSA format";
-        return result;
+            return std::string("Unsupported ALSA format: ") + snd_pcm_format_name(alsa_format);
     }
 
     // When converting between float to integer formats, sndfile scaling typically relies on
@@ -357,8 +352,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
                     scale = SCALE_S16;
                     break;
                 default:
-                    result.error_message = "Unsupported ALSA format for S16 file";
-                    return result;
+                    return std::string("Unsupported ALSA format for subformat PCM16-like");
             }
             break;
         case SF_FORMAT_PCM_24:
@@ -374,8 +368,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
                     scale = SCALE_S32;
                     break;
                 default:
-                    result.error_message = "Unsupported ALSA format";
-                    return result;
+                    return std::string("Unsupported ALSA format for subformat PCM24/32-like");
             }
             break;
         case SF_FORMAT_FLOAT:
@@ -393,8 +386,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
                     read_type = alsa_format;
                     break;
                 default:
-                    result.error_message = "Unsupported ALSA format for float file";
-                    return result;
+                    return std::string("Unsupported ALSA format for float file");
             }
             break;
         case SF_FORMAT_DOUBLE:
@@ -412,40 +404,37 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
                     read_type = alsa_format;
                     break;
                 default:
-                    result.error_message = "Unsupported ALSA format for double file";
-                    return result;
+                    return std::string("Unsupported ALSA format for double file");
             }
             break;
         default:
-            result.error_message = "Unsupported file subformat";
-            return result;
+            return std::string("Unsupported file subformat");
     }
 
-    printf("Using read type %x alsa_format %x with scale %f\n", read_type, alsa_format, scale) ;
+    // Disable normalization since we are handling scaling ourselves.
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
     sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
 
     while ((readcount = sfg_read(sndfile, r_buffer, read_type, BUFFER_LEN)) != 0) {
         if (readcount < 0) {
-            result.error_message = "Error reading from sound file";
-            return result;
+            return std::string("Error reading from sound file");
         }
         int scale_result = scale_data(readcount, read_type, alsa_format, r_buffer, w_buffer, scale);
         if (scale_result != 0) {
-            result.error_message = "Error scaling data for playback";
-            return result;
+            return std::string("Error scaling data for playback");
         }
         alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
 
         // Check if shutdown has been requested
         if (shutdown_flag && shutdown_flag->load()) {
-            RCLCPP_INFO(rcl_logger, "Playback interrupted by shutdown signal");
             break;
         }
     }
 
-    result.success = true ;
-    return result ;
+    if (shutdown_flag && shutdown_flag->load()) {
+        return std::string("Playback interrupted by shutdown signal");
+    }
+    return std::nullopt;
 } /* alsa_play */
 
 #endif /* _ALSAOPS_CPP__ */

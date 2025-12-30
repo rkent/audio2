@@ -31,6 +31,7 @@ public:
         publisher_ = this->create_publisher<sndplay_msgs::msg::AudioData>("file_publish", 10);
     }
     void publish_file_data(const std::string & file_path) {
+        // Open the sound file
         RCLCPP_INFO(rcl_logger, "Streaming audio data from file: %s", file_path.c_str());
         SF_INFO file_sfinfo;
         file_ = sf_open(file_path.c_str(), SFM_READ, &file_sfinfo);
@@ -59,8 +60,8 @@ public:
         f_vio_sndfile.vio_data.offset = 0;
         f_vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(file_buffer.size());
         f_vio_sndfile.sfinfo = topic_sfinfo;
-        if (open_sndfile_from_buffer(f_vio_sndfile, SFM_WRITE) != 0) {
-            RCLCPP_ERROR(rcl_logger, "Failed to open virtual sound file for topic publishing");
+        if (auto err = open_sndfile_from_buffer(f_vio_sndfile, SFM_WRITE)) {
+            RCLCPP_ERROR(rcl_logger, "Failed to open virtual sound file for topic publishing: %s", err->c_str());
             sf_close(file_);
             return;
         }
@@ -80,8 +81,8 @@ public:
             t_vio_sndfile.vio_data.offset = 0;
             t_vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
             t_vio_sndfile.sfinfo = topic_sfinfo;
-            if (open_sndfile_from_buffer(t_vio_sndfile, SFM_WRITE) != 0) {
-                printf("Failed to open sound file for writing to buffer\n");
+            if (auto err = open_sndfile_from_buffer(t_vio_sndfile, SFM_WRITE)) {
+                printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
             int samples_written = sfg_write(t_vio_sndfile.sndfile, file_buffer.data(), topic_sfinfo.format, samples_read);

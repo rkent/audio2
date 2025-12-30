@@ -5,14 +5,8 @@
 #include <sndfile.h>
 #include <atomic>
 #include <string>
-#include <tuple>
+#include <optional>
 #include <cstring>
-
-// Playback result structure
-typedef struct {
-    bool success = true;
-    const char * error_message = "";
-} PlaybackResult;
 
 #define ALSA_PERIOD_SIZE 1024
 #define ALSA_BUFFER_PERIODS 4
@@ -24,7 +18,7 @@ typedef struct AlsaHwParams {
     snd_pcm_uframes_t period_size = ALSA_PERIOD_SIZE;
     snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;
     snd_pcm_format_t format = SND_PCM_FORMAT_S16;
-    unsigned int samplerate = 0;
+    unsigned int samplerate = 48000;
     bool operator!=(const AlsaHwParams& p_rhs) const
     {
         return std::tie(
@@ -64,7 +58,16 @@ typedef struct AlsaSwParams {
 // Function declarations
 snd_pcm_t * alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals);
 
-PlaybackResult
+/**
+ * alsa_play: Play audio from a SNDFILE using ALSA
+ * @param sndfile Pointer to the SNDFILE to read audio data from
+ * @param sfinfo SF_INFO structure containing information about the audio file
+ * @param alsa_dev Pointer to the opened ALSA PCM device
+ * @param alsa_format ALSA format to use for playback
+ * @param shutdown_flag optional atomic boolean flag to signal shutdown
+ * @return Optional error message string if an error occurs, std::nullopt on success
+ */
+std::optional<std::string> 
 alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag) ;
 
 #endif

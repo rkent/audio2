@@ -36,7 +36,7 @@ typedef struct {
     AlsaSwParams sw_vals;
 } PlayBufferParams;
 
-int open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
+std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
 
 int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate);
 

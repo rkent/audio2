@@ -95,14 +95,13 @@ std::string format_to_string(int format)
     return std::string(major_info.name);
 }
 
-int open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
+std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
 {
     vio_sndfile.sndfile = sf_open_virtual(&vio, mode, &vio_sndfile.sfinfo, &vio_sndfile.vio_data);
     if (!vio_sndfile.sndfile) {
-        RCLCPP_ERROR(rcl_logger, "Failed to open sound file from buffer: %s", sf_strerror(nullptr));
-        return -1;
+        return std::string("Failed to open sound file from buffer: ") + sf_strerror(nullptr);
     }
-    return 0;
+    return std::nullopt;
 }
 
 int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples)
@@ -194,8 +193,8 @@ int write_buffer(void* buffer, int format, int frames, int channels, int sample_
     vio_sndfile.vio_data.offset = 0;
     vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(file_data.size());
     vio_sndfile.sfinfo = sfinfo;
-    if (open_sndfile_from_buffer(vio_sndfile, SFM_WRITE) != 0) {
-        printf("Failed to open sound file for writing to buffer\n");
+    if (auto err = open_sndfile_from_buffer(vio_sndfile, SFM_WRITE)) {
+        printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
         return -1;
     }
     int write_count = sfg_write(vio_sndfile.sndfile, buffer, format, frames * channels);
@@ -267,8 +266,8 @@ play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, s
         vio_sndfile.vio_data.offset = 0;
         vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(file_data->size());
 
-        if (open_sndfile_from_buffer(vio_sndfile, SFM_READ) != 0) {
-            RCLCPP_ERROR(rcl_logger, "Failed to open sound file from buffer");
+        if (auto err = open_sndfile_from_buffer(vio_sndfile, SFM_READ)) {
+            RCLCPP_ERROR(rcl_logger, err->c_str());
             continue;
         }
         hw_vals.channels = vio_sndfile.sfinfo.channels;
@@ -300,10 +299,10 @@ play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, s
         snd_pcm_t* current_alsa_dev = alsa_dev;
         
         // Play the audio
-        PlaybackResult result = alsa_play(vio_sndfile.sndfile, vio_sndfile.sfinfo, current_alsa_dev, hw_vals.format, shutdown_flag);
+        auto result = alsa_play(vio_sndfile.sndfile, vio_sndfile.sfinfo, current_alsa_dev, hw_vals.format, shutdown_flag);
 
-        if (!result.success) {
-            RCLCPP_ERROR(rcl_logger, "Playback failed: %s", result.error_message);
+        if (result) {
+            RCLCPP_ERROR(rcl_logger, "Playback failed: %s", result->c_str() );
         } else {
             RCLCPP_INFO(rcl_logger, "Playback completed successfully");
         }
