@@ -48,19 +48,16 @@ typedef struct AlsaHwParams {
 // ALSA software parameters values
 typedef struct AlsaSwParams {
     snd_pcm_uframes_t start_threshold = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
-    snd_pcm_uframes_t stop_threshold = 0;
-    snd_pcm_uframes_t silence_size = 0;
+    snd_pcm_uframes_t stop_threshold = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 
     bool operator!=(const AlsaSwParams& p_rhs) const
     {
         return std::tie(
                 start_threshold,
-                stop_threshold,
-                silence_size) !=
+                stop_threshold) !=
             std::tie(
                 p_rhs.start_threshold,
-                p_rhs.stop_threshold,
-                p_rhs.silence_size);
+                p_rhs.stop_threshold);
     }
 } AlsaSwParams;
 

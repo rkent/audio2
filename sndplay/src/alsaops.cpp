@@ -195,7 +195,7 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals)
     ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels) ;
     ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames) ;
     ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0) ;
-    ECALL(snd_pcm_hw_params, "cannot set parameters", alsa_dev, hw_params) ;
+    ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params) ;
 
     snd_pcm_sw_params_alloca(&sw_params) ;
     ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params) ;
@@ -203,9 +203,15 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals)
     /* note: set start threshold to delay start until the ring buffer is full */
     ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold) ;
     ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold) ;
-    ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size) ;
 
-    ECALL(snd_pcm_sw_params, "snd_pcm_sw_params", alsa_dev, sw_params) ;
+    // I don't reallt understand silence threshold and silence size. Recommendations are to set silence_threshold to 0
+    // and silence_size to boundary. But the boundary is a very large integer, which makes no sense to me.
+    // But I do as I am told. Theoretically this should help with xruns.
+    ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, 0) ;
+    snd_pcm_uframes_t boundary;
+    ECALL(snd_pcm_sw_params_get_boundary, "cannot get boundary", sw_params, &boundary) ;
+    ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, boundary) ;
+    ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params) ;
 
     snd_pcm_reset (alsa_dev) ;
 
