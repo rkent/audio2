@@ -8,12 +8,12 @@
 #include <optional>
 #include <cstring>
 
-#define ALSA_PERIOD_SIZE 2048
-#define ALSA_BUFFER_PERIODS 4
+#define ALSA_PERIOD_SIZE 1024
+#define ALSA_BUFFER_PERIODS 8
 // ALSA hardware parameters values
 typedef struct AlsaHwParams {
     const char *device = "default";
-    unsigned int channels = 2;
+    unsigned int channels = 1;
     snd_pcm_uframes_t buffer_size = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
     snd_pcm_uframes_t period_size = ALSA_PERIOD_SIZE;
     snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;

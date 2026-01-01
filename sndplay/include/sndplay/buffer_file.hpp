@@ -38,7 +38,7 @@ typedef struct {
 
 std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
 
-int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate);
+// int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate);
 
 /**
  * Read an entire binary file into memory.
@@ -50,7 +50,31 @@ std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std:
 
 void play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, std::atomic<bool>* shutdown_flag, std::atomic<bool>* data_available);
 
-int sfg_read(SNDFILE * sndfile, int format, void * buffer, int samples);
-int sample_size_from_format(int format);
-int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples);
+/**
+ * Read samples from a SNDFILE into a buffer.
+ * \param sndfile The SNDFILE to read from.
+ * \param format  The buffer format using ALSA format enums.
+ * \param buffer  The buffer to read samples into.
+ * \param samples The number of samples to read.
+ * \return        The number of samples read, or a negative error code.
+ */
+int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samples);
+
+/**
+ * Get the sample size in bytes for a given ALSA format.
+ * \param format The ALSA format.
+ * \return       The sample size in bytes, or -1 if unsupported.
+ */
+int sample_size_from_format(snd_pcm_format_t format);
+
+/**
+ * Write samples from a buffer to a SNDFILE.
+ * \param sndfile The SNDFILE to write to.
+ * \param buffer  The buffer containing samples to write.
+ * \param format  The buffer format using ALSA format enums.
+ * \param samples The number of samples to write.
+ * \return        The number of samples written, or a negative error code.
+ */
+int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples);
+
 #endif // SNDPLAY_BUFFER_FILE_HPP

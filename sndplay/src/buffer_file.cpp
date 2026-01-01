@@ -104,81 +104,93 @@ std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile,
     return std::nullopt;
 }
 
-int sfg_write(SNDFILE * sndfile, void * buffer, int format, int samples)
+int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples)
 {
+    int bytes_per_sample = snd_pcm_format_width(format) / 8;
+    bool is_unsigned = snd_pcm_format_unsigned(format);
+    bool is_float = snd_pcm_format_float(format);
+
     if (samples <= 0) {
         return 0;
     }
-    int subtype = format & SF_FORMAT_SUBMASK;
-    switch (subtype) {
-        case SF_FORMAT_PCM_16:
-        case SF_FORMAT_VORBIS:
-        case SF_FORMAT_OPUS:
-        case SF_FORMAT_MPEG_LAYER_III:
-            return sf_write_short(sndfile, reinterpret_cast<short*>(buffer), samples);
-        case SF_FORMAT_PCM_32:
-            return sf_write_int(sndfile, reinterpret_cast<int*>(buffer), samples);
-        case SF_FORMAT_FLOAT:
+    if (is_unsigned) {
+        // Currently not handling unsigned formats
+        return -1;
+    }
+
+    if (is_float) {
+        if (bytes_per_sample == 4) {
             return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
-        case SF_FORMAT_DOUBLE:
+        } else if (bytes_per_sample == 8) {
             return sf_write_double(sndfile, reinterpret_cast<double*>(buffer), samples);
-        default:
-            return -1;
+        } else {
+            return -2; // Unsupported float byte size
+        }
+    } else {
+        if (bytes_per_sample == 2) {
+            return sf_write_short(sndfile, reinterpret_cast<short*>(buffer), samples);
+        } else if (bytes_per_sample == 4) {
+            return sf_write_int(sndfile, reinterpret_cast<int*>(buffer), samples);
+        } else {
+            return -3; // Unsupported integer byte size
+        }
     }
+    return -4; // Should not reach here
 }
 
-int sample_size_from_format(int format)
+// Get sample size in bytes from alsa's snd_pcm_format_t
+int sample_size_from_format(snd_pcm_format_t format)
 {
-    int subtype = format & SF_FORMAT_SUBMASK;
-    switch (subtype) {
-        case SF_FORMAT_PCM_16:
-        case SF_FORMAT_VORBIS:
-        case SF_FORMAT_OPUS:
-        case SF_FORMAT_MPEG_LAYER_III:
-            return sizeof(short);
-        case SF_FORMAT_PCM_32:
-            return sizeof(int);
-        case SF_FORMAT_FLOAT:
-            return sizeof(float);
-        case SF_FORMAT_DOUBLE:
-            return sizeof(double);
-        default:
-            return -1;
-    }
+    return snd_pcm_format_width(format) / 8;
 }
 
-int sfg_read(SNDFILE * sndfile, int format, void * buffer, int samples)
+int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samples)
 {
-    int subtype = format & SF_FORMAT_SUBMASK;
-    switch (subtype) {
-        case SF_FORMAT_PCM_16:
-        case SF_FORMAT_VORBIS:
-        case SF_FORMAT_OPUS:
-        case SF_FORMAT_MPEG_LAYER_III:
-            return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
-        case SF_FORMAT_PCM_32:
-            return sf_read_int(sndfile, reinterpret_cast<int*>(buffer), samples);
-        case SF_FORMAT_FLOAT:
+    int bytes_per_sample = snd_pcm_format_width(format) / 8;
+    bool is_unsigned = snd_pcm_format_unsigned(format);
+    bool is_float = snd_pcm_format_float(format);
+
+    if (samples <= 0) {
+        return 0;
+    }
+    if (is_unsigned) {
+        // Currently not handling unsigned formats
+        return -1;
+    }
+
+    if (is_float) {
+        if (bytes_per_sample == 4) {
             return sf_read_float(sndfile, reinterpret_cast<float*>(buffer), samples);
-        case SF_FORMAT_DOUBLE:
+        } else if (bytes_per_sample == 8) {
             return sf_read_double(sndfile, reinterpret_cast<double*>(buffer), samples);
-        default:
-            return -1;
+        } else {
+            return -2; // Unsupported float byte size
+        }
+    } else {
+        if (bytes_per_sample == 2) {
+            return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
+        } else if (bytes_per_sample == 4) {
+            return sf_read_int(sndfile, reinterpret_cast<int*>(buffer), samples);
+        } else {
+            return -3; // Unsupported integer byte size
+        }
     }
+    return -4; // Should not reach here
 }
 
-int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate)
+/*
+int write_buffer(void* buffer, int sf_format, snd_pcm_format_t snd_format, int frames, int channels, int sample_rate)
 {
     SF_INFO sfinfo;
     memset (&sfinfo, 0, sizeof (sfinfo)) ;
-    sfinfo.format = format;
+    sfinfo.format = sf_format;
     sfinfo.channels = channels;
     sfinfo.samplerate = sample_rate;
     sfinfo.frames = frames;
 
-    printf("Preparing to write buffer: format=%x, frames=%d, channels=%d, sample_rate=%d\n", format, frames, channels, sample_rate);
+    printf("Preparing to write buffer: sf_format=%x, frames=%d, channels=%d, sample_rate=%d\n", sf_format, frames, channels, sample_rate);
     const int MAX_HEADER = 128;
-    int sample_size = sample_size_from_format(sfinfo.format);
+    int sample_size = sample_size_from_format(snd_format);
     if (sample_size < 0) {
         RCLCPP_ERROR(rcl_logger, "Unsupported format for writing buffer: %x", sfinfo.format);
         return -1;
@@ -196,7 +208,7 @@ int write_buffer(void* buffer, int format, int frames, int channels, int sample_
         printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
         return -1;
     }
-    int write_count = sfg_write(vio_sndfile.sndfile, buffer, format, frames * channels);
+    int write_count = sfg_write(vio_sndfile.sndfile, buffer, snd_format, frames * channels);
     if (write_count < 0) {
         RCLCPP_ERROR(rcl_logger, "Error writing to buffer: %s", sf_strerror(vio_sndfile.sndfile));
         return -1;
@@ -204,6 +216,7 @@ int write_buffer(void* buffer, int format, int frames, int channels, int sample_
     printf("Wrote %d samples to buffer\n", write_count);
     return 0;
 }
+*/
 
 // Read an entire binary file into memory.
 std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<unsigned char>> & out_data)
