@@ -11,9 +11,10 @@
 #include "sndplay_msgs/msg/audio_data.hpp"
 #include "sndplay/buffer_file.hpp"
 
-#define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
+//#define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)
-//#define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
+//#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS)
+#define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
 #define ALSA_FORMAT SND_PCM_FORMAT_S32
 
  // Global flag to signal thread shutdown
@@ -30,7 +31,6 @@ void signal_handler(int signal) {
         rclcpp::shutdown();
     }
 }
-
 
 class FileStreamerNode : public rclcpp::Node {
 public:
@@ -77,11 +77,11 @@ public:
             return;
         }
         do {
-            samples_read = sfg_read(file_, hw_vals.format, file_buffer.data(), read_frames * file_sfinfo.channels);
+            samples_read = sfg_read(file_, ALSA_FORMAT, file_buffer.data(), read_frames * file_sfinfo.channels);
             //printf("Read %d samples from file\n", samples_read);
             if (samples_read <= 0) {
                 if (samples_read < 0) {
-                    RCLCPP_ERROR(rcl_logger, "Error reading from file: %s", sf_strerror(file_));
+                    RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", sf_strerror(file_), samples_read);
                 }
                 sf_close(file_);
                 break;
@@ -107,7 +107,7 @@ public:
             sf_command(t_vio_sndfile.sndfile, SFC_SET_VBR_ENCODING_QUALITY, &compression_level, sizeof(compression_level));
             mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
             printf("Bitrate mode: %d\n", mode);
-            int samples_written = sfg_write(t_vio_sndfile.sndfile, file_buffer.data(), hw_vals.format, samples_read);
+            int samples_written = sfg_write(t_vio_sndfile.sndfile, file_buffer.data(), ALSA_FORMAT, samples_read);
             if (samples_written != samples_read) {
                 RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written, samples_read);
                 sf_close(t_vio_sndfile.sndfile);
@@ -117,6 +117,7 @@ public:
             // Reopen the file for reading
             sf_close(t_vio_sndfile.sndfile);
             // Write compressed data to file with timestamp
+            /*
             auto now = std::chrono::system_clock::now();
             auto time_t_now = std::chrono::system_clock::to_time_t(now);
             std::stringstream filename_ss;
@@ -130,6 +131,7 @@ public:
             } else {
                 RCLCPP_ERROR(rcl_logger, "Failed to open file for writing: %s", output_filename.c_str());
             }
+            /**/
             double compression_ratio = static_cast<double>(t_vio_sndfile.vio_data.length) /
                 static_cast<double>(samples_written * topic_sample_size);
             printf("length after write: %ld offset: %ld capacity: %ld compression_ratio: %.3f\n", t_vio_sndfile.vio_data.length,

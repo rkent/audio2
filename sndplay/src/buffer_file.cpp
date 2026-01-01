@@ -1,5 +1,6 @@
 #include "sndplay/buffer_file.hpp"
 
+#include <algorithm>
 #include <sndfile.h>
 #include <cstring>
 #include <ios>
@@ -113,10 +114,6 @@ int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int sam
     if (samples <= 0) {
         return 0;
     }
-    if (is_unsigned) {
-        // Currently not handling unsigned formats
-        return -1;
-    }
 
     if (is_float) {
         if (bytes_per_sample == 4) {
@@ -127,6 +124,10 @@ int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int sam
             return -2; // Unsupported float byte size
         }
     } else {
+        if (is_unsigned) {
+            // Currently not handling unsigned formats
+            return -1;
+        }
         if (bytes_per_sample == 2) {
             return sf_write_short(sndfile, reinterpret_cast<short*>(buffer), samples);
         } else if (bytes_per_sample == 4) {
@@ -153,10 +154,6 @@ int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samp
     if (samples <= 0) {
         return 0;
     }
-    if (is_unsigned) {
-        // Currently not handling unsigned formats
-        return -1;
-    }
 
     if (is_float) {
         if (bytes_per_sample == 4) {
@@ -167,6 +164,10 @@ int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samp
             return -2; // Unsupported float byte size
         }
     } else {
+        if (is_unsigned) {
+            // Currently not handling unsigned formats
+            return -1;
+        }
         if (bytes_per_sample == 2) {
             return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
         } else if (bytes_per_sample == 4) {
@@ -425,6 +426,35 @@ scale_data(int readcount, snd_pcm_format_t read_format, snd_pcm_format_t alsa_fo
     return 0;
 }
 
+// debug string of ALSA format
+std::string format_to_string(snd_pcm_format_t format)
+{
+    switch (format) {
+        case SND_PCM_FORMAT_S8:
+            return "S8";
+        case SND_PCM_FORMAT_U8:
+            return "U8";
+        case SND_PCM_FORMAT_S16:
+            return "S16";
+        case SND_PCM_FORMAT_U16:
+            return "U16";
+        case SND_PCM_FORMAT_S24:
+            return "S24";
+        case SND_PCM_FORMAT_U24:
+            return "U24";
+        case SND_PCM_FORMAT_S32:
+            return "S32";
+        case SND_PCM_FORMAT_U32:
+            return "U32";
+        case SND_PCM_FORMAT_FLOAT:
+            return "FLOAT";
+        case SND_PCM_FORMAT_FLOAT64:
+            return "FLOAT64";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 // Play audio from a SNDFILE using ALSA
 std::optional<std::string>
 alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
@@ -521,10 +551,12 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     // Disable normalization since we are handling scaling ourselves.
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
     sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
-    //printf("Starting ALSA playback: read_format=%x, alsa_format=%x, scale=%f\n", read_format, alsa_format, scale) ;
+
+    int samples = std::min(BUFFER_LEN / sample_size_from_format(read_format), BUFFER_LEN / sample_size_from_format(alsa_format));
+    printf("Starting ALSA playback: read_format=%s, alsa_format=%s, scale=%f, samples=%d\n",
+        format_to_string(read_format).c_str(), format_to_string(alsa_format).c_str(), scale, samples) ;
 
     do {
-        int samples = BUFFER_LEN / (sample_size_from_format(read_format)) ;
         readcount = sfg_read(sndfile, read_format, r_buffer, samples);
         //printf("Read %d samples from sound file\n", readcount);
         if (readcount < 0) {
