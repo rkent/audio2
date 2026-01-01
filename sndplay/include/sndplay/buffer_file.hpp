@@ -77,4 +77,16 @@ int sample_size_from_format(snd_pcm_format_t format);
  */
 int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples);
 
+/**
+ * alsa_play: Play audio from a SNDFILE using ALSA
+ * @param sndfile Pointer to the SNDFILE to read audio data from
+ * @param sfinfo SF_INFO structure containing information about the audio file
+ * @param alsa_dev Pointer to the opened ALSA PCM device
+ * @param alsa_format ALSA format to use for playback
+ * @param shutdown_flag optional atomic boolean flag to signal shutdown
+ * @return Optional error message string if an error occurs, std::nullopt on success
+ */
+std::optional<std::string>
+alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag) ;
+
 #endif // SNDPLAY_BUFFER_FILE_HPP

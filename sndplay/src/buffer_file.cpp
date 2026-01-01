@@ -334,3 +334,218 @@ play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, s
     RCLCPP_INFO(rcl_logger, "Play buffer thread exiting");
 }
 
+#define	BUFFER_LEN			(8192*8)
+
+// Scale factors for converting float to integer formats
+float SCALE_S8 = 1LL<<7;
+float SCALE_S16 = 1LL<<15;
+float SCALE_S20 = 1LL<<19;
+float SCALE_S24 = 1LL<<23;
+float SCALE_S32 = 1LL<<31;
+
+int
+scale_data(int readcount, snd_pcm_format_t read_format, snd_pcm_format_t alsa_format, void* r_buffer, void* w_buffer, float scale)
+{
+    // TODO: return r_buffer directly if same data type
+    // printf("Scaling data: readcount=%d, read_format=%x, alsa_format=%x, scale=%f\n", readcount, read_format, alsa_format, scale) ;
+    for (int i = 0; i < readcount; ++i) {
+        if (read_format == SND_PCM_FORMAT_S32) {
+            if (alsa_format == SND_PCM_FORMAT_S32) {
+                (reinterpret_cast<int*>(w_buffer))[i] = (reinterpret_cast<int*>(r_buffer))[i];
+                continue;
+            } else if (alsa_format == SND_PCM_FORMAT_S16) {
+                (reinterpret_cast<short*>(w_buffer))[i] = static_cast<short>((reinterpret_cast<int*>(r_buffer))[i]);
+                continue;
+            }
+            float value = (reinterpret_cast<int*>(r_buffer))[i] / scale;
+            if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+                (reinterpret_cast<float*>(w_buffer))[i] = value;
+            } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+                (reinterpret_cast<double*>(w_buffer))[i] = static_cast<double>(value);
+            } else {
+                return -1; // Unsupported ALSA format for int playback
+            }
+        } else if (read_format == SND_PCM_FORMAT_S16) {
+            if (alsa_format == SND_PCM_FORMAT_S16) {
+                (reinterpret_cast<short*>(w_buffer))[i] = (reinterpret_cast<short*>(r_buffer))[i];
+                continue;
+            } else if (alsa_format == SND_PCM_FORMAT_S32) {
+                (reinterpret_cast<int*>(w_buffer))[i] = static_cast<int>((reinterpret_cast<short*>(r_buffer))[i]);
+                continue;
+            }
+            float value = static_cast<float>((reinterpret_cast<short*>(r_buffer))[i]) / scale;
+            // printf("Scaled S16 value: %f\n", value) ;
+            if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+                (reinterpret_cast<float*>(w_buffer))[i] = value;
+                continue;
+            } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+                (reinterpret_cast<double*>(w_buffer))[i] = static_cast<double>(value);
+                continue;
+            } else {
+                return -2; // Unsupported ALSA format for short playback
+            }
+        } else if (read_format == SND_PCM_FORMAT_FLOAT) {
+            if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+                (reinterpret_cast<float*>(w_buffer))[i] = (reinterpret_cast<float*>(r_buffer))[i];
+                continue;
+            } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+                (reinterpret_cast<double*>(w_buffer))[i] = static_cast<double>((reinterpret_cast<float*>(r_buffer))[i]);
+                continue;
+            }
+            float value = (reinterpret_cast<float*>((r_buffer))[i]) * scale;
+            if (alsa_format == SND_PCM_FORMAT_S16) {
+                (reinterpret_cast<short*>(w_buffer))[i] = static_cast<short>(value);
+            } else if (alsa_format == SND_PCM_FORMAT_S32) {
+                (reinterpret_cast<int*>(w_buffer))[i] = static_cast<int>(value);
+            } else {
+                return -3; // Unsupported ALSA format for float playback
+            }
+        } else if (read_format == SND_PCM_FORMAT_FLOAT64) {
+            if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+                (reinterpret_cast<double*>(w_buffer))[i] = (reinterpret_cast<double*>(r_buffer))[i];
+                continue;
+            } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+                (reinterpret_cast<float*>(w_buffer))[i] = static_cast<float>((reinterpret_cast<double*>(r_buffer))[i]);
+                continue;
+            }
+            double value = (reinterpret_cast<double*>(r_buffer))[i] * static_cast<double>(scale);
+            if (alsa_format == SND_PCM_FORMAT_S16) {
+                (reinterpret_cast<short*>(w_buffer))[i] = static_cast<short>(value);
+                continue;
+            } else if (alsa_format == SND_PCM_FORMAT_S32) {
+                (reinterpret_cast<int*>(w_buffer))[i] = static_cast<int>(value);
+                continue;
+            } else {
+                return -4; // Unsupported ALSA format for double playback
+            }
+        } else {
+            return -5; // Unsupported read type for scaling
+        }
+    }
+    return 0;
+}
+
+// Play audio from a SNDFILE using ALSA
+std::optional<std::string>
+alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
+{
+    static char r_buffer [BUFFER_LEN] ; // read buffer
+    static char w_buffer [BUFFER_LEN] ; // write buffer
+
+    int	readcount;
+    snd_pcm_format_t read_format;
+
+    // When converting between float to integer formats, sndfile scaling typically relies on
+    // normalization, which we cannot do since the data is being streamed. Therefore, we apply
+    // a fixed scaling factor here to avoid extremely low volume playback.
+
+    float scale = 1.0;
+    int subformat = sfinfo.format & SF_FORMAT_SUBMASK ;
+    switch (subformat) {
+        case SF_FORMAT_PCM_16:
+        case SF_FORMAT_VORBIS:
+        case SF_FORMAT_OPUS:
+        case SF_FORMAT_MPEG_LAYER_III:
+            switch (alsa_format) {
+                // For the integer file types, we rely on sndfile's native conversion.
+                case SND_PCM_FORMAT_S16:
+                case SND_PCM_FORMAT_S32:
+                    read_format = alsa_format;
+                    break;
+                // For float output, we need to scale the data.
+                case SND_PCM_FORMAT_FLOAT:
+                case SND_PCM_FORMAT_FLOAT64:
+                    read_format = SND_PCM_FORMAT_S16;
+                    scale = SCALE_S16;
+                    break;
+                default:
+                    return std::string("Unsupported ALSA format for subformat PCM16-like");
+            }
+            break;
+        case SF_FORMAT_PCM_24:
+        case SF_FORMAT_PCM_32:
+            switch (alsa_format) {
+                case SND_PCM_FORMAT_S16:
+                case SND_PCM_FORMAT_S32:
+                    read_format = alsa_format;
+                    break;
+                case SND_PCM_FORMAT_FLOAT:
+                case SND_PCM_FORMAT_FLOAT64:
+                    read_format = SND_PCM_FORMAT_S32;
+                    scale = SCALE_S32;
+                    break;
+                default:
+                    return std::string("Unsupported ALSA format for subformat PCM24/32-like");
+            }
+            break;
+        case SF_FORMAT_FLOAT:
+            switch (alsa_format) {
+                case SND_PCM_FORMAT_S16:
+                    read_format = SND_PCM_FORMAT_FLOAT;
+                    scale = SCALE_S16;
+                    break;
+                case SND_PCM_FORMAT_S32:
+                    read_format = SND_PCM_FORMAT_FLOAT;
+                    scale = SCALE_S32;
+                    break;
+                case SND_PCM_FORMAT_FLOAT:
+                case SND_PCM_FORMAT_FLOAT64:
+                    read_format = alsa_format;
+                    break;
+                default:
+                    return std::string("Unsupported ALSA format for float file");
+            }
+            break;
+        case SF_FORMAT_DOUBLE:
+            switch (alsa_format) {
+                case SND_PCM_FORMAT_S16:
+                    read_format = SND_PCM_FORMAT_FLOAT64;
+                    scale = SCALE_S16;
+                    break;
+                case SND_PCM_FORMAT_S32:
+                    read_format = SND_PCM_FORMAT_FLOAT64;
+                    scale = SCALE_S32;
+                    break;
+                case SND_PCM_FORMAT_FLOAT:
+                case SND_PCM_FORMAT_FLOAT64:
+                    read_format = alsa_format;
+                    break;
+                default:
+                    return std::string("Unsupported ALSA format for double file");
+            }
+            break;
+        default:
+            return std::string("Unsupported file subformat");
+    }
+
+    // Disable normalization since we are handling scaling ourselves.
+    sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
+    sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
+    //printf("Starting ALSA playback: read_format=%x, alsa_format=%x, scale=%f\n", read_format, alsa_format, scale) ;
+
+    do {
+        int samples = BUFFER_LEN / (sample_size_from_format(read_format)) ;
+        readcount = sfg_read(sndfile, read_format, r_buffer, samples);
+        //printf("Read %d samples from sound file\n", readcount);
+        if (readcount < 0) {
+            return std::string("Error reading from sound file");
+        }
+        int scale_result = scale_data(readcount, read_format, alsa_format, r_buffer, w_buffer, scale);
+        if (scale_result != 0) {
+            return std::string("Error scaling data for playback");
+        }
+        [[maybe_unused]] auto count = alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
+        //printf("Wrote %d frames to ALSA\n", count) ;
+
+        // Check if shutdown has been requested
+        if (shutdown_flag && shutdown_flag->load()) {
+            break;
+        }
+    } while (readcount != 0);
+
+    if (shutdown_flag && shutdown_flag->load()) {
+        return std::string("Playback interrupted by shutdown signal");
+    }
+    return std::nullopt;
+} /* alsa_play */
+

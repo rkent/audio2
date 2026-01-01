@@ -59,15 +59,14 @@ typedef struct AlsaSwParams {
 snd_pcm_t * alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals);
 
 /**
- * alsa_play: Play audio from a SNDFILE using ALSA
- * @param sndfile Pointer to the SNDFILE to read audio data from
- * @param sfinfo SF_INFO structure containing information about the audio file
- * @param alsa_dev Pointer to the opened ALSA PCM device
- * @param alsa_format ALSA format to use for playback
- * @param shutdown_flag optional atomic boolean flag to signal shutdown
- * @return Optional error message string if an error occurs, std::nullopt on success
+ * Write audio data to ALSA device.
+ * \param samples Number of samples to write.
+ * \param alsa_dev  Pointer to the ALSA PCM device.
+ * \param data      Pointer to the audio data buffer.
+ * \param channels  Number of audio channels.
+ * \param alsa_format ALSA format of the audio data.
+ * \return          Number of samples written, or negative error code.
  */
-std::optional<std::string> 
-alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag) ;
+int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_pcm_format_t alsa_format);
 
 #endif
