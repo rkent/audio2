@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(sndplay)
+project(audio2_stream)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -17,7 +17,7 @@ find_library(SNDFILE_LIBRARIES NAMES sndfile REQUIRED)
 find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
 find_package(ALSA REQUIRED)
 find_package(Boost REQUIRED)
-find_package(sndplay_msgs REQUIRED)
+find_package(audio2_stream_msgs REQUIRED)
 
 # Add all exported headers to include/<package_name> otherwise other packages cannot see it
 # This makes headers available to other packages that depend on yours.
@@ -33,7 +33,7 @@ add_library(
 )
 
 #set(SOURCE_FILES
-#  src/sndplay_node.cpp
+#  src/audio2_stream_node.cpp
 #  src/alsaops.cpp
 #  src/buffer_file.cpp
 #  src/publish_file.cpp
@@ -41,23 +41,23 @@ add_library(
 
 add_executable(publish_file src/publish_file.cpp)
 add_executable(subscribe_file src/subscribe_file.cpp)
-add_executable(sndplay_node src/sndplay_node.cpp)
+add_executable(audio2_stream_node src/audio2_stream_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
 
 # Set RPATH for executables to find the shared library
 ## TODO: This was added by claude to make it work, but should not be needed. Check why.
-#set_target_properties(publish_file subscribe_file sndplay_node PROPERTIES
+#set_target_properties(publish_file subscribe_file audio2_stream_node PROPERTIES
 #  INSTALL_RPATH "$ORIGIN/../../lib"
 #  BUILD_WITH_INSTALL_RPATH FALSE
 #  INSTALL_RPATH_USE_LINK_PATH TRUE
 #)
 
-target_link_libraries(sndplay 
+target_link_libraries(audio2_stream 
   PRIVATE
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
-    ${sndplay_msgs_TARGETS}
+    ${audio2_stream_msgs_TARGETS}
 )
 target_include_directories(${PROJECT_NAME}
   PUBLIC
@@ -70,7 +70,7 @@ target_link_libraries(publish_file
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
-    ${sndplay_msgs_TARGETS}
+    ${audio2_stream_msgs_TARGETS}
 )
 target_link_libraries(loop_file
   PRIVATE
@@ -78,7 +78,7 @@ target_link_libraries(loop_file
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
-    ${sndplay_msgs_TARGETS}
+    ${audio2_stream_msgs_TARGETS}
 )
 target_link_libraries(subscribe_file
   PRIVATE
@@ -86,9 +86,9 @@ target_link_libraries(subscribe_file
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
-    ${sndplay_msgs_TARGETS}
+    ${audio2_stream_msgs_TARGETS}
 )
-target_link_libraries(sndplay_node
+target_link_libraries(audio2_stream_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
@@ -120,7 +120,7 @@ install(TARGETS
   publish_file
   loop_file
   subscribe_file
-  sndplay_node
+  audio2_stream_node
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

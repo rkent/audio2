@@ -3,7 +3,7 @@
 
 #include <cstring>
 
-#include "sndplay/alsaops.hpp"
+#include "audio2_stream/alsaops.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #define _S(cstr) std::string(cstr)
@@ -15,7 +15,7 @@ if ((err = func(__VA_ARGS__)) < 0) {\
     goto catch_error ; \
 } ;
 
-static auto rcl_logger = rclcpp::get_logger("sndplay.alsaops") ;
+static auto rcl_logger = rclcpp::get_logger("audio2_stream.alsaops") ;
 
 template<typename T>
 class AlsaWrite {

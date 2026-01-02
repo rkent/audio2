@@ -1,4 +1,4 @@
-#include "sndplay/buffer_file.hpp"
+#include "audio2_stream/buffer_file.hpp"
 
 #include <algorithm>
 #include <sndfile.h>
@@ -9,7 +9,7 @@
 #include "rclcpp/rclcpp.hpp"
 // #include "rclcpp/rclcpp.hpp"
 
-static auto rcl_logger = rclcpp::get_logger("sndplay/buffer_file");
+static auto rcl_logger = rclcpp::get_logger("audio2_stream/buffer_file");
 
 // Virtual I/O callbacks
 static sf_count_t vio_get_filelen(void *user_data) {

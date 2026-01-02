@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>sndplay</name>
+  <name>audio2_stream</name>
   <version>0.0.0</version>
   <description>Demo of use of libsndfile and alsa</description>
   <maintainer email="kent@caspia.com">R. Kent James</maintainer>
@@ -13,7 +13,7 @@
   <depend>libasound2-dev</depend>
   <depend>libboost-dev</depend>
   <depend>rclcpp</depend>
-  <depend>sndplay_msgs</depend>
+  <depend>audio2_stream_msgs</depend>
   <depend>armadillo</depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

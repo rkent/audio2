@@ -8,21 +8,21 @@
 #include <fstream>
 
 #include "rclcpp/rclcpp.hpp"
-#include "sndplay_msgs/msg/audio_data.hpp"
-#include "sndplay/buffer_file.hpp"
+#include "audio2_stream_msgs/msg/audio_data.hpp"
+#include "audio2_stream/buffer_file.hpp" 
 
 //#define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)
-//#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS)
+//#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS) 
 #define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
-#define ALSA_FORMAT SND_PCM_FORMAT_S32
+#define ALSA_FORMAT SND_PCM_FORMAT_S16
 
  // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);
 // Global flag to signify that new data is available in the queue
 std::atomic<bool> data_available(false);
 
-static auto rcl_logger = rclcpp::get_logger("sndplay/loop_file");
+static auto rcl_logger = rclcpp::get_logger("audio2_stream/loop_file");
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {
@@ -35,7 +35,7 @@ void signal_handler(int signal) {
 class FileStreamerNode : public rclcpp::Node {
 public:
     FileStreamerNode() : Node("file_streamer") {
-        publisher_ = this->create_publisher<sndplay_msgs::msg::AudioData>("file_publish", 10);
+        publisher_ = this->create_publisher<audio2_stream_msgs::msg::AudioData>("file_publish", 10);
     }
     void publish_file_data(const std::string & file_path) {
         // Open the sound file
@@ -51,7 +51,7 @@ public:
 
         int file_sample_size_ = sample_size_from_format(ALSA_FORMAT);
         const int MAX_HEADER = 128;
-        const int read_frames = 1024 * 128;
+        const int read_frames = 1024 * 16;
         int file_buffer_size = read_frames * file_sfinfo.channels * file_sample_size_ + MAX_HEADER;
         std::vector<unsigned char> file_buffer(file_buffer_size);
 
@@ -100,12 +100,12 @@ public:
                 return;
             }
             // Set compression level for OGG/OPUS
-            double compression_level = 1.0; // 0.0 (fastest) to 1.0 (best)
+            double compression_level = 0.5; // 0.0 (fastest) to 1.0 (best)
             sf_command(t_vio_sndfile.sndfile, SFC_SET_COMPRESSION_LEVEL, &compression_level, sizeof(compression_level));
             int mode = SF_BITRATE_MODE_VARIABLE; // Variable bitrate mode
-            sf_command(t_vio_sndfile.sndfile, SFC_SET_BITRATE_MODE, &mode, sizeof(mode));
-            sf_command(t_vio_sndfile.sndfile, SFC_SET_VBR_ENCODING_QUALITY, &compression_level, sizeof(compression_level));
-            mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
+            //sf_command(t_vio_sndfile.sndfile, SFC_SET_BITRATE_MODE, &mode, sizeof(mode));
+            //sf_command(t_vio_sndfile.sndfile, SFC_SET_VBR_ENCODING_QUALITY, &compression_level, sizeof(compression_level));
+            //mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
             printf("Bitrate mode: %d\n", mode);
             int samples_written = sfg_write(t_vio_sndfile.sndfile, file_buffer.data(), ALSA_FORMAT, samples_read);
             if (samples_written != samples_read) {
@@ -116,22 +116,6 @@ public:
             
             // Reopen the file for reading
             sf_close(t_vio_sndfile.sndfile);
-            // Write compressed data to file with timestamp
-            /*
-            auto now = std::chrono::system_clock::now();
-            auto time_t_now = std::chrono::system_clock::to_time_t(now);
-            std::stringstream filename_ss;
-            filename_ss << std::put_time(std::localtime(&time_t_now), "%Y%m%d_%H%M%S") << ".mp3";
-            std::string output_filename = filename_ss.str();
-            std::ofstream outfile(output_filename, std::ios::binary);
-            if (outfile.is_open()) {
-                outfile.write(reinterpret_cast<const char*>(topic_buffer.data()), t_vio_sndfile.vio_data.length);
-                outfile.close();
-                RCLCPP_INFO(rcl_logger, "Wrote compressed data to file: %s", output_filename.c_str());
-            } else {
-                RCLCPP_ERROR(rcl_logger, "Failed to open file for writing: %s", output_filename.c_str());
-            }
-            /**/
             double compression_ratio = static_cast<double>(t_vio_sndfile.vio_data.length) /
                 static_cast<double>(samples_written * topic_sample_size);
             printf("length after write: %ld offset: %ld capacity: %ld compression_ratio: %.3f\n", t_vio_sndfile.vio_data.length,
@@ -160,7 +144,7 @@ public:
         return;
     }
 private:
-    rclcpp::Publisher<sndplay_msgs::msg::AudioData>::SharedPtr publisher_;
+    rclcpp::Publisher<audio2_stream_msgs::msg::AudioData>::SharedPtr publisher_;
     SNDFILE* file_;
 };
 

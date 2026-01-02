@@ -11,8 +11,8 @@
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
-#include "sndplay/alsaops.hpp"
-#include "sndplay/buffer_file.hpp"
+#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 
 // Global flag to signal thread shutdown
@@ -20,7 +20,7 @@ std::atomic<bool> shutdown_flag(false);
 // Global flag to signify that new data is available in the queue
 std::atomic<bool> data_available(false);
 
-static auto rcl_logger = rclcpp::get_logger("sndplay");
+static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
 boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
 

@@ -7,7 +7,7 @@
 #include <optional>
 #include "boost/lockfree/spsc_queue.hpp"
 
-#include "sndplay/alsaops.hpp"
+#include "audio2_stream/alsaops.hpp"
 
 /**
  * Convert sndfile format to human-readable string.
