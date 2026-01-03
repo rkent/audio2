@@ -50,29 +50,6 @@ public:
         RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), fileh_.samplerate(), fileh_.format());
         printf("channels: %d\n", fileh_.channels());
 
-        // Disable normalization since we are handling scaling ourselves.
-        fileh_.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
-        fileh_.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
-        SfgRwFormat file_rw_format_ = sfg_format_from_sndfile_format(fileh_.format());
-        int file_sample_size_ = sample_size_from_sfg_format(file_rw_format_);
-        const int MAX_HEADER = 128;
-        const int read_frames = 1024 * 16;
-        int file_buffer_size = read_frames * fileh_.channels() * file_sample_size_;
-        std::vector<char> file_buffer(file_buffer_size);
-
-        // Virtual file for topic publish
-        SF_INFO topic_sfinfo;
-        topic_sfinfo.samplerate = fileh_.samplerate();
-        topic_sfinfo.channels = fileh_.channels();
-        topic_sfinfo.format = TOPIC_FORMAT;
-        SfgRwFormat topic_rw_format_ = sfg_format_from_sndfile_format(topic_sfinfo.format);
-        int topic_sample_size = sample_size_from_sfg_format(topic_rw_format_);
-        int topic_file_size = read_frames * topic_sfinfo.channels * topic_sample_size + MAX_HEADER;
-        printf("Topic publish file size: %d bytes\n", topic_file_size);
-
-        RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(topic_sfinfo.format).c_str());
-
-        int samples_read = 0;
         AlsaHwParams hw_vals;
         hw_vals.channels = fileh_.channels();
         hw_vals.samplerate = fileh_.samplerate();
@@ -84,9 +61,27 @@ public:
             return;
         }
 
+        // Disable normalization since we are handling scaling ourselves.
+        fileh_.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
+        fileh_.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
+
+        SfgRwFormat file_rw_format = sfg_format_from_sndfile_format(fileh_.format());
+        int file_sample_size = sample_size_from_sfg_format(file_rw_format);
+        const int MAX_HEADER = 128;
+        const int read_frames = 1024 * 16;
+        int file_buffer_size = read_frames * fileh_.channels() * file_sample_size;
+        std::vector<char> file_buffer(file_buffer_size);
+
+        SfgRwFormat topic_rw_format = sfg_format_from_sndfile_format(TOPIC_FORMAT);
+        int topic_sample_size = sample_size_from_sfg_format(topic_rw_format);
+        int topic_file_size = read_frames * fileh_.channels() * topic_sample_size + MAX_HEADER;
+        printf("Topic publish file size: %d bytes\n", topic_file_size);
+        std::vector<char> topic_buffer(topic_file_size);
+
+        int samples_read = 0;
         do {
-            samples_read = sfg_read(fileh_.rawHandle(), file_rw_format_, file_buffer.data(), read_frames * fileh_.channels());
-            printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format_));
+            samples_read = sfg_read2(fileh_, file_rw_format, file_buffer.data(), read_frames * fileh_.channels());
+            printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format));
             if (samples_read <= 0) {
                 if (samples_read < 0) {
                     RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", fileh_.strError(), samples_read);
@@ -94,8 +89,16 @@ public:
                 break;
             }
 
+            // At tis point, we have read samples_read samples into file_buffer
             // Create a virtual sound file in memory for topic publish
-            std::vector<char> topic_buffer(topic_file_size);
+            // Virtual file for topic publish
+            SF_INFO topic_sfinfo;
+            topic_sfinfo.samplerate = fileh_.samplerate();
+            topic_sfinfo.channels = fileh_.channels();
+            topic_sfinfo.format = TOPIC_FORMAT;
+
+            RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(topic_sfinfo.format).c_str());
+
             VIO_SOUNDFILE t_vio_sndfile;
             t_vio_sndfile.vio_data.data = topic_buffer.data();
             t_vio_sndfile.vio_data.length = 0;
@@ -116,13 +119,13 @@ public:
             //mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
             //printf("Bitrate mode: %d\n", mode);
 
-            int samples_written = sfg_write_convert(t_vio_sndfile.sndfile, file_rw_format_, topic_rw_format_, file_buffer.data(), samples_read);
+            int samples_written = sfg_write_convert(t_vio_sndfile.sndfile, file_rw_format, topic_rw_format, file_buffer.data(), samples_read);
             if (samples_written != samples_read) {
                 RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written, samples_read);
                 sf_close(t_vio_sndfile.sndfile);
                 break;
             }
-            printf("Wrote %d samples to virtual topic buffer using format %s\n", samples_written, sfg_format_to_string(topic_rw_format_));
+            printf("Wrote %d samples to virtual topic buffer using format %s\n", samples_written, sfg_format_to_string(topic_rw_format));
             
             // Reopen the file for reading
             sf_close(t_vio_sndfile.sndfile);

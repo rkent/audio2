@@ -1,7 +1,7 @@
 #include "audio2_stream/buffer_file.hpp"
 
 #include <algorithm>
-#include <sndfile.h>
+#include <sndfile.hh>
 #include <cstring>
 #include <ios>
 #include <fstream>
@@ -287,6 +287,26 @@ int sfg_read(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
             return sf_read_float(sndfile, reinterpret_cast<float*>(buffer), samples);
         case SFG_DOUBLE:
             return sf_read_double(sndfile, reinterpret_cast<double*>(buffer), samples);
+        default:
+            return -1; // Unsupported format
+    }
+    return -2; // Should not reach here
+}
+
+int sfg_read2(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int samples)
+{
+    if (samples <= 0) {
+        return 0;
+    }
+    switch (format) {
+        case SFG_SHORT:
+            return sndfileh.read(reinterpret_cast<short*>(buffer), samples);
+        case SFG_INT:
+            return sndfileh.read(reinterpret_cast<int*>(buffer), samples);
+        case SFG_FLOAT:
+            return sndfileh.read(reinterpret_cast<float*>(buffer), samples);
+        case SFG_DOUBLE:
+            return sndfileh.read(reinterpret_cast<double*>(buffer), samples);
         default:
             return -1; // Unsupported format
     }

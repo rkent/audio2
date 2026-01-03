@@ -1,6 +1,6 @@
 #ifndef SNDPLAY_BUFFER_FILE_HPP
 #define SNDPLAY_BUFFER_FILE_HPP
-#include <sndfile.h>
+#include <sndfile.hh>
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -62,12 +62,22 @@ void play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_que
 /**
  * Read samples from a SNDFILE into a buffer.
  * \param sndfile The SNDFILE to read from.
- * \param format  The buffer format using ALSA format enums.
+ * \param format  The buffer format.
  * \param buffer  The buffer to read samples into.
  * \param samples The number of samples to read.
  * \return        The number of samples read, or a negative error code.
  */
 int sfg_read(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
+
+/**
+ * Read samples from a SNDFILE into a buffer.
+ * \param sndfile The SndfileHandle to read from.
+ * \param format  The buffer format.
+ * \param buffer  The buffer to read samples into.
+ * \param samples The number of samples to read.
+ * \return        The number of samples read, or a negative error code.
+ */
+int sfg_read2(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int samples);
 
 /**
  * Write samples from a buffer to a SNDFILE.
