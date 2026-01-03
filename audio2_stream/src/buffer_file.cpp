@@ -272,41 +272,7 @@ SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
     }
 }
 
-int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samples)
-{
-    int bytes_per_sample = snd_pcm_format_width(format) / 8;
-    bool is_unsigned = snd_pcm_format_unsigned(format);
-    bool is_float = snd_pcm_format_float(format);
-
-    if (samples <= 0) {
-        return 0;
-    }
-
-    if (is_float) {
-        if (bytes_per_sample == 4) {
-            return sf_read_float(sndfile, reinterpret_cast<float*>(buffer), samples);
-        } else if (bytes_per_sample == 8) {
-            return sf_read_double(sndfile, reinterpret_cast<double*>(buffer), samples);
-        } else {
-            return -2; // Unsupported float byte size
-        }
-    } else {
-        if (is_unsigned) {
-            // Currently not handling unsigned formats
-            return -1;
-        }
-        if (bytes_per_sample == 2) {
-            return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
-        } else if (bytes_per_sample == 4) {
-            return sf_read_int(sndfile, reinterpret_cast<int*>(buffer), samples);
-        } else {
-            return -3; // Unsupported integer byte size
-        }
-    }
-    return -4; // Should not reach here
-}
-
-int sfg_read2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
+int sfg_read(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
 {
     if (samples <= 0) {
         return 0;
@@ -718,7 +684,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
         format_to_string(alsa_format).c_str(), samples) ;
 
     do {
-        readcount = sfg_read2(sndfile, read_sfg_format, r_buffer, samples);
+        readcount = sfg_read(sndfile, read_sfg_format, r_buffer, samples);
         printf("Read %d samples from sound file expecting %d\n", readcount, samples);
         if (readcount < 0) {
             return std::string("Error reading from sound file");

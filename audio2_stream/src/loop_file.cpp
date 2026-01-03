@@ -85,7 +85,7 @@ public:
         }
 
         do {
-            samples_read = sfg_read2(file_, file_rw_format_, file_buffer.data(), read_frames * file_sfinfo.channels);
+            samples_read = sfg_read(file_, file_rw_format_, file_buffer.data(), read_frames * file_sfinfo.channels);
             printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format_));
             if (samples_read <= 0) {
                 if (samples_read < 0) {
