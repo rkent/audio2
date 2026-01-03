@@ -18,7 +18,7 @@ std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
 typedef struct {
-    const unsigned char *data = nullptr;
+    const char *data = nullptr;
     sf_count_t length = 0;
     sf_count_t offset = 0;
     sf_count_t capacity = 0;
@@ -31,10 +31,18 @@ typedef struct {
 } VIO_SOUNDFILE;
 
 typedef struct {
-    std::shared_ptr<std::vector<unsigned char>> file_data;
+    std::shared_ptr<std::vector<char>> file_data;
     AlsaHwParams hw_vals;
     AlsaSwParams sw_vals;
 } PlayBufferParams;
+
+typedef enum {
+    SFG_BYTE,
+    SFG_SHORT,
+    SFG_INT,
+    SFG_FLOAT,
+    SFG_DOUBLE
+} SfgRwFormat;
 
 std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
 
@@ -46,7 +54,7 @@ std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile,
  * \param out_data  Shared pointer to store the file data.
  * \return          Optional error string if an error occurs.
 */
-std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<unsigned char>> & out_data);
+std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<char>> & out_data);
 
 void play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, std::atomic<bool>* shutdown_flag, std::atomic<bool>* data_available);
 
@@ -61,11 +69,62 @@ void play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_que
 int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samples);
 
 /**
+ * Read samples from a SNDFILE into a buffer.
+ * \param sndfile The SNDFILE to read from.
+ * \param format  The buffer format using ALSA format enums.
+ * \param buffer  The buffer to read samples into.
+ * \param samples The number of samples to read.
+ * \return        The number of samples read, or a negative error code.
+ */
+int sfg_read2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
+
+/**
+ * Write samples from a buffer to a SNDFILE.
+ * \param sndfile The SNDFILE to write to
+ * \param format  The buffer format
+ * \param buffer  The buffer containing samples to write
+ * \param samples The number of samples to write
+ */
+int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
+
+/**
  * Get the sample size in bytes for a given ALSA format.
  * \param format The ALSA format.
  * \return       The sample size in bytes, or -1 if unsupported.
  */
 int sample_size_from_format(snd_pcm_format_t format);
+
+/**
+ * Get sample size from our SfgRwFormat enum
+ * \param format The SfgRwFormat enum value.
+ * \return       The sample size in bytes.
+ */
+int sample_size_from_sfg_format(SfgRwFormat format);
+
+/**
+ * Read/write type to use for different sndfile formats
+ * \param sf_format The sndfile format integer.
+ * \return          Corresponding SfgRwFormat enum value.
+ */
+SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
+
+/**
+ * String representation of SfgRwFormat
+ * \param format The SfgRwFormat enum value.
+ * \return       A string representing the format.
+ */
+const char * sfg_format_to_string(SfgRwFormat format);
+
+/**
+ * Convert between different sample formats.
+ * \param from_format The source format.
+ * \param to_format   The destination format.
+ * \param in_buffer   Pointer to the input buffer.
+ * \param out_buffer  Pointer to the output buffer.
+ * \param samples     Number of samples to convert.
+ * \return            Number of samples converted, or negative error code.
+ */
+int convert_types(SfgRwFormat from_format, SfgRwFormat to_format, const void* in_buffer, void* out_buffer, int samples);
 
 /**
  * Write samples from a buffer to a SNDFILE.
@@ -76,6 +135,17 @@ int sample_size_from_format(snd_pcm_format_t format);
  * \return        The number of samples written, or a negative error code.
  */
 int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples);
+
+/**
+ * Write samples from a buffer to a SNDFILE with scaling and conversion.
+ * \param sndfile The SNDFILE to write to.
+ * \param from_format The source format.
+ * \param to_format   The destination format.
+ * \param buffer  The buffer containing samples to write.
+ * \param samples The number of samples to write.
+ * \return        The number of samples written, or a negative error code.
+ */
+int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples);
 
 /**
  * alsa_play: Play audio from a SNDFILE using ALSA

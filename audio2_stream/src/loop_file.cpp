@@ -11,11 +11,11 @@
 #include "audio2_stream_msgs/msg/audio_data.hpp"
 #include "audio2_stream/buffer_file.hpp" 
 
-//#define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
+//#define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_16)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)
-//#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS) 
-#define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
-#define ALSA_FORMAT SND_PCM_FORMAT_S16
+#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS) 
+//#define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
+#define ALSA_FORMAT SND_PCM_FORMAT_S32
 
  // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);
@@ -49,19 +49,26 @@ public:
         RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), file_sfinfo.samplerate, file_sfinfo.format);
         printf("channels: %d, sections: %d, seekable: %d\n", file_sfinfo.channels, file_sfinfo.sections, file_sfinfo.seekable);
 
-        int file_sample_size_ = sample_size_from_format(ALSA_FORMAT);
+        // Disable normalization since we are handling scaling ourselves.
+        sf_command (file_, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
+        sf_command (file_, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
+
+        SfgRwFormat file_rw_format_ = sfg_format_from_sndfile_format(file_sfinfo.format);
+        int file_sample_size_ = sample_size_from_sfg_format(file_rw_format_);
         const int MAX_HEADER = 128;
         const int read_frames = 1024 * 16;
-        int file_buffer_size = read_frames * file_sfinfo.channels * file_sample_size_ + MAX_HEADER;
-        std::vector<unsigned char> file_buffer(file_buffer_size);
+        int file_buffer_size = read_frames * file_sfinfo.channels * file_sample_size_;
+        std::vector<char> file_buffer(file_buffer_size);
 
         // Virtual file for topic publish
         SF_INFO topic_sfinfo;
         topic_sfinfo.samplerate = file_sfinfo.samplerate;
         topic_sfinfo.channels = file_sfinfo.channels;
         topic_sfinfo.format = TOPIC_FORMAT;
-        int topic_sample_size = sample_size_from_format(ALSA_FORMAT);
+        SfgRwFormat topic_rw_format_ = sfg_format_from_sndfile_format(topic_sfinfo.format);
+        int topic_sample_size = sample_size_from_sfg_format(topic_rw_format_);
         int topic_file_size = read_frames * topic_sfinfo.channels * topic_sample_size + MAX_HEADER;
+        printf("Topic publish file size: %d bytes\n", topic_file_size);
 
         RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(topic_sfinfo.format).c_str());
 
@@ -76,9 +83,10 @@ public:
             RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish");
             return;
         }
+
         do {
-            samples_read = sfg_read(file_, ALSA_FORMAT, file_buffer.data(), read_frames * file_sfinfo.channels);
-            //printf("Read %d samples from file\n", samples_read);
+            samples_read = sfg_read2(file_, file_rw_format_, file_buffer.data(), read_frames * file_sfinfo.channels);
+            printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format_));
             if (samples_read <= 0) {
                 if (samples_read < 0) {
                     RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", sf_strerror(file_), samples_read);
@@ -88,7 +96,7 @@ public:
             }
 
             // Create a virtual sound file in memory for topic publish
-            std::vector<unsigned char> topic_buffer(topic_file_size);
+            std::vector<char> topic_buffer(topic_file_size);
             VIO_SOUNDFILE t_vio_sndfile;
             t_vio_sndfile.vio_data.data = topic_buffer.data();
             t_vio_sndfile.vio_data.length = 0;
@@ -99,20 +107,23 @@ public:
                 printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
+
             // Set compression level for OGG/OPUS
-            double compression_level = 0.5; // 0.0 (fastest) to 1.0 (best)
-            sf_command(t_vio_sndfile.sndfile, SFC_SET_COMPRESSION_LEVEL, &compression_level, sizeof(compression_level));
-            int mode = SF_BITRATE_MODE_VARIABLE; // Variable bitrate mode
+            //double compression_level = 0.5; // 0.0 (fastest) to 1.0 (best)
+            //sf_command(t_vio_sndfile.sndfile, SFC_SET_COMPRESSION_LEVEL, &compression_level, sizeof(compression_level));
+            //int mode = SF_BITRATE_MODE_VARIABLE; // Variable bitrate mode
             //sf_command(t_vio_sndfile.sndfile, SFC_SET_BITRATE_MODE, &mode, sizeof(mode));
             //sf_command(t_vio_sndfile.sndfile, SFC_SET_VBR_ENCODING_QUALITY, &compression_level, sizeof(compression_level));
             //mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
-            printf("Bitrate mode: %d\n", mode);
-            int samples_written = sfg_write(t_vio_sndfile.sndfile, file_buffer.data(), ALSA_FORMAT, samples_read);
+            //printf("Bitrate mode: %d\n", mode);
+
+            int samples_written = sfg_write_convert(t_vio_sndfile.sndfile, file_rw_format_, topic_rw_format_, file_buffer.data(), samples_read);
             if (samples_written != samples_read) {
                 RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written, samples_read);
                 sf_close(t_vio_sndfile.sndfile);
                 break;
             }
+            printf("Wrote %d samples to virtual topic buffer using format %s\n", samples_written, sfg_format_to_string(topic_rw_format_));
             
             // Reopen the file for reading
             sf_close(t_vio_sndfile.sndfile);

@@ -46,7 +46,7 @@ public:
     }
     void audio_data_callback(const audio2_stream_msgs::msg::AudioData::SharedPtr msg) {
         RCLCPP_INFO(rcl_logger, "Received audio data");
-        auto file_data = std::make_shared<std::vector<unsigned char>>(msg->data.begin(), msg->data.end());
+        auto file_data = std::make_shared<std::vector<char>>(msg->data.begin(), msg->data.end());
         PlayBufferParams params{file_data, hw_vals, sw_vals};
         // Wait until queue has space
         while (!audio_queue_->push(params) && !shutdown_flag.load()) {

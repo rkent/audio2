@@ -47,7 +47,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char ** argv)
 
     // Enqueue all files from command line arguments
     for (int k = 1; k < argc; k++) {
-        std::shared_ptr<std::vector<unsigned char>> file_data;
+        std::shared_ptr<std::vector<char>> file_data;
         auto error = get_file(argv[k], file_data);
         if (error) {
             RCLCPP_ERROR(rcl_logger, "Failed to load file %s: %s", argv[k], error->c_str());

@@ -139,10 +139,119 @@ int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int sam
     return -4; // Should not reach here
 }
 
+// Write samples from a buffer to a SNDFILE with scaling and conversion.
+int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples)
+{
+    if (samples <= 0) {
+        return samples;
+    }
+    int total = 0;
+    const int CONVERT_BUFF_SIZE = 8192;
+    char byte_buffer[CONVERT_BUFF_SIZE];
+    int convert_samples = std::min(samples, CONVERT_BUFF_SIZE / sample_size_from_sfg_format(to_format));
+    int offset = 0;
+    while (samples > 0) {
+        int to_process = std::min(samples, convert_samples);
+        //printf("Converting %d samples from %s to %s\n", to_process, sfg_format_to_string(from_format), sfg_format_to_string(to_format));
+        // Convert to target format in byte_buffer
+        int samples_converted = convert_types(from_format, to_format, buffer + offset, byte_buffer, to_process);
+        if (samples_converted < 0) {
+            return samples_converted; // Conversion error
+        }
+        // Write converted samples to sndfile
+        int written = sfg_write2(sndfile, to_format, byte_buffer, samples_converted);
+        if (written < 0) {
+            return written; // Write error
+        }
+        samples -= samples_converted;
+        offset += samples_converted * sample_size_from_sfg_format(from_format);
+        total += written;
+    }
+    return total;
+}
+int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
+{
+    switch (format) {
+        case SFG_SHORT:
+            return sf_write_short(sndfile, reinterpret_cast<short*>(buffer), samples);
+        case SFG_INT:
+            return sf_write_int(sndfile, reinterpret_cast<int*>(buffer), samples);
+        case SFG_FLOAT:
+            return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
+        case SFG_DOUBLE:
+            return sf_write_double(sndfile, reinterpret_cast<double*>(buffer), samples);
+        default:
+            return -1; // Unsupported format
+    }
+    return -2; // Should not reach here
+}
+
 // Get sample size in bytes from alsa's snd_pcm_format_t
 int sample_size_from_format(snd_pcm_format_t format)
 {
     return snd_pcm_format_width(format) / 8;
+}
+
+// Get sample size from our SfgRwFormat enum
+int sample_size_from_sfg_format(SfgRwFormat format)
+{
+    switch (format) {
+        case SFG_BYTE:
+            return 1;
+        case SFG_SHORT:
+            return 2;
+        case SFG_INT:
+            return 4;
+        case SFG_FLOAT:
+            return 4;
+        case SFG_DOUBLE:
+            return 8;
+        default:
+            return -1; // Unsupported format
+    }
+}
+
+// String representation of SfgRwFormat
+const char * sfg_format_to_string(SfgRwFormat format)
+{
+    switch (format) {
+        case SFG_BYTE:
+            return "BYTE";
+        case SFG_SHORT:
+            return "SHORT";
+        case SFG_INT:
+            return "INT";
+        case SFG_FLOAT:
+            return "FLOAT";
+        case SFG_DOUBLE:
+            return "DOUBLE";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+// Read/write type to use for different sndfile formats
+SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
+{
+    int sub_format = sf_format & SF_FORMAT_SUBMASK;
+
+    switch (sub_format) {
+        case SF_FORMAT_PCM_U8:
+        case SF_FORMAT_PCM_S8:
+            return SFG_BYTE;
+        case SF_FORMAT_PCM_16:
+            return SFG_SHORT;
+        case SF_FORMAT_PCM_24:
+        case SF_FORMAT_PCM_32:
+            return SFG_INT;
+        case SF_FORMAT_FLOAT:
+            return SFG_FLOAT;
+        case SF_FORMAT_DOUBLE:
+            return SFG_DOUBLE;
+        default:
+            printf("Unsupported sndfile sub-format: %x\n", sub_format);
+            return SFG_INT; // Default to INT for unsupported formats
+    }
 }
 
 int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samples)
@@ -179,6 +288,28 @@ int sfg_read(SNDFILE * sndfile, snd_pcm_format_t format, void * buffer, int samp
     return -4; // Should not reach here
 }
 
+int sfg_read2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
+{
+    if (samples <= 0) {
+        return 0;
+    }
+
+    switch (format) {
+        case SFG_SHORT:
+            return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
+        case SFG_INT:
+            return sf_read_int(sndfile, reinterpret_cast<int*>(buffer), samples);
+        case SFG_FLOAT:
+            return sf_read_float(sndfile, reinterpret_cast<float*>(buffer), samples);
+        case SFG_DOUBLE:
+            return sf_read_double(sndfile, reinterpret_cast<double*>(buffer), samples);
+        default:
+            return -1; // Unsupported format
+    }
+    return -2; // Should not reach here
+}
+
+
 /*
 int write_buffer(void* buffer, int sf_format, snd_pcm_format_t snd_format, int frames, int channels, int sample_rate)
 {
@@ -198,7 +329,7 @@ int write_buffer(void* buffer, int sf_format, snd_pcm_format_t snd_format, int f
     }
     int file_size = sfinfo.frames * sfinfo.channels * sample_size + MAX_HEADER;
     printf("Allocating buffer of size %d bytes for writing\n", file_size);
-    std::vector<unsigned char> file_data(file_size);
+    std::vector<char> file_data(file_size);
     VIO_SOUNDFILE vio_sndfile;
     vio_sndfile.vio_data.data = file_data.data();
     vio_sndfile.vio_data.length = 0;
@@ -220,7 +351,7 @@ int write_buffer(void* buffer, int sf_format, snd_pcm_format_t snd_format, int f
 */
 
 // Read an entire binary file into memory.
-std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<unsigned char>> & out_data)
+std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<char>> & out_data)
 {
     // Read entire file into memory
     std::ifstream file(file_path, std::ios::binary | std::ios::ate);
@@ -230,7 +361,7 @@ std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std:
 
     std::streamsize file_size = file.tellg();
     file.seekg(0, std::ios::beg);
-    out_data = std::make_shared<std::vector<unsigned char>>(file_size);
+    out_data = std::make_shared<std::vector<char>>(file_size);
     if (!file.read(reinterpret_cast<char*>(out_data->data()), file_size)) {
         file.close();
         return std::string("Cannot read file: ") + file_path;
@@ -269,7 +400,7 @@ play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, s
         }
 
         // Process the audio buffer
-        std::shared_ptr<std::vector<unsigned char>> file_data = params.file_data;
+        std::shared_ptr<std::vector<char>> file_data = params.file_data;
         AlsaHwParams hw_vals = params.hw_vals;
         AlsaSwParams sw_vals = params.sw_vals;
         VIO_SOUNDFILE vio_sndfile;
@@ -426,6 +557,101 @@ scale_data(int readcount, snd_pcm_format_t read_format, snd_pcm_format_t alsa_fo
     return 0;
 }
 
+int convert_types(SfgRwFormat from_format, SfgRwFormat to_format, const void* in_buffer, void* out_buffer, int samples)
+{
+    const short* in_short = reinterpret_cast<const short*>(in_buffer);
+    const int* in_int = reinterpret_cast<const int*>(in_buffer);
+    const float* in_float = reinterpret_cast<const float*>(in_buffer);
+    const double* in_double = reinterpret_cast<const double*>(in_buffer);
+
+    short* out_short = reinterpret_cast<short*>(out_buffer);
+    int* out_int = reinterpret_cast<int*>(out_buffer);
+    float* out_float = reinterpret_cast<float*>(out_buffer);
+    double* out_double = reinterpret_cast<double*>(out_buffer);
+
+    for (int i = 0; i < samples; ++i) {
+        switch(from_format) {
+            case SFG_SHORT:
+            switch(to_format) {
+                case SFG_SHORT:
+                out_short[i] = in_short[i];
+                break;
+                case SFG_INT:
+                        //if (!(i%100))
+                        //    printf("i = %d\n", i);
+                        out_int[i] = static_cast<int>(in_short[i]) << 16;
+                        break;
+                    case SFG_FLOAT:
+                        out_float[i] = static_cast<float>(in_short[i]) / SCALE_S16;
+                        break;
+                    case SFG_DOUBLE:
+                        out_double[i] = static_cast<double>(in_short[i]) / static_cast<double>(SCALE_S16);
+                        break;
+                    default:
+                        return -1; // Unsupported conversion
+                }
+                break;
+            case SFG_INT:
+                switch(to_format) {
+                    case SFG_SHORT:
+                        out_short[i] = static_cast<short>(in_int[i] >> 16);
+                        break;
+                    case SFG_INT:
+                        out_int[i] = in_int[i];
+                        break;
+                    case SFG_FLOAT:
+                        out_float[i] = static_cast<float>(in_int[i]) / SCALE_S32;
+                        break;
+                    case SFG_DOUBLE:
+                        out_double[i] = static_cast<double>(in_int[i]) / static_cast<double>(SCALE_S32);
+                        break;
+                    default:
+                        return -1; // Unsupported conversion
+                }
+                break;
+            case SFG_FLOAT:
+                switch(to_format) {
+                    case SFG_SHORT:
+                        out_short[i] = static_cast<short>(in_float[i] * SCALE_S16);
+                        break;
+                    case SFG_INT:
+                        out_int[i] = static_cast<int>(in_float[i] * SCALE_S32);
+                        break;
+                    case SFG_FLOAT:
+                        out_float[i] = in_float[i];
+                        break;
+                    case SFG_DOUBLE:
+                        out_double[i] = static_cast<double>(in_float[i]);
+                        break;
+                    default:
+                        return -1; // Unsupported conversion
+                }
+                break;
+            case SFG_DOUBLE:
+                switch(to_format) {
+                    case SFG_SHORT:
+                        out_short[i] = static_cast<short>(in_double[i] * static_cast<double>(SCALE_S16));
+                        break;
+                    case SFG_INT:
+                        out_int[i] = static_cast<int>(in_double[i] * static_cast<double>(SCALE_S32));
+                        break;
+                    case SFG_FLOAT:
+                        out_float[i] = static_cast<float>(in_double[i]);
+                        break;
+                    case SFG_DOUBLE:
+                        out_double[i] = in_double[i];
+                        break;
+                    default:
+                        return -1; // Unsupported conversion
+                }
+                break;
+            default:
+                return -1; // Unsupported from_format
+        }
+    }
+    return samples;
+}
+
 // debug string of ALSA format
 std::string format_to_string(snd_pcm_format_t format)
 {
@@ -475,7 +701,6 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
         case SF_FORMAT_PCM_16:
         case SF_FORMAT_VORBIS:
         case SF_FORMAT_OPUS:
-        case SF_FORMAT_MPEG_LAYER_III:
             switch (alsa_format) {
                 // For the integer file types, we rely on sndfile's native conversion.
                 case SND_PCM_FORMAT_S16:
@@ -492,6 +717,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
                     return std::string("Unsupported ALSA format for subformat PCM16-like");
             }
             break;
+        case SF_FORMAT_MPEG_LAYER_III:
         case SF_FORMAT_PCM_24:
         case SF_FORMAT_PCM_32:
             switch (alsa_format) {
