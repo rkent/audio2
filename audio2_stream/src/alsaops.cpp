@@ -122,13 +122,13 @@ int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_p
 {
     int frames = samples / channels ;
     if (alsa_format == SND_PCM_FORMAT_S16) {
-        return alsa_write_short(alsa_dev, reinterpret_cast<short*>(data), frames, channels) ;
+        return channels * alsa_write_short(alsa_dev, reinterpret_cast<short*>(data), frames, channels) ;
     } else if (alsa_format == SND_PCM_FORMAT_S32) {
-        return alsa_write_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels) ;
+        return channels * alsa_write_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels) ;
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
-        return alsa_write_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels) ;
+        return channels *alsa_write_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels) ;
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
-        return alsa_write_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels) ;
+        return channels * alsa_write_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels) ;
     } else {
         return -1;
     }   

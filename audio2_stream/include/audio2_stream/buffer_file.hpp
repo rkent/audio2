@@ -37,6 +37,7 @@ typedef struct {
 } PlayBufferParams;
 
 typedef enum {
+    SFG_INVALID = -1,
     SFG_BYTE,
     SFG_SHORT,
     SFG_INT,

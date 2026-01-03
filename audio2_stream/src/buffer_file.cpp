@@ -230,6 +230,24 @@ const char * sfg_format_to_string(SfgRwFormat format)
     }
 }
 
+SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format)
+{
+    switch (alsa_format) {
+        case SND_PCM_FORMAT_S8:
+        case SND_PCM_FORMAT_U8:
+            return SFG_BYTE;
+        case SND_PCM_FORMAT_S16:
+            return SFG_SHORT;
+        case SND_PCM_FORMAT_S32:
+            return SFG_INT;
+        case SND_PCM_FORMAT_FLOAT:
+            return SFG_FLOAT;
+        case SND_PCM_FORMAT_FLOAT64:
+            return SFG_DOUBLE;
+        default:
+            return SFG_INVALID;
+    }
+}
 // Read/write type to use for different sndfile formats
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
 {
@@ -689,111 +707,35 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     static char w_buffer [BUFFER_LEN] ; // write buffer
 
     int	readcount;
-    snd_pcm_format_t read_format;
-
-    // When converting between float to integer formats, sndfile scaling typically relies on
-    // normalization, which we cannot do since the data is being streamed. Therefore, we apply
-    // a fixed scaling factor here to avoid extremely low volume playback.
-
-    float scale = 1.0;
-    int subformat = sfinfo.format & SF_FORMAT_SUBMASK ;
-    switch (subformat) {
-        case SF_FORMAT_PCM_16:
-        case SF_FORMAT_VORBIS:
-        case SF_FORMAT_OPUS:
-            switch (alsa_format) {
-                // For the integer file types, we rely on sndfile's native conversion.
-                case SND_PCM_FORMAT_S16:
-                case SND_PCM_FORMAT_S32:
-                    read_format = alsa_format;
-                    break;
-                // For float output, we need to scale the data.
-                case SND_PCM_FORMAT_FLOAT:
-                case SND_PCM_FORMAT_FLOAT64:
-                    read_format = SND_PCM_FORMAT_S16;
-                    scale = SCALE_S16;
-                    break;
-                default:
-                    return std::string("Unsupported ALSA format for subformat PCM16-like");
-            }
-            break;
-        case SF_FORMAT_MPEG_LAYER_III:
-        case SF_FORMAT_PCM_24:
-        case SF_FORMAT_PCM_32:
-            switch (alsa_format) {
-                case SND_PCM_FORMAT_S16:
-                case SND_PCM_FORMAT_S32:
-                    read_format = alsa_format;
-                    break;
-                case SND_PCM_FORMAT_FLOAT:
-                case SND_PCM_FORMAT_FLOAT64:
-                    read_format = SND_PCM_FORMAT_S32;
-                    scale = SCALE_S32;
-                    break;
-                default:
-                    return std::string("Unsupported ALSA format for subformat PCM24/32-like");
-            }
-            break;
-        case SF_FORMAT_FLOAT:
-            switch (alsa_format) {
-                case SND_PCM_FORMAT_S16:
-                    read_format = SND_PCM_FORMAT_FLOAT;
-                    scale = SCALE_S16;
-                    break;
-                case SND_PCM_FORMAT_S32:
-                    read_format = SND_PCM_FORMAT_FLOAT;
-                    scale = SCALE_S32;
-                    break;
-                case SND_PCM_FORMAT_FLOAT:
-                case SND_PCM_FORMAT_FLOAT64:
-                    read_format = alsa_format;
-                    break;
-                default:
-                    return std::string("Unsupported ALSA format for float file");
-            }
-            break;
-        case SF_FORMAT_DOUBLE:
-            switch (alsa_format) {
-                case SND_PCM_FORMAT_S16:
-                    read_format = SND_PCM_FORMAT_FLOAT64;
-                    scale = SCALE_S16;
-                    break;
-                case SND_PCM_FORMAT_S32:
-                    read_format = SND_PCM_FORMAT_FLOAT64;
-                    scale = SCALE_S32;
-                    break;
-                case SND_PCM_FORMAT_FLOAT:
-                case SND_PCM_FORMAT_FLOAT64:
-                    read_format = alsa_format;
-                    break;
-                default:
-                    return std::string("Unsupported ALSA format for double file");
-            }
-            break;
-        default:
-            return std::string("Unsupported file subformat");
-    }
+    auto read_sfg_format = sfg_format_from_sndfile_format(sfinfo.format);
 
     // Disable normalization since we are handling scaling ourselves.
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
     sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
 
-    int samples = std::min(BUFFER_LEN / sample_size_from_format(read_format), BUFFER_LEN / sample_size_from_format(alsa_format));
-    printf("Starting ALSA playback: read_format=%s, alsa_format=%s, scale=%f, samples=%d\n",
-        format_to_string(read_format).c_str(), format_to_string(alsa_format).c_str(), scale, samples) ;
+    int samples = std::min(BUFFER_LEN / sample_size_from_sfg_format(read_sfg_format), BUFFER_LEN / sample_size_from_format(alsa_format));
+    printf("Starting ALSA playback: alsa_format=%s, samples=%d\n",
+        format_to_string(alsa_format).c_str(), samples) ;
 
     do {
-        readcount = sfg_read(sndfile, read_format, r_buffer, samples);
-        //printf("Read %d samples from sound file\n", readcount);
+        readcount = sfg_read2(sndfile, read_sfg_format, r_buffer, samples);
+        printf("Read %d samples from sound file expecting %d\n", readcount, samples);
         if (readcount < 0) {
             return std::string("Error reading from sound file");
         }
-        int scale_result = scale_data(readcount, read_format, alsa_format, r_buffer, w_buffer, scale);
-        if (scale_result != 0) {
-            return std::string("Error scaling data for playback");
+        int samples_converted = convert_types(read_sfg_format, sfg_format_from_alsa_format(alsa_format), r_buffer, w_buffer, readcount);
+        if (samples_converted < 0) {
+            return std::string("Error converting audio data for playback");
+        } else if (samples_converted != readcount) {
+            return std::string("Mismatch in converted samples count");
         }
-        [[maybe_unused]] auto count = alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
-        //printf("Wrote %d frames to ALSA\n", count) ;
+        auto count = alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
+        if (count < 0) {
+            return std::string("Error writing to ALSA device");
+        } else if (count != readcount) {
+            return std::string("Mismatch in ALSA write count: expected ") + std::to_string(readcount) + ", got " + std::to_string(count);
+        }
+        printf("Wrote %d frames to ALSA\n", count) ;
 
         // Check if shutdown has been requested
         if (shutdown_flag && shutdown_flag->load()) {
