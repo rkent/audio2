@@ -6,10 +6,11 @@
 #include <sndfile.h>
 #include <atomic>
 #include <fstream>
+#include <sndfile.hh>
 
 #include "rclcpp/rclcpp.hpp"
 #include "audio2_stream_msgs/msg/audio_data.hpp"
-#include "audio2_stream/buffer_file.hpp" 
+#include "audio2_stream/buffer_file.hpp"
 
 #define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)
@@ -40,30 +41,29 @@ public:
     void publish_file_data(const std::string & file_path) {
         // Open the sound file
         RCLCPP_INFO(rcl_logger, "Streaming audio data from file: %s", file_path.c_str());
-        SF_INFO file_sfinfo;
-        file_ = sf_open(file_path.c_str(), SFM_READ, &file_sfinfo);
-        if (file_ == nullptr) {
-            RCLCPP_ERROR(rcl_logger, "Cannot open file %s", file_path.c_str());
+        // SF_INFO file_sfinfo;
+        fileh_ = SndfileHandle(file_path);
+        if (!fileh_) {
+            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), fileh_.strError());
             return;
         }
-        RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), file_sfinfo.samplerate, file_sfinfo.format);
-        printf("channels: %d, sections: %d, seekable: %d\n", file_sfinfo.channels, file_sfinfo.sections, file_sfinfo.seekable);
+        RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), fileh_.samplerate(), fileh_.format());
+        printf("channels: %d\n", fileh_.channels());
 
         // Disable normalization since we are handling scaling ourselves.
-        sf_command (file_, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
-        sf_command (file_, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
-
-        SfgRwFormat file_rw_format_ = sfg_format_from_sndfile_format(file_sfinfo.format);
+        fileh_.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
+        fileh_.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
+        SfgRwFormat file_rw_format_ = sfg_format_from_sndfile_format(fileh_.format());
         int file_sample_size_ = sample_size_from_sfg_format(file_rw_format_);
         const int MAX_HEADER = 128;
         const int read_frames = 1024 * 16;
-        int file_buffer_size = read_frames * file_sfinfo.channels * file_sample_size_;
+        int file_buffer_size = read_frames * fileh_.channels() * file_sample_size_;
         std::vector<char> file_buffer(file_buffer_size);
 
         // Virtual file for topic publish
         SF_INFO topic_sfinfo;
-        topic_sfinfo.samplerate = file_sfinfo.samplerate;
-        topic_sfinfo.channels = file_sfinfo.channels;
+        topic_sfinfo.samplerate = fileh_.samplerate();
+        topic_sfinfo.channels = fileh_.channels();
         topic_sfinfo.format = TOPIC_FORMAT;
         SfgRwFormat topic_rw_format_ = sfg_format_from_sndfile_format(topic_sfinfo.format);
         int topic_sample_size = sample_size_from_sfg_format(topic_rw_format_);
@@ -74,8 +74,8 @@ public:
 
         int samples_read = 0;
         AlsaHwParams hw_vals;
-        hw_vals.channels = file_sfinfo.channels;
-        hw_vals.samplerate = file_sfinfo.samplerate;
+        hw_vals.channels = fileh_.channels();
+        hw_vals.samplerate = fileh_.samplerate();
         hw_vals.format = ALSA_FORMAT;
         AlsaSwParams sw_vals;
         snd_pcm_t * alsa_dev = alsa_open(hw_vals, sw_vals);
@@ -85,13 +85,12 @@ public:
         }
 
         do {
-            samples_read = sfg_read(file_, file_rw_format_, file_buffer.data(), read_frames * file_sfinfo.channels);
+            samples_read = sfg_read(fileh_.rawHandle(), file_rw_format_, file_buffer.data(), read_frames * fileh_.channels());
             printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format_));
             if (samples_read <= 0) {
                 if (samples_read < 0) {
-                    RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", sf_strerror(file_), samples_read);
+                    RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", fileh_.strError(), samples_read);
                 }
-                sf_close(file_);
                 break;
             }
 
@@ -156,7 +155,7 @@ public:
     }
 private:
     rclcpp::Publisher<audio2_stream_msgs::msg::AudioData>::SharedPtr publisher_;
-    SNDFILE* file_;
+   SndfileHandle fileh_;
 };
 
 int main(int argc, char ** argv)
