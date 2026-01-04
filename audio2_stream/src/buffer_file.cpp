@@ -105,6 +105,16 @@ std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile,
     return std::nullopt;
 }
 
+std::optional<std::string> open_sndfile_from_buffer2(VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode,
+    int format, int channels, int samplerate)
+{
+    vio_sndfileh.fileh = SndfileHandle(vio, &vio_sndfileh.vio_data, mode, format, channels, samplerate);
+    if (vio_sndfileh.fileh.error()) {
+        return vio_sndfileh.fileh.strError();
+    }
+    return std::nullopt;
+}
+
 int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples)
 {
     int bytes_per_sample = snd_pcm_format_width(format) / 8;
@@ -152,15 +162,16 @@ int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to
     int offset = 0;
     while (samples > 0) {
         int to_process = std::min(samples, convert_samples);
-        //printf("Converting %d samples from %s to %s\n", to_process, sfg_format_to_string(from_format), sfg_format_to_string(to_format));
         // Convert to target format in byte_buffer
         int samples_converted = convert_types(from_format, to_format, buffer + offset, byte_buffer, to_process);
         if (samples_converted < 0) {
+            printf("Error converting types: %d\n", samples_converted);
             return samples_converted; // Conversion error
         }
         // Write converted samples to sndfile
         int written = sfg_write2(sndfile, to_format, byte_buffer, samples_converted);
         if (written < 0) {
+            printf("Error writing to sndfile: %d\n", written);
             return written; // Write error
         }
         samples -= samples_converted;
@@ -581,18 +592,18 @@ int convert_types(SfgRwFormat from_format, SfgRwFormat to_format, const void* in
                 out_short[i] = in_short[i];
                 break;
                 case SFG_INT:
-                        //if (!(i%100))
-                        //    printf("i = %d\n", i);
-                        out_int[i] = static_cast<int>(in_short[i]) << 16;
-                        break;
-                    case SFG_FLOAT:
-                        out_float[i] = static_cast<float>(in_short[i]) / SCALE_S16;
-                        break;
-                    case SFG_DOUBLE:
-                        out_double[i] = static_cast<double>(in_short[i]) / static_cast<double>(SCALE_S16);
-                        break;
-                    default:
-                        return -1; // Unsupported conversion
+                    //if (!(i%100))
+                    //    printf("i = %d\n", i);
+                    out_int[i] = static_cast<int>(in_short[i]) << 16;
+                    break;
+                case SFG_FLOAT:
+                    out_float[i] = static_cast<float>(in_short[i]) / SCALE_S16;
+                    break;
+                case SFG_DOUBLE:
+                    out_double[i] = static_cast<double>(in_short[i]) / static_cast<double>(SCALE_S16);
+                    break;
+                default:
+                    return -1; // Unsupported conversion
                 }
                 break;
             case SFG_INT:
@@ -687,13 +698,13 @@ std::string format_to_string(snd_pcm_format_t format)
 
 // Play audio from a SNDFILE using ALSA
 std::optional<std::string>
-alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
+alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
     static char r_buffer [BUFFER_LEN] ; // read buffer
     static char w_buffer [BUFFER_LEN] ; // write buffer
 
     int	readcount;
-    auto read_sfg_format = sfg_format_from_sndfile_format(sfinfo.format);
+    auto read_sfg_format = sfg_format_from_sndfile_format(format);
 
     // Disable normalization since we are handling scaling ourselves.
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
@@ -715,7 +726,7 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
         } else if (samples_converted != readcount) {
             return std::string("Mismatch in converted samples count");
         }
-        auto count = alsa_write(readcount, alsa_dev, w_buffer, sfinfo.channels, alsa_format) ;
+        auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format) ;
         if (count < 0) {
             return std::string("Error writing to ALSA device");
         } else if (count != readcount) {
@@ -735,3 +746,8 @@ alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format
     return std::nullopt;
 } /* alsa_play */
 
+std::optional<std::string>
+alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
+{
+    return alsa_play(sndfile, sfinfo.format, sfinfo.channels, alsa_dev, alsa_format, shutdown_flag);
+}

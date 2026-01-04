@@ -18,7 +18,7 @@ std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
 typedef struct {
-    const char *data = nullptr;
+    char *data = nullptr;
     sf_count_t length = 0;
     sf_count_t offset = 0;
     sf_count_t capacity = 0;
@@ -29,6 +29,11 @@ typedef struct {
     SNDFILE * sndfile = nullptr;
     SF_INFO sfinfo;
 } VIO_SOUNDFILE;
+
+typedef struct {
+    SndfileHandle fileh;
+    VIO_DATA vio_data;
+} VIO_SOUNDFILE_HANDLE;
 
 typedef struct {
     std::shared_ptr<std::vector<char>> file_data;
@@ -46,6 +51,9 @@ typedef enum {
 } SfgRwFormat;
 
 std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
+
+std::optional<std::string> open_sndfile_from_buffer2(VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode = SFM_READ,
+    int format = 0, int channels = 0, int samplerate = 0);
 
 // int write_buffer(void* buffer, int format, int frames, int channels, int sample_rate);
 
@@ -159,5 +167,8 @@ int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to
  */
 std::optional<std::string>
 alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag) ;
+
+std::optional<std::string>
+alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag);
 
 #endif // SNDPLAY_BUFFER_FILE_HPP

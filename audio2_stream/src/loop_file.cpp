@@ -92,20 +92,15 @@ public:
             // At tis point, we have read samples_read samples into file_buffer
             // Create a virtual sound file in memory for topic publish
             // Virtual file for topic publish
-            SF_INFO topic_sfinfo;
-            topic_sfinfo.samplerate = fileh_.samplerate();
-            topic_sfinfo.channels = fileh_.channels();
-            topic_sfinfo.format = TOPIC_FORMAT;
 
-            RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(topic_sfinfo.format).c_str());
+            RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(TOPIC_FORMAT).c_str());
 
-            VIO_SOUNDFILE t_vio_sndfile;
-            t_vio_sndfile.vio_data.data = topic_buffer.data();
-            t_vio_sndfile.vio_data.length = 0;
-            t_vio_sndfile.vio_data.offset = 0;
-            t_vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
-            t_vio_sndfile.sfinfo = topic_sfinfo;
-            if (auto err = open_sndfile_from_buffer(t_vio_sndfile, SFM_WRITE)) {
+            VIO_SOUNDFILE_HANDLE tw_vio_sndfileh;
+            tw_vio_sndfileh.vio_data.data = topic_buffer.data();
+            tw_vio_sndfileh.vio_data.length = 0;
+            tw_vio_sndfileh.vio_data.offset = 0;
+            tw_vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
+            if (auto err = open_sndfile_from_buffer2(tw_vio_sndfileh, SFM_WRITE, TOPIC_FORMAT, fileh_.channels(), fileh_.samplerate())) {
                 printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
@@ -119,38 +114,38 @@ public:
             //mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
             //printf("Bitrate mode: %d\n", mode);
 
-            int samples_written = sfg_write_convert(t_vio_sndfile.sndfile, file_rw_format, topic_rw_format, file_buffer.data(), samples_read);
+            int samples_written = sfg_write_convert(tw_vio_sndfileh.fileh.rawHandle(), file_rw_format, topic_rw_format, file_buffer.data(), samples_read);
             if (samples_written != samples_read) {
                 RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written, samples_read);
-                sf_close(t_vio_sndfile.sndfile);
                 break;
             }
             printf("Wrote %d samples to virtual topic buffer using format %s\n", samples_written, sfg_format_to_string(topic_rw_format));
             
             // Reopen the file for reading
-            sf_close(t_vio_sndfile.sndfile);
-            double compression_ratio = static_cast<double>(t_vio_sndfile.vio_data.length) /
+            // sf_close(tw_vio_sndfileh.fileh.rawHandle());
+            VIO_SOUNDFILE_HANDLE tr_vio_sndfileh;
+            tr_vio_sndfileh.vio_data.data = topic_buffer.data();
+            tr_vio_sndfileh.vio_data.length = static_cast<sf_count_t>(topic_buffer.size());
+            tr_vio_sndfileh.vio_data.offset = 0;
+            tr_vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
+
+            double compression_ratio = static_cast<double>(tw_vio_sndfileh.vio_data.length) /
                 static_cast<double>(samples_written * topic_sample_size);
-            printf("length after write: %ld offset: %ld capacity: %ld compression_ratio: %.3f\n", t_vio_sndfile.vio_data.length,
-              t_vio_sndfile.vio_data.offset, t_vio_sndfile.vio_data.capacity, compression_ratio);
+            printf("length after write: %ld offset: %ld capacity: %ld compression_ratio: %.3f\n", tw_vio_sndfileh.vio_data.length,
+              tw_vio_sndfileh.vio_data.offset, tw_vio_sndfileh.vio_data.capacity, compression_ratio);
             // VIO_SOUNDFILE t_vio_sndfile;
-            //t_vio_sndfile.vio_data.data = topic_buffer.data();
-            t_vio_sndfile.vio_data.length = static_cast<sf_count_t>(topic_buffer.size());
-            t_vio_sndfile.vio_data.offset = 0;
-            //t_vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
             //t_vio_sndfile.sfinfo = topic_sfinfo;
-            if (auto err = open_sndfile_from_buffer(t_vio_sndfile, SFM_READ)) {
+            if (auto err = open_sndfile_from_buffer2(tw_vio_sndfileh, SFM_READ)) {
                 RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
                 return;
             }
 
             // sf_seek(t_vio_sndfile.sndfile, 0, SF_SEEK_SET);
-            auto err = alsa_play(t_vio_sndfile.sndfile, t_vio_sndfile.sfinfo, alsa_dev, hw_vals.format, &shutdown_flag);
+            auto err = alsa_play(tr_vio_sndfileh.fileh.rawHandle(), tr_vio_sndfileh.fileh.format(), tr_vio_sndfileh.fileh.channels(), alsa_dev, hw_vals.format, &shutdown_flag);
             if (err) {
                 RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
             }
             
-            sf_close(t_vio_sndfile.sndfile);
         } while (!shutdown_flag.load());
         snd_pcm_drain(alsa_dev);
         snd_pcm_close(alsa_dev);
