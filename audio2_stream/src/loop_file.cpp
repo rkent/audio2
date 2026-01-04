@@ -141,7 +141,8 @@ public:
             }
 
             // sf_seek(t_vio_sndfile.sndfile, 0, SF_SEEK_SET);
-            auto err = alsa_play(tr_vio_sndfile.sndfile, tr_vio_sndfile.sfinfo.format, tr_vio_sndfile.sfinfo.channels, alsa_dev, hw_vals.format, &shutdown_flag);
+            //auto err = alsa_play(tr_vio_sndfile.sndfile, tr_vio_sndfile.sfinfo.format, tr_vio_sndfile.sfinfo.channels, alsa_dev, hw_vals.format, &shutdown_flag);
+            auto err = alsa_play(tr_vio_sndfile.sndfile, TOPIC_FORMAT, 2, alsa_dev, hw_vals.format, &shutdown_flag);
             if (err) {
                 RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
             }

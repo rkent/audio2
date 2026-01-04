@@ -98,10 +98,19 @@ std::string format_to_string(int format)
 
 std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
 {
-    vio_sndfile.sndfile = sf_open_virtual(&vio, mode, &vio_sndfile.sfinfo, &vio_sndfile.vio_data);
-    if (!vio_sndfile.sndfile) {
-        return std::string("Failed to open sound file from buffer: ") + sf_strerror(nullptr);
+    //vio_sndfile.sndfile = sf_open_virtual(&vio, mode, &vio_sndfile.sfinfo, &vio_sndfile.vio_data);
+    SndfileHandle handle = SndfileHandle(vio, &vio_sndfile.vio_data, mode);
+    printf("Opened virtual sound file from buffer with mode %d\n", mode);
+    printf("File info - frames: %lld, samplerate: %d, channels: %d, format: %X\n",
+        static_cast<long long>(handle.frames()), handle.samplerate(), handle.channels(),
+        handle.format());
+    if (handle.error()) {
+        return handle.strError();
     }
+    vio_sndfile.sndfile = handle.rawHandle();
+    //if (!vio_sndfile.sndfile) {
+    //    return std::string("Failed to open sound file from buffer: ") + sf_strerror(nullptr);
+    // }
     return std::nullopt;
 }
 
