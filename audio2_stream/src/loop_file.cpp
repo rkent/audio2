@@ -43,7 +43,7 @@ public:
         RCLCPP_INFO(rcl_logger, "Streaming audio data from file: %s", file_path.c_str());
         // SF_INFO file_sfinfo;
         fileh_ = SndfileHandle(file_path);
-        if (!fileh_) {
+        if (fileh_.error()) {
             RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), fileh_.strError());
             return;
         }
@@ -89,7 +89,7 @@ public:
                 break;
             }
 
-            // At tis point, we have read samples_read samples into file_buffer
+            // At this point, we have read samples_read samples into file_buffer
             // Create a virtual sound file in memory for topic publish
             // Virtual file for topic publish
 
@@ -123,26 +123,18 @@ public:
             
             // Reopen the file for reading
             // sf_close(tw_vio_sndfileh.fileh.rawHandle());
-            VIO_SOUNDFILE tr_vio_sndfile;
-            tr_vio_sndfile.vio_data.data = topic_buffer.data();
-            tr_vio_sndfile.vio_data.length = tw_vio_sndfileh.vio_data.length;
-            tr_vio_sndfile.vio_data.offset = 0;
-            tr_vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
+            VIO_SOUNDFILE_HANDLE tr_handle;
+            tr_handle.vio_data.data = topic_buffer.data();
+            tr_handle.vio_data.length = tw_vio_sndfileh.vio_data.length;
+            tr_handle.vio_data.offset = 0;
+            tr_handle.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
 
-            double compression_ratio = static_cast<double>(tw_vio_sndfileh.vio_data.length) /
-                static_cast<double>(samples_written * topic_sample_size);
-            printf("length after write: %ld offset: %ld capacity: %ld compression_ratio: %.3f\n", tw_vio_sndfileh.vio_data.length,
-              tw_vio_sndfileh.vio_data.offset, tw_vio_sndfileh.vio_data.capacity, compression_ratio);
-            // VIO_SOUNDFILE t_vio_sndfile;
-            //t_vio_sndfile.sfinfo = topic_sfinfo;
-            if (auto err = open_sndfile_from_buffer(tr_vio_sndfile, SFM_READ)) {
+            if (auto err = open_sndfile_from_buffer2(tr_handle, SFM_READ)) {
                 RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
                 return;
             }
 
-            // sf_seek(t_vio_sndfile.sndfile, 0, SF_SEEK_SET);
-            //auto err = alsa_play(tr_vio_sndfile.sndfile, tr_vio_sndfile.sfinfo.format, tr_vio_sndfile.sfinfo.channels, alsa_dev, hw_vals.format, &shutdown_flag);
-            auto err = alsa_play(tr_vio_sndfile.sndfile, TOPIC_FORMAT, 2, alsa_dev, hw_vals.format, &shutdown_flag);
+            auto err = alsa_play(tr_handle.fileh, alsa_dev, hw_vals.format, &shutdown_flag);
             if (err) {
                 RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
             }

@@ -705,6 +705,12 @@ std::string format_to_string(snd_pcm_format_t format)
     }
 }
 
+std::optional<std::string>
+alsa_play (SndfileHandle fileh, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
+{
+    return alsa_play(fileh.rawHandle(), fileh.format(), fileh.channels(), alsa_dev, alsa_format, shutdown_flag);
+}
+
 // Play audio from a SNDFILE using ALSA
 std::optional<std::string>
 alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
