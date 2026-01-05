@@ -38,11 +38,12 @@ add_library(
 #  src/buffer_file.cpp
 #  src/publish_file.cpp
 #)
-
+add_executable(file_play src/file_play.cpp)
 add_executable(publish_file src/publish_file.cpp)
 add_executable(subscribe_file src/subscribe_file.cpp)
 add_executable(audio2_stream_node src/audio2_stream_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
+
 
 # Set RPATH for executables to find the shared library
 ## TODO: This was added by claude to make it work, but should not be needed. Check why.
@@ -73,6 +74,14 @@ target_link_libraries(publish_file
     ${audio2_stream_msgs_TARGETS}
 )
 target_link_libraries(loop_file
+  PRIVATE
+    ${PROJECT_NAME}
+    ${SNDFILE_LIBRARIES}
+    ALSA::ALSA
+    rclcpp::rclcpp
+    ${audio2_stream_msgs_TARGETS}
+)
+target_link_libraries(file_play
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
@@ -118,6 +127,7 @@ install(TARGETS
 
 install(TARGETS
   publish_file
+  file_play
   loop_file
   subscribe_file
   audio2_stream_node

@@ -14,7 +14,7 @@
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
-#include "audio2_stream_msgs/msg/audio_data.hpp"
+#include "audio2_stream_msgs/msg/audio_chunk.hpp"
 
 // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);
@@ -34,7 +34,7 @@ void signal_handler(int signal) {
 class FilePublisherNode : public rclcpp::Node {
 public:
     FilePublisherNode() : Node("file_publisher") {
-        publisher_ = this->create_publisher<audio2_stream_msgs::msg::AudioData>("file_publish", 10);
+        publisher_ = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>("file_publish", 10);
     }
     void publish_file_data(const std::string & file_path) {
         RCLCPP_INFO(rcl_logger, "Publishing audio data from file: %s", file_path.c_str());
@@ -52,7 +52,7 @@ public:
             return;
         }
         RCLCPP_INFO(rcl_logger, "Read %ld bytes from file %s", file_size, file_path.c_str());
-        auto message = audio2_stream_msgs::msg::AudioData();
+        auto message = audio2_stream_msgs::msg::AudioChunk();
         message.data = buffer;
         while (rclcpp::ok()) {
             RCLCPP_INFO(rcl_logger, "Publishing audio data...");
@@ -62,7 +62,7 @@ public:
         RCLCPP_INFO(rcl_logger, "Published audio data from file %s", file_path.c_str());
     }
 private:
-    rclcpp::Publisher<audio2_stream_msgs::msg::AudioData>::SharedPtr publisher_;
+    rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
 };
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char ** argv)

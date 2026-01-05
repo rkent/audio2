@@ -14,7 +14,7 @@
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
-#include "audio2_stream_msgs/msg/audio_data.hpp"
+#include "audio2_stream_msgs/msg/audio_chunk.hpp"
 
 // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);
@@ -40,11 +40,11 @@ class FileSubscriberNode : public rclcpp::Node {
 public:
     FileSubscriberNode(boost::lockfree::spsc_queue<PlayBufferParams>* queue) 
         : Node("file_subscribe"), audio_queue_(queue) {
-        subscriber_ = this->create_subscription<audio2_stream_msgs::msg::AudioData>(
+        subscriber_ = this->create_subscription<audio2_stream_msgs::msg::AudioChunk>(
             "file_publish", 10,
             std::bind(&FileSubscriberNode::audio_data_callback, this, std::placeholders::_1));
     }
-    void audio_data_callback(const audio2_stream_msgs::msg::AudioData::SharedPtr msg) {
+    void audio_data_callback(const audio2_stream_msgs::msg::AudioChunk::SharedPtr msg) {
         RCLCPP_INFO(rcl_logger, "Received audio data");
         auto file_data = std::make_shared<std::vector<char>>(msg->data.begin(), msg->data.end());
         PlayBufferParams params{file_data, hw_vals, sw_vals};
@@ -57,7 +57,7 @@ public:
         data_available.notify_one();
     }
 private:
-    rclcpp::Subscription<audio2_stream_msgs::msg::AudioData>::SharedPtr subscriber_;
+    rclcpp::Subscription<audio2_stream_msgs::msg::AudioChunk>::SharedPtr subscriber_;
     boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue_;
 };
 

@@ -8,13 +8,15 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(unique_identifier_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
 set(msg_files
-  "msg/AlsaGain.msg"
-  "msg/AudioData.msg"
+  "msg/AudioChunk.msg"
+  "msg/StreamHeader.msg"
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -30,6 +32,7 @@ endif()
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
+  DEPENDENCIES unique_identifier_msgs builtin_interfaces
 )
 
 ament_export_dependencies(rosidl_default_runtime)

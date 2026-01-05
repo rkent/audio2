@@ -9,7 +9,6 @@
 #include <sndfile.hh>
 
 #include "rclcpp/rclcpp.hpp"
-#include "audio2_stream_msgs/msg/audio_data.hpp"
 #include "audio2_stream/buffer_file.hpp"
 
 #define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
@@ -33,10 +32,9 @@ void signal_handler(int signal) {
     }
 }
 
-class FileStreamerNode : public rclcpp::Node {
+class FileLooperNode : public rclcpp::Node {
 public:
-    FileStreamerNode() : Node("file_streamer") {
-        publisher_ = this->create_publisher<audio2_stream_msgs::msg::AudioData>("file_publish", 10);
+    FileLooperNode() : Node("file_looper") {
     }
     void publish_file_data(const std::string & file_path) {
         // Open the sound file
@@ -145,7 +143,6 @@ public:
         return;
     }
 private:
-    rclcpp::Publisher<audio2_stream_msgs::msg::AudioData>::SharedPtr publisher_;
    SndfileHandle fileh_;
 };
 
@@ -154,7 +151,7 @@ int main(int argc, char ** argv)
     std::signal(SIGINT, signal_handler); // Register the signal handler
     rclcpp::init(argc, argv);
 
-    auto file_publisher = std::make_shared<FileStreamerNode>();
+    auto file_publisher = std::make_shared<FileLooperNode>();
     // Enqueue all files from command line arguments
     file_publisher-> publish_file_data(argv[1]);
     rclcpp::spin(file_publisher);
