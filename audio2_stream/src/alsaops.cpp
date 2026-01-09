@@ -8,6 +8,7 @@
 
 #include <sndfile.h>
 #include <atomic>
+#include <format>
 #include <string>
 #include <optional>
 #include <cstring>
@@ -18,18 +19,8 @@
 // We allow either a std::string or a const char* to be passed in as estr
 #define ECALL(func, estr, ...) \
 if ((err = func(__VA_ARGS__)) < 0) {\
-    auto _estr = std::string(estr); \
-    eprintf("%s: %s", _estr.c_str(), snd_strerror (err)); \
-    goto catch_error; \
-};
-
-// Error printing function
-static void eprintf(const char *fmt, ...)
-{
-    va_list args;
-    va_start (args, fmt);
-    vfprintf (stderr, fmt, args);
-    va_end (args);
+    error_str = std::format("alsa_open error: {} ({})", estr, snd_strerror (err)); \
+    break; \
 };
 
 template<typename T>
@@ -159,13 +150,13 @@ int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_p
     }   
 }
 
-snd_pcm_t *
-alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals)
+std::optional<std::string>
+alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
 {	
     const char * device = hw_vals.device;
     unsigned	samplerate = hw_vals.samplerate;
     int		channels = hw_vals.channels;
-    snd_pcm_t *alsa_dev = nullptr;
+    alsa_dev = nullptr;
     snd_pcm_hw_params_t *hw_params;
     snd_pcm_uframes_t alsa_period_size, alsa_buffer_frames;
     snd_pcm_sw_params_t *sw_params;
@@ -174,55 +165,47 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals)
 
     alsa_period_size = hw_vals.period_size;
     alsa_buffer_frames = hw_vals.buffer_size;
+    std::string error_str;
 
-    ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, SND_PCM_STREAM_PLAYBACK, 0);
-    snd_pcm_hw_params_alloca (&hw_params);
+    do {
+        ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, SND_PCM_STREAM_PLAYBACK, 0);
+        snd_pcm_hw_params_alloca (&hw_params);
 
-    ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params);
-    ECALL(snd_pcm_hw_params_set_access, "cannot set access type", alsa_dev, hw_params, hw_vals.access);
-    ECALL(snd_pcm_hw_params_set_format, "cannot set sample format", alsa_dev, hw_params, hw_vals.format);
-    ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &samplerate, 0);
-    ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels);
-    ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0);
-    ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames);
-    ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
-    snd_pcm_uframes_t buffer_size;
-    snd_pcm_hw_params_get_buffer_size(hw_params, &buffer_size);
-    printf("ALSA device: Buffer Size: %lu\n", buffer_size);
+        ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params);
+        ECALL(snd_pcm_hw_params_set_access, "cannot set access type", alsa_dev, hw_params, hw_vals.access);
+        ECALL(snd_pcm_hw_params_set_format, "cannot set sample format", alsa_dev, hw_params, hw_vals.format);
+        ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &samplerate, 0);
+        ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels);
+        ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0);
+        ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames);
+        ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
+        snd_pcm_uframes_t buffer_size;
+        snd_pcm_hw_params_get_buffer_size(hw_params, &buffer_size);
+        printf("ALSA device: Buffer Size: %lu\n", buffer_size);
 
-    snd_pcm_sw_params_alloca(&sw_params);
-    ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params);
-    
-    /* note: set start threshold to delay start until the ring buffer is full */
-    ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold);
-    ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold);
-
-    // I don't really understand silence threshold and silence size. Recommendations are to set silence_threshold to 0
-    // and silence_size to boundary. But the boundary is a very large integer, which makes no sense to me.
-    // But I do as I am told. Theoretically this should help with xruns.
-    //snd_pcm_uframes_t boundary;
-    //ECALL(snd_pcm_sw_params_get_boundary, "cannot get boundary", sw_params, &boundary);
-    //ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
-    //ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
-    ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params);
-    snd_pcm_uframes_t silence_size;
-    snd_pcm_sw_params_get_silence_size(sw_params, &silence_size);
-    printf("ALSA device: Silence Size: %lu\n", silence_size); 
-    snd_pcm_uframes_t silence_threshold;
-    snd_pcm_sw_params_get_silence_threshold(sw_params, &silence_threshold);
-    printf("ALSA device: Silence Threshold: %lu\n", silence_threshold);
-    snd_pcm_reset (alsa_dev);
-
-catch_error :
-
-    if (err < 0 && alsa_dev != NULL)
-    {	snd_pcm_close (alsa_dev);
-        return NULL;
-        };
-
-    return alsa_dev;
+        snd_pcm_sw_params_alloca(&sw_params);
+        ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params);
+        ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold);
+        ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold);
+        ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
+        ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
+        ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params);
+        snd_pcm_uframes_t silence_size;
+        snd_pcm_sw_params_get_silence_size(sw_params, &silence_size);
+        printf("ALSA device: Silence Size: %lu\n", silence_size);
+        snd_pcm_uframes_t silence_threshold;
+        snd_pcm_sw_params_get_silence_threshold(sw_params, &silence_threshold);
+        printf("ALSA device: Silence Threshold: %lu\n", silence_threshold);
+        snd_pcm_reset (alsa_dev);
+    } while (false);
+    if (error_str.empty()) {
+        return std::nullopt;
+    }
+    if (alsa_dev)
+    {
+        snd_pcm_close (alsa_dev);
+    }
+    return error_str;
 } /* alsa_open */
-
-
 
 #endif /* _ALSAOPS_CPP__ */

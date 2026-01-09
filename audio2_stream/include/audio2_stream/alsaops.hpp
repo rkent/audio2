@@ -5,10 +5,13 @@
 #include <limits>
 #include <atomic>
 #include <tuple>
+#include <optional>
+#include <string>
 
 #define ALSA_PERIOD_SIZE 512
 #define ALSA_BUFFER_PERIODS 4
 #define ALSA_START_PERIODS 2
+
 // ALSA hardware parameters values
 typedef struct AlsaHwParams {
     const char *device = "default";
@@ -66,9 +69,11 @@ typedef struct AlsaSwParams {
  * Open an ALSA PCM device with specified hardware and software parameters.
  * \param hw_vals  Hardware parameters for the ALSA device.
  * \param sw_vals  Software parameters for the ALSA device.
- * \return          Pointer to the opened ALSA PCM device, or nullptr on failure.
+ * \param device   Pointer to the opened ALSA PCM device, or nullptr on failure.
+ * \return         Optional error string if opening fails.
  */
-snd_pcm_t * alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals);
+std::optional<std::string>
+alsa_open(AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& device);
 
 /**
  * Write audio data to ALSA device.

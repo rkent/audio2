@@ -53,9 +53,10 @@ public:
         hw_vals.samplerate = fileh_.samplerate();
         hw_vals.format = ALSA_FORMAT;
         AlsaSwParams sw_vals;
-        snd_pcm_t * alsa_dev = alsa_open(hw_vals, sw_vals);
-        if (alsa_dev == nullptr) {
-            RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish");
+        snd_pcm_t * alsa_dev = nullptr;
+        auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
+        if (open_result.has_value()) {
+            RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish: %s", open_result->c_str());
             return;
         }
 

@@ -455,8 +455,9 @@ play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, s
                     alsa_dev = nullptr;
                 }
             }
-            if ((alsa_dev = alsa_open(hw_vals, sw_vals)) == nullptr) {
-                RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device");
+            auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
+            if (open_result) {
+                RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device: %s", open_result->c_str());
                 sf_close(vio_sndfile.sndfile);
                 continue;
             }
