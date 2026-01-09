@@ -281,6 +281,8 @@ SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
             return SFG_SHORT;
         case SF_FORMAT_PCM_24:
         case SF_FORMAT_PCM_32:
+        case SF_FORMAT_VORBIS:
+        case SF_FORMAT_OPUS:
             return SFG_INT;
         case SF_FORMAT_FLOAT:
             return SFG_FLOAT;
@@ -490,7 +492,7 @@ play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, s
     RCLCPP_INFO(rcl_logger, "Play buffer thread exiting");
 }
 
-#define	BUFFER_LEN			(8192*8)
+#define	BUFFER_LEN			(1000*4)
 
 // Scale factors for converting float to integer formats
 float SCALE_S8 = 1LL<<7;
@@ -729,8 +731,7 @@ alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_
     printf("Starting ALSA playback: alsa_format=%s, samples=%d\n",
         format_to_string(alsa_format).c_str(), samples) ;
 
-    do {
-        readcount = sfg_read(sndfile, read_sfg_format, r_buffer, samples);
+    while ((readcount = sfg_read(sndfile, read_sfg_format, r_buffer, samples)) > 0) {
         printf("Read %d samples from sound file expecting %d\n", readcount, samples);
         if (readcount < 0) {
             return std::string("Error reading from sound file");
@@ -741,19 +742,19 @@ alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_
         } else if (samples_converted != readcount) {
             return std::string("Mismatch in converted samples count");
         }
-        auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format) ;
+        auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format, shutdown_flag) ;
         if (count < 0) {
             return std::string("Error writing to ALSA device");
         } else if (count != readcount) {
             return std::string("Mismatch in ALSA write count: expected ") + std::to_string(readcount) + ", got " + std::to_string(count);
         }
-        printf("Wrote %d frames to ALSA\n", count) ;
+        printf("Wrote %d samples to ALSA\n", count) ;
 
         // Check if shutdown has been requested
         if (shutdown_flag && shutdown_flag->load()) {
             break;
         }
-    } while (readcount != 0);
+    }
 
     if (shutdown_flag && shutdown_flag->load()) {
         return std::string("Playback interrupted by shutdown signal");

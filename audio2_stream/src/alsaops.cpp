@@ -6,129 +6,154 @@
 #include "audio2_stream/alsaops.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <sndfile.h>
+#include <atomic>
+#include <string>
+#include <optional>
+#include <cstring>
+#include <cstdio>
+#include <cstdarg>
+
 #define _S(cstr) std::string(cstr)
 // We allow either a std::string or a const char* to be passed in as estr
 #define ECALL(func, estr, ...) \
 if ((err = func(__VA_ARGS__)) < 0) {\
-    auto _estr = std::string(estr) ; \
-    RCLCPP_ERROR(rcl_logger, "%s: %s", _estr.c_str(), snd_strerror (err)) ; \
-    goto catch_error ; \
-} ;
+    auto _estr = std::string(estr); \
+    eprintf("%s: %s", _estr.c_str(), snd_strerror (err)); \
+    goto catch_error; \
+};
 
-static auto rcl_logger = rclcpp::get_logger("audio2_stream.alsaops") ;
+// Error printing function
+static void eprintf(const char *fmt, ...)
+{
+    va_list args;
+    va_start (args, fmt);
+    vfprintf (stderr, fmt, args);
+    va_end (args);
+};
 
 template<typename T>
 class AlsaWrite {
 public:
-    int operator()(snd_pcm_t* alsa_dev, T* data, int frames, int channels)
-    {	static	int epipe_count = 0 ;
+    int operator()(snd_pcm_t* alsa_dev, T* data, int frames, int channels, std::atomic<bool>* shutdown_flag=nullptr)
+    {	static	int epipe_count = 0;
 
-        int total = 0 ;
-        int retval ;
+        int total = 0;
+        int retval;
 
         if (epipe_count > 0)
-            epipe_count -- ;
-
-        // debug calc rms
-        // float rms = 0.0f ;
-        // for (int i = 0; i < frames * channels; ++i) {
-        //     rms += (float)data[i] * (float)data[i];
-        // }
-        // rms = sqrtf(rms / (frames * channels));
-        // printf("AlsaWrite: frames=%d, channels=%d, rms=%f\n", frames, channels, rms) ;
+            epipe_count --;
 
         while (total < frames)
-        {	retval = snd_pcm_writei (alsa_dev, data + total * channels, frames - total) ;
+        {
+            // Check if shutdown has been requested
+            if (shutdown_flag && shutdown_flag->load()) {
+                break;
+            }
 
-            if (retval >= 0)
-            {	total += retval ;
+            retval = snd_pcm_writei (alsa_dev, data + total * channels, frames - total);
+
+            if (retval > 0)
+            {	total += retval;
                 if (total == frames)
-                    return total ;
+                    return total;
 
-                continue ;
-                } ;
+                continue;
+                };
 
             switch (retval)
-            {	case -EAGAIN :
-                        puts ("alsa_write: EAGAIN") ;
-                        continue ;
-                        break ;
+            {
+                case 0:
+                if (snd_pcm_state(alsa_dev) == SND_PCM_STATE_PREPARED)
+                {
+                    // I don't understand why we get here, but for some reason the card refuses to start
+                    // unless we explicitly start it.
+                    snd_pcm_start (alsa_dev);
+                } else {
+                    printf("alsa_write: wrote zero frames.n");
+                }
+                continue;
+                case -EAGAIN :
+                        puts ("alsa_write: EAGAIN");
+                        continue;
+                        break;
 
                 case -EPIPE :
                         if (epipe_count > 0)
-                        {	printf ("alsa_write: EPIPE %d\n", epipe_count) ;
+                        {	printf ("alsa_write: EPIPE %d\n", epipe_count);
                             if (epipe_count > 140)
-                                return retval ;
-                            } ;
-                        epipe_count += 100 ;
+                                return retval;
+                            };
+                        epipe_count += 100;
 
     #if 0
                         if (0)
-                        {	snd_pcm_status_t *status ;
+                        {	snd_pcm_status_t *status;
 
-                            snd_pcm_status_alloca (&status) ;
+                            snd_pcm_status_alloca (&status);
                             if ((retval = snd_pcm_status (alsa_dev, status)) < 0)
-                                fprintf (stderr, "alsa_out: xrun. can't determine length\n") ;
+                                fprintf (stderr, "alsa_out: xrun. can't determine length\n");
                             else if (snd_pcm_status_get_state (status) == SND_PCM_STATE_XRUN)
-                            {	struct timeval now, diff, tstamp ;
+                            {	struct timeval now, diff, tstamp;
 
-                                gettimeofday (&now, 0) ;
-                                snd_pcm_status_get_trigger_tstamp (status, &tstamp) ;
-                                timersub (&now, &tstamp, &diff) ;
+                                gettimeofday (&now, 0);
+                                snd_pcm_status_get_trigger_tstamp (status, &tstamp);
+                                timersub (&now, &tstamp, &diff);
 
                                 fprintf (stderr, "alsa_write xrun: of at least %.3f msecs. resetting stream\n",
-                                        diff.tv_sec * 1000 + diff.tv_usec / 1000.0) ;
+                                        diff.tv_sec * 1000 + diff.tv_usec / 1000.0);
                                 }
                             else
-                                fprintf (stderr, "alsa_write: xrun. can't determine length\n") ;
-                            } ;
+                                fprintf (stderr, "alsa_write: xrun. can't determine length\n");
+                            };
     #endif
 
-                        snd_pcm_prepare (alsa_dev) ;
-                        break ;
+                        snd_pcm_prepare (alsa_dev);
+                        break;
 
                 case -EBADFD :
-                        fprintf (stderr, "alsa_write: Bad PCM state.n") ;
-                        return 0 ;
-                        break ;
+                        fprintf (stderr, "alsa_write: Bad PCM state.n");
+                        return 0;
+                        break;
 
     #if defined ESTRPIPE && ESTRPIPE != EPIPE
                 case -ESTRPIPE :
-                        fprintf (stderr, "alsa_write: Suspend event.n") ;
-                        return 0 ;
-                        break ;
+                        fprintf (stderr, "alsa_write: Suspend event.n");
+                        return 0;
+                        break;
     #endif
 
                 case -EIO :
-                        puts ("alsa_write: EIO") ;
-                        return 0 ;
+                        puts ("alsa_write: EIO");
+                        return 0;
 
                 default :
-                        fprintf (stderr, "alsa_write: retval = %d\n", retval) ;
-                        return 0 ;
-                        break ;
-                } ; /* switch */
-            } ; /* while */
+                        fprintf (stderr, "alsa_write: retval = %d\n", retval);
+                        return 0;
+                        break;
+                }; /* switch */
+            }; /* while */
 
-        return total ;
+        return total;
     }
-} ; /* AlsaWrite */
+}; /* AlsaWrite */
 
-AlsaWrite<float> alsa_write_float ;
-AlsaWrite<short> alsa_write_short ;
-AlsaWrite<int> alsa_write_int ;
-AlsaWrite<double> alsa_write_double ;
-int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_pcm_format_t alsa_format)
+AlsaWrite<float> alsa_write_float;
+AlsaWrite<short> alsa_write_short;
+AlsaWrite<int> alsa_write_int;
+AlsaWrite<double> alsa_write_double;
+int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
-    int frames = samples / channels ;
+    printf("alsa_write: samples=%d, channels=%d, format=%x\n", samples, channels, alsa_format);
+    int frames = samples / channels;
     if (alsa_format == SND_PCM_FORMAT_S16) {
-        return channels * alsa_write_short(alsa_dev, reinterpret_cast<short*>(data), frames, channels) ;
+        return channels * alsa_write_short(alsa_dev, reinterpret_cast<short*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_S32) {
-        return channels * alsa_write_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels) ;
+        return channels * alsa_write_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
-        return channels *alsa_write_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels) ;
+        return channels *alsa_write_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
-        return channels * alsa_write_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels) ;
+        return channels * alsa_write_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels, shutdown_flag);
     } else {
         return -1;
     }   
@@ -137,57 +162,65 @@ int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_p
 snd_pcm_t *
 alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals)
 {	
-    const char * device = hw_vals.device ;
-    unsigned	samplerate = hw_vals.samplerate ;
-    int		channels = hw_vals.channels ;
-    snd_pcm_t *alsa_dev = NULL ;
-    snd_pcm_hw_params_t *hw_params ;
-    snd_pcm_uframes_t alsa_period_size, alsa_buffer_frames ;
-    snd_pcm_sw_params_t *sw_params ;
+    const char * device = hw_vals.device;
+    unsigned	samplerate = hw_vals.samplerate;
+    int		channels = hw_vals.channels;
+    snd_pcm_t *alsa_dev = nullptr;
+    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_uframes_t alsa_period_size, alsa_buffer_frames;
+    snd_pcm_sw_params_t *sw_params;
 
-    int err ;
+    int err;
 
-    alsa_period_size = hw_vals.period_size ;
-    alsa_buffer_frames = hw_vals.buffer_size ;
+    alsa_period_size = hw_vals.period_size;
+    alsa_buffer_frames = hw_vals.buffer_size;
 
-    ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, SND_PCM_STREAM_PLAYBACK, 0) ;
+    ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, SND_PCM_STREAM_PLAYBACK, 0);
     snd_pcm_hw_params_alloca (&hw_params);
 
-    ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params) ;
-    ECALL(snd_pcm_hw_params_set_access, "cannot set access type", alsa_dev, hw_params, hw_vals.access) ;
-    ECALL(snd_pcm_hw_params_set_format, "cannot set sample format", alsa_dev, hw_params, hw_vals.format) ;
-    ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &samplerate, 0) ;
-    ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels) ;
-    ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames) ;
-    ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0) ;
-    ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params) ;
+    ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params);
+    ECALL(snd_pcm_hw_params_set_access, "cannot set access type", alsa_dev, hw_params, hw_vals.access);
+    ECALL(snd_pcm_hw_params_set_format, "cannot set sample format", alsa_dev, hw_params, hw_vals.format);
+    ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &samplerate, 0);
+    ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels);
+    ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0);
+    ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames);
+    ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
+    snd_pcm_uframes_t buffer_size;
+    snd_pcm_hw_params_get_buffer_size(hw_params, &buffer_size);
+    printf("ALSA device: Buffer Size: %lu\n", buffer_size);
 
-    snd_pcm_sw_params_alloca(&sw_params) ;
-    ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params) ;
+    snd_pcm_sw_params_alloca(&sw_params);
+    ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params);
     
     /* note: set start threshold to delay start until the ring buffer is full */
-    ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold) ;
-    ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold) ;
+    ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold);
+    ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold);
 
-    // I don't reallt understand silence threshold and silence size. Recommendations are to set silence_threshold to 0
+    // I don't really understand silence threshold and silence size. Recommendations are to set silence_threshold to 0
     // and silence_size to boundary. But the boundary is a very large integer, which makes no sense to me.
     // But I do as I am told. Theoretically this should help with xruns.
-    ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, 0) ;
-    snd_pcm_uframes_t boundary;
-    ECALL(snd_pcm_sw_params_get_boundary, "cannot get boundary", sw_params, &boundary) ;
-    ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, boundary) ;
-    ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params) ;
-
-    snd_pcm_reset (alsa_dev) ;
+    //snd_pcm_uframes_t boundary;
+    //ECALL(snd_pcm_sw_params_get_boundary, "cannot get boundary", sw_params, &boundary);
+    //ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
+    //ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
+    ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params);
+    snd_pcm_uframes_t silence_size;
+    snd_pcm_sw_params_get_silence_size(sw_params, &silence_size);
+    printf("ALSA device: Silence Size: %lu\n", silence_size); 
+    snd_pcm_uframes_t silence_threshold;
+    snd_pcm_sw_params_get_silence_threshold(sw_params, &silence_threshold);
+    printf("ALSA device: Silence Threshold: %lu\n", silence_threshold);
+    snd_pcm_reset (alsa_dev);
 
 catch_error :
 
     if (err < 0 && alsa_dev != NULL)
-    {	snd_pcm_close (alsa_dev) ;
-        return NULL ;
-        } ;
+    {	snd_pcm_close (alsa_dev);
+        return NULL;
+        };
 
-    return alsa_dev ;
+    return alsa_dev;
 } /* alsa_open */
 
 

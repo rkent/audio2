@@ -5,8 +5,10 @@
 
 #include <sndfile.h>
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <sndfile.hh>
+#include <iostream>
 
 #include "rclcpp/rclcpp.hpp"
 #include "audio2_stream/buffer_file.hpp"
@@ -17,6 +19,23 @@
 std::atomic<bool> shutdown_flag(false);
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/file_play");
+
+static snd_output_t *output = nullptr;
+#include <alsa/asoundlib.h>
+
+void showstat(snd_pcm_t *handle)
+{
+    int err;
+    snd_pcm_status_t *status;
+    snd_output_stdio_attach(&output, stdout, 0);
+ 
+    snd_pcm_status_alloca(&status);
+    if ((err = snd_pcm_status(handle, status)) < 0) {
+        printf("Stream status error: %s\n", snd_strerror(err));
+        exit(0);
+    }
+    snd_pcm_status_dump(status, output);
+}
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {
@@ -56,21 +75,35 @@ public:
         fileh.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
         fileh.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
 
-        SfgRwFormat file_rw_format = sfg_format_from_sndfile_format(fileh.format());
-        int file_sample_size = sample_size_from_sfg_format(file_rw_format);
-        const int read_frames = 1024 * 16;
-        int file_buffer_size = read_frames * fileh.channels() * file_sample_size;
-        std::vector<char> file_buffer(file_buffer_size);
-
         auto err = alsa_play(fileh, alsa_dev, hw_vals.format, &shutdown_flag);
         if (err) {
             RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
         }
+        snd_pcm_status_t *status;
+        snd_pcm_status_alloca(&status);
+        //void * silence_buf = std::calloc(ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS, 1);
+        //snd_pcm_writei(alsa_dev, silence_buf, ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS);
+        //std::free(silence_buf);
+
+        //for (int i = 0; i < 5 && snd_pcm_state(alsa_dev) == SND_PCM_STATE_XRUN; i++) {
+        //    rclcpp::sleep_for(std::chrono::milliseconds(1));
+        //    printf("frames %ld \n", snd_pcm_avail_update(alsa_dev));
+        //    showstat(alsa_dev);
+        //} while (!shutdown_flag.load() && snd_pcm_state(alsa_dev) == SND_PCM_STATE_RUNNING);
+        //} while (false);
+        //}
         snd_pcm_drain(alsa_dev);
+        //rclcpp::sleep_for(std::chrono::milliseconds(500));
+        //puts("3");
         snd_pcm_close(alsa_dev);
+        //puts("4");
         return;
     }
 };
+
+//#define ALSA_PERIOD_SIZE 1024
+//#define ALSA_BUFFER_PERIODS 4
+//#define ALSA_START_PERIODS 2
 
 int main(int argc, char ** argv)
 {
