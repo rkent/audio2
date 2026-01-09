@@ -7,6 +7,7 @@
 #include <tuple>
 #include <optional>
 #include <string>
+#include "boost/lockfree/spsc_queue.hpp"
 
 #define ALSA_PERIOD_SIZE 512
 #define ALSA_BUFFER_PERIODS 4
@@ -86,5 +87,31 @@ alsa_open(AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& device);
  * \return          Number of samples written, or negative error code.
  */
 int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag);
+
+/**
+ * Thread-safe ALSA writer class that consumes audio data from a lock-free queue.
+ */
+class AlsaWriteThread
+{
+public:
+    AlsaWriteThread(
+        AlsaHwParams hw_vals,
+        AlsaSwParams sw_vals,
+        boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue,
+        std::atomic<bool>* shutdown_flag = nullptr,
+        std::atomic<bool>* data_available = nullptr);
+    ~AlsaWriteThread() = default;
+    snd_pcm_t * get_alsa_dev();
+    std::string get_error();
+    void close();
+    void run();
+private:
+    snd_pcm_t * alsa_dev_ = nullptr;
+    std::string error_str_;
+    AlsaHwParams hw_vals_;
+    boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue_;
+    std::atomic<bool>* shutdown_flag_;
+    std::atomic<bool>* data_available_;
+};
 
 #endif

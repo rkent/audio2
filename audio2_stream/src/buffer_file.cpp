@@ -252,6 +252,7 @@ const char * sfg_format_to_string(SfgRwFormat format)
 
 SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format)
 {
+    // Consider using snd_pcm_format_width to determine byte size if needed
     switch (alsa_format) {
         case SND_PCM_FORMAT_S8:
         case SND_PCM_FORMAT_U8:
@@ -712,6 +713,56 @@ std::optional<std::string>
 alsa_play (SndfileHandle fileh, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
     return alsa_play(fileh.rawHandle(), fileh.format(), fileh.channels(), alsa_dev, alsa_format, shutdown_flag);
+}
+
+SndFileStream::SndFileStream(SndfileHandle & sndfileh,
+    snd_pcm_format_t alsa_format,
+    std::atomic<bool>* shutdown_flag,
+    std::atomic<bool>* data_available,
+    boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue)
+    : sndfileh_(sndfileh), alsa_format_(alsa_format),
+      shutdown_flag_(shutdown_flag), data_available_(data_available), queue_(queue)
+{}
+
+void SndFileStream::run()
+{
+    const int BUFFER_FRAMES = 480;
+    auto r_format = sfg_format_from_sndfile_format(sndfileh_.format());
+    auto w_format = sfg_format_from_alsa_format(alsa_format_);
+    auto r_sample_size = sample_size_from_sfg_format(r_format);
+    auto w_sample_size = sample_size_from_sfg_format(w_format);
+    auto r_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * r_sample_size;
+    auto w_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * w_sample_size;
+    std::vector<uint8_t> r_buffer(r_buffer_size);
+    std::vector<uint8_t> w_buffer(w_buffer_size);
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
+    auto next_time = std::chrono::steady_clock::now();
+
+    while (!(shutdown_flag_ && shutdown_flag_->load())) {
+        int samples_read = sfg_read2(sndfileh_, sfg_format_from_alsa_format(alsa_format_), r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
+        if (samples_read <= 0) {
+            break; // End of file or error
+        }
+        int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
+        if (samples_converted < 0) {
+            RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+            break;
+        } else if (samples_converted != samples_read) {
+            RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d", samples_read, samples_converted);
+            break;
+        }
+
+        while (!queue_->push(w_buffer) && !shutdown_flag_->load()) {
+            RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        printf("Pushed %d samples to audio queue\n", samples_converted);
+        data_available_->store(true);
+        data_available_->notify_one();
+        next_time += duration;
+        std::this_thread::sleep_until(next_time);
+    }
+    printf("SndFileStream thread exiting\n");
 }
 
 // Play audio from a SNDFILE using ALSA

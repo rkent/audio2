@@ -1,6 +1,9 @@
 #ifndef SNDPLAY_BUFFER_FILE_HPP
 #define SNDPLAY_BUFFER_FILE_HPP
 #include <sndfile.hh>
+#include <chrono>
+#include <thread>
+#include <cstring>
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -173,5 +176,26 @@ alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_
 
 std::optional<std::string>
 alsa_play (SndfileHandle fileh, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag);
+
+/**
+ * Stream sndfile data to a queue at the proper rate.
+ */
+class SndFileStream
+{
+public:
+    SndFileStream(SndfileHandle & sndfileh,
+        snd_pcm_format_t alsa_format,
+        std::atomic<bool>* shutdown_flag,
+        std::atomic<bool>* data_available,
+        boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue);
+    ~SndFileStream() = default;
+    void run();
+private:
+    SndfileHandle sndfileh_;
+    snd_pcm_format_t alsa_format_;
+    std::atomic<bool>* shutdown_flag_;
+    std::atomic<bool>* data_available_;
+    boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue_;
+};
 
 #endif // SNDPLAY_BUFFER_FILE_HPP

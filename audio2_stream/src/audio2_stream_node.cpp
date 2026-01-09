@@ -24,6 +24,8 @@ static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
 boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
 
+#define ALSA_FORMAT SND_PCM_FORMAT_S16
+
 void signal_handler(int signal) {
     if (signal == SIGINT) {
         RCLCPP_INFO(rcl_logger, "Keyboard interrupt received. Shutting down.");
@@ -34,53 +36,58 @@ void signal_handler(int signal) {
     }
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char ** argv)
+int main(int argc, [[maybe_unused]] char ** argv)
 {
     std::signal(SIGINT, signal_handler); // Register the signal handler
     rclcpp::init(argc, argv);
 
-    // thread wakeup mechanism. Might be better to use atomic ready and wait in C++20
-
-    boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
+    // boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
+    boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(10);
     // Start play_buffer thread
-    std::thread playback_thread(play_buffer_thread, &audio_queue, &shutdown_flag, &data_available);
+    //std::thread playback_thread(play_buffer_thread, &audio_queue, &shutdown_flag, &data_available);
 
     // Enqueue all files from command line arguments
     for (int k = 1; k < argc; k++) {
-        std::shared_ptr<std::vector<char>> file_data;
-        auto error = get_file(argv[k], file_data);
-        if (error) {
-            RCLCPP_ERROR(rcl_logger, "Failed to load file %s: %s", argv[k], error->c_str());
-            continue; // Error reading file, got to next.
+        auto file_path = std::string(argv[k]);
+        SndfileHandle fileh = SndfileHandle(argv[k]);
+        if (fileh.error()) {
+            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), fileh.strError());
+            return 1;
         }
-        PlayBufferParams params;
-        params.file_data = file_data;
-        RCLCPP_INFO(rcl_logger, "Loaded file %s of size %zu bytes", argv[k], file_data->size());
-        RCLCPP_INFO(rcl_logger, "playback with format: %s", format_to_string(params.hw_vals.format).c_str());
+        RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), fileh.samplerate(), fileh.format());
+        printf("channels: %d\n", fileh.channels());
 
-        // Wait until queue has space
-        while (!audio_queue.push(params) && !shutdown_flag.load()) {
-            RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        data_available.store(true);
-        data_available.notify_one();
+        AlsaHwParams hw_vals;
+        hw_vals.channels = fileh.channels();
+        hw_vals.samplerate = fileh.samplerate();
+        hw_vals.format = ALSA_FORMAT;
+        AlsaSwParams sw_vals;
+        auto alsa_write = std::make_unique<AlsaWriteThread>(
+            hw_vals,
+            sw_vals,
+            &audio_queue,
+            &shutdown_flag,
+            &data_available
+        );
+        auto snd_file_stream = std::make_unique<SndFileStream>(
+            fileh,
+            ALSA_FORMAT,
+            &shutdown_flag,
+            &data_available,
+            &audio_queue
+        );
+        std::thread sndfile_stream_thread(&SndFileStream::run, snd_file_stream.get());
 
+        std::thread alsa_write_thread(&AlsaWriteThread::run, alsa_write.get());
+        RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
+        sndfile_stream_thread.join();
+        alsa_write_thread.join();
+        printf("End of threads for file %s\n", argv[k]);
+        break;
         if (shutdown_flag.load()) {
             break;
         }
-        RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
     }
-
-    // Wait for playback thread to finish processing all items
-    RCLCPP_INFO(rcl_logger, "Waiting for playback to complete...");
-    while (!audio_queue.empty() && !shutdown_flag.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    // Signal shutdown and wait for thread to exit
-    // shutdown_flag.store(true);
-    playback_thread.join();
 
     RCLCPP_INFO(rcl_logger, "Shutting down...");
     rclcpp::shutdown();

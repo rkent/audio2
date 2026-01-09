@@ -1,6 +1,3 @@
-#ifndef _ALSAOPS_CPP__
-#define _ALSAOPS_CPP__
-
 #include <cstring>
 
 #include "audio2_stream/alsaops.hpp"
@@ -208,4 +205,81 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
     return error_str;
 } /* alsa_open */
 
-#endif /* _ALSAOPS_CPP__ */
+AlsaWriteThread::AlsaWriteThread(
+    AlsaHwParams hw_vals,
+    AlsaSwParams sw_vals,
+    boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue,
+    std::atomic<bool>* shutdown_flag,
+    std::atomic<bool>* data_available
+    )
+    : queue_(queue), shutdown_flag_(shutdown_flag), data_available_(data_available)
+{
+    snd_pcm_t * alsa_dev = nullptr;
+    auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
+    if (open_result.has_value()) {
+        error_str_ = open_result.value();
+        return;
+    }
+    alsa_dev_ = alsa_dev;
+    hw_vals_ = hw_vals;
+}
+
+snd_pcm_t * AlsaWriteThread::get_alsa_dev() {
+    return alsa_dev_;
+}
+
+std::string AlsaWriteThread::get_error() {
+    return error_str_;
+}
+
+void AlsaWriteThread::close() {
+    if (alsa_dev_) {
+        snd_pcm_drain(alsa_dev_);
+        snd_pcm_close(alsa_dev_);
+        alsa_dev_ = nullptr;
+    }
+    return;
+}
+
+void AlsaWriteThread::run()
+{
+    while (!shutdown_flag_->load()) {
+        if (error_str_.length() > 0) {
+            break;
+        }
+        if (!alsa_dev_) {
+            error_str_ = "ALSA device is not opened";
+            break;
+        }
+        std::vector<uint8_t> audio_data;
+        // Try to pop from queue
+        if (data_available_) {
+            data_available_->wait(false); // Wait until there's something to process
+            data_available_->store(false);
+        }
+        if (!queue_->pop(audio_data)) {
+            // Check if shutdown has been requested
+            if (shutdown_flag_ && shutdown_flag_->load()) {
+                error_str_ = "Playback interrupted by shutdown signal";
+                break;
+            }
+            // Queue is empty, sleep briefly and continue. We should not reach this
+            printf("Audio queue is empty, waiting...");
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        int bytes_per_sample = snd_pcm_format_width(hw_vals_.format) / 8;
+        int write_result = alsa_write(
+            static_cast<int>(audio_data.size() / bytes_per_sample),
+            alsa_dev_,
+            audio_data.data(),
+            hw_vals_.channels, // channels
+            hw_vals_.format,
+            shutdown_flag_);
+        if (write_result < 0) {
+            printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
+        }
+    }
+    close();
+    return;
+}
