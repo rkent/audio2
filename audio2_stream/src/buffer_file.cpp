@@ -737,11 +737,20 @@ void SndFileStream::run()
     std::vector<uint8_t> w_buffer(w_buffer_size);
     auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
+    int silent_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 
     while (!(shutdown_flag_ && shutdown_flag_->load())) {
-        int samples_read = sfg_read2(sndfileh_, sfg_format_from_alsa_format(alsa_format_), r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
+        int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
         if (samples_read <= 0) {
-            break; // End of file or error
+            if (silent_frames > 0) {
+                // Push silence
+                std::fill(r_buffer.begin(), r_buffer.end(), 0);
+                silent_frames -= BUFFER_FRAMES;
+                samples_read = BUFFER_FRAMES * sndfileh_.channels();
+                printf("End of file reached, pushing silence (%d frames left)\n", silent_frames);
+            } else {
+                break; // End of file or error
+            }
         }
         int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
         if (samples_converted < 0) {
