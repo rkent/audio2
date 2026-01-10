@@ -207,7 +207,7 @@ int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples
 }
 
 // Get sample size in bytes from alsa's snd_pcm_format_t
-int sample_size_from_format(snd_pcm_format_t format)
+int sample_size_from_alsa_format(snd_pcm_format_t format)
 {
     return snd_pcm_format_width(format) / 8;
 }
@@ -252,7 +252,6 @@ const char * sfg_format_to_string(SfgRwFormat format)
 
 SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format)
 {
-    // Consider using snd_pcm_format_width to determine byte size if needed
     switch (alsa_format) {
         case SND_PCM_FORMAT_S8:
         case SND_PCM_FORMAT_U8:
@@ -349,7 +348,7 @@ int write_buffer(void* buffer, int sf_format, snd_pcm_format_t snd_format, int f
 
     printf("Preparing to write buffer: sf_format=%x, frames=%d, channels=%d, sample_rate=%d\n", sf_format, frames, channels, sample_rate);
     const int MAX_HEADER = 128;
-    int sample_size = sample_size_from_format(snd_format);
+    int sample_size = sample_size_from_alsa_format(snd_format);
     if (sample_size < 0) {
         RCLCPP_ERROR(rcl_logger, "Unsupported format for writing buffer: %x", sfinfo.format);
         return -1;
@@ -788,7 +787,7 @@ alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_
     sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
     sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
 
-    int samples = std::min(BUFFER_LEN / sample_size_from_sfg_format(read_sfg_format), BUFFER_LEN / sample_size_from_format(alsa_format));
+    int samples = std::min(BUFFER_LEN / sample_size_from_sfg_format(read_sfg_format), BUFFER_LEN / sample_size_from_alsa_format(alsa_format));
     printf("Starting ALSA playback: alsa_format=%s, samples=%d\n",
         format_to_string(alsa_format).c_str(), samples) ;
 

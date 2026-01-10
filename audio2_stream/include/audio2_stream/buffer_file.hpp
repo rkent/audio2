@@ -104,7 +104,7 @@ int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples
  * \param format The ALSA format.
  * \return       The sample size in bytes, or -1 if unsupported.
  */
-int sample_size_from_format(snd_pcm_format_t format);
+int sample_size_from_alsa_format(snd_pcm_format_t format);
 
 /**
  * Get sample size from our SfgRwFormat enum

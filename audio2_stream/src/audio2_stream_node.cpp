@@ -57,6 +57,8 @@ int main(int argc, [[maybe_unused]] char ** argv)
         RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), fileh.samplerate(), fileh.format());
         printf("channels: %d\n", fileh.channels());
 
+        std::atomic<bool> audio_close(false);
+        std::atomic<bool> audio_available(false);
         AlsaHwParams hw_vals;
         hw_vals.channels = fileh.channels();
         hw_vals.samplerate = fileh.samplerate();
@@ -66,14 +68,14 @@ int main(int argc, [[maybe_unused]] char ** argv)
             hw_vals,
             sw_vals,
             &audio_queue,
-            &shutdown_flag,
-            &data_available
+            &audio_close,
+            &audio_available
         );
         auto snd_file_stream = std::make_unique<SndFileStream>(
             fileh,
             ALSA_FORMAT,
             &shutdown_flag,
-            &data_available,
+            &audio_available,
             &audio_queue
         );
         std::thread sndfile_stream_thread(&SndFileStream::run, snd_file_stream.get());
@@ -81,6 +83,10 @@ int main(int argc, [[maybe_unused]] char ** argv)
         std::thread alsa_write_thread(&AlsaWriteThread::run, alsa_write.get());
         RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
         sndfile_stream_thread.join();
+        printf("Sndfile stream thread joined for file %s\n", argv[k]);
+        audio_close.store(true);
+        audio_available.store(true); // Wake up any waiting threads
+        audio_available.notify_all();
         alsa_write_thread.join();
         printf("End of threads for file %s\n", argv[k]);
         break;
