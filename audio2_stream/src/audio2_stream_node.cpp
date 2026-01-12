@@ -22,8 +22,6 @@ std::atomic<bool> data_available(false);
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
-boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
-
 // Global pointer to audio stream for signal handler
 static AudioStream* g_audio_stream_ptr = nullptr;
 
@@ -43,11 +41,6 @@ int main(int argc, [[maybe_unused]] char ** argv)
 {
     //std::signal(SIGINT, signal_handler); // Register the signal handler
     rclcpp::init(argc, argv);
-
-    // boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
-    boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(AUDIO_QUEUE_SIZE);
-    // Start play_buffer thread
-    //std::thread playback_thread(play_buffer_thread, &audio_queue, &shutdown_flag, &data_available);
 
     // Enqueue all files from command line arguments
     for (int k = 1; k < argc; k++) {
@@ -78,13 +71,11 @@ int main(int argc, [[maybe_unused]] char ** argv)
 
         //std::atomic<bool> audio_close(false);
         //std::atomic<bool> audio_available(false);
-        boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(10);
         SfgRwFormat rw_format = sfg_format_from_alsa_format(ALSA_FORMAT);
 
         std::unique_ptr<AudioStream> audio_stream = std::make_unique<AudioStream>(
             &shutdown_flag,
             &data_available,
-            &audio_queue,
             rw_format,
             snd_file_source.get(),
             alsa_sink.get()
