@@ -857,7 +857,7 @@ void AlsaSink::run(AudioStream * audio_stream)
     assert(audio_stream);
     assert(alsa_dev_);
     printf("AlsaSink::run started\n");
-    while (!audio_stream->shutdown_flag_->load()) {
+    while (!audio_stream->shutdown_flag_.load()) {
         if (error_str_.length() > 0) {
             break;
         }
@@ -937,10 +937,10 @@ void SndFileSource::run(AudioStream * audio_stream)
     auto next_time = std::chrono::steady_clock::now();
     bool done = false;
 
-    while (!(audio_stream->shutdown_flag_->load()) && !done) {
+    while (!(audio_stream->shutdown_flag_.load()) && !done) {
         // Fill the queue before sleeping
         while (audio_stream->queue_.write_available() > 0 &&
-               !audio_stream->shutdown_flag_->load()) {
+               !audio_stream->shutdown_flag_.load()) {
             int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
             if (samples_read <= 0) {
                 done = true;
@@ -957,7 +957,7 @@ void SndFileSource::run(AudioStream * audio_stream)
                 break;
             }
 
-            while (!audio_stream->queue_.push(w_buffer) && !audio_stream->shutdown_flag_->load()) {
+            while (!audio_stream->queue_.push(w_buffer) && !audio_stream->shutdown_flag_.load()) {
                 // We should not reach here since we checked write_available above
                 RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -975,7 +975,7 @@ void SndFileSource::run(AudioStream * audio_stream)
 
 void AudioStream::shutdown()
 {
-    shutdown_flag_->store(true);
+    shutdown_flag_.store(true);
     data_available_.store(true);
     data_available_.notify_all();
 }

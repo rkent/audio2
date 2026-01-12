@@ -213,12 +213,11 @@ class AudioStream
 {
 public:
     AudioStream(
-        std::atomic<bool>* shutdown_flag,
         SfgRwFormat rw_format,
         AudioTerminal* source,
         AudioTerminal* sink
     ) :
-        shutdown_flag_(shutdown_flag),
+        shutdown_flag_(false),
         data_available_(false),
         queue_(AUDIO_QUEUE_SIZE),
         rw_format_(rw_format),
@@ -226,7 +225,7 @@ public:
         sink_(sink)
     {}
 
-    std::atomic<bool>* shutdown_flag_;
+    std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
     boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
     SfgRwFormat rw_format_;

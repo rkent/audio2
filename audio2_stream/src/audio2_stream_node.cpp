@@ -70,7 +70,6 @@ int main(int argc, [[maybe_unused]] char ** argv)
         SfgRwFormat rw_format = sfg_format_from_alsa_format(ALSA_FORMAT);
 
         std::unique_ptr<AudioStream> audio_stream = std::make_unique<AudioStream>(
-            &shutdown_flag,
             rw_format,
             snd_file_source.get(),
             alsa_sink.get()
@@ -82,9 +81,6 @@ int main(int argc, [[maybe_unused]] char ** argv)
         audio_thread.join();
         printf("Stream thread joined for file %s\n", argv[k]);
         break;
-        if (shutdown_flag.load()) {
-            break;
-        }
     }
 
     RCLCPP_INFO(rcl_logger, "Shutting down...");
