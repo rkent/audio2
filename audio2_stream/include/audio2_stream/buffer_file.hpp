@@ -121,6 +121,13 @@ int sample_size_from_sfg_format(SfgRwFormat format);
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
 
 /**
+ * Read/write type to use for different ALSA formats
+ * \param alsa_format The ALSA format enum value.
+ * \return            Corresponding SfgRwFormat enum value.
+ */
+SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format);
+
+/**
  * String representation of SfgRwFormat
  * \param format The SfgRwFormat enum value.
  * \return       A string representing the format.
@@ -198,24 +205,33 @@ private:
     boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue_;
 };
 
+class AudioTerminal;
+
 class AudioStream
 {
 public:
     AudioStream(
         std::atomic<bool>* shutdown_flag,
         std::atomic<bool>* data_available,
-        boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue
+        boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue,
+        SfgRwFormat rw_format,
+        AudioTerminal* source,
+        AudioTerminal* sink
     ) :
         shutdown_flag_(shutdown_flag),
         data_available_(data_available),
         queue_(queue),
-        rw_format_(SFG_INVALID)
+        rw_format_(rw_format),
+        source_(source),
+        sink_(sink)
     {}
 
     std::atomic<bool>* shutdown_flag_;
     std::atomic<bool>* data_available_;
     boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue_;
     SfgRwFormat rw_format_;
+    AudioTerminal* source_;
+    AudioTerminal* sink_;
 };
 
 class AudioTerminal
@@ -234,10 +250,10 @@ public:
     virtual ~SndFileSource() = default;
     std::optional<std::string> open();
     void run(AudioStream * audio_stream) override;
+    SndfileHandle sndfileh_;
 
 protected:
     std::string file_path_;
-    SndfileHandle sndfileh_;
 };
 
 class AlsaTerminal : public AudioTerminal

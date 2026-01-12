@@ -49,44 +49,53 @@ int main(int argc, [[maybe_unused]] char ** argv)
     // Enqueue all files from command line arguments
     for (int k = 1; k < argc; k++) {
         auto file_path = std::string(argv[k]);
-        SndfileHandle fileh = SndfileHandle(argv[k]);
-        if (fileh.error()) {
-            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), fileh.strError());
+        std::unique_ptr<SndFileSource> snd_file_source = std::make_unique<SndFileSource>(file_path);
+        auto open_result = snd_file_source->open();
+        int channels = snd_file_source->sndfileh_.channels();
+        int samplerate = snd_file_source->sndfileh_.samplerate();
+        int sndfile_format = snd_file_source->sndfileh_.format();
+        if (open_result.has_value()) {
+            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), open_result.value().c_str());
             return 1;
         }
-        RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), fileh.samplerate(), fileh.format());
-        printf("channels: %d\n", fileh.channels());
+        RCLCPP_INFO(rcl_logger, "Opened file %s: channels=%d, samplerate=%d, format=0x%X",
+            file_path.c_str(), channels, samplerate, sndfile_format);
 
-        std::atomic<bool> audio_close(false);
-        std::atomic<bool> audio_available(false);
-        AlsaHwParams hw_vals;
-        hw_vals.channels = fileh.channels();
-        hw_vals.samplerate = fileh.samplerate();
-        hw_vals.format = ALSA_FORMAT;
-        AlsaSwParams sw_vals;
-        auto alsa_write = std::make_unique<AlsaWriteThread>(
-            hw_vals,
-            sw_vals,
-            &audio_queue,
-            &audio_close,
-            &audio_available
+        std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
+            ALSA_DEVICE_NAME,
+            channels,
+            samplerate,
+            ALSA_FORMAT
         );
-        auto snd_file_stream = std::make_unique<SndFileStream>(
-            fileh,
-            ALSA_FORMAT,
+        auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
+        if (alsa_open_result.has_value()) {
+            RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device: %s", alsa_open_result->c_str());
+            return 1;
+        }
+
+        //std::atomic<bool> audio_close(false);
+        //std::atomic<bool> audio_available(false);
+        boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(10);
+        SfgRwFormat rw_format = sfg_format_from_alsa_format(ALSA_FORMAT);
+
+        std::unique_ptr<AudioStream> audio_stream = std::make_unique<AudioStream>(
             &shutdown_flag,
-            &audio_available,
-            &audio_queue
+            &data_available,
+            &audio_queue,
+            rw_format,
+            snd_file_source.get(),
+            alsa_sink.get()
         );
-        std::thread sndfile_stream_thread(&SndFileStream::run, snd_file_stream.get());
 
-        std::thread alsa_write_thread(&AlsaWriteThread::run, alsa_write.get());
+        std::thread sndfile_stream_thread(&SndFileSource::run, snd_file_source.get(), audio_stream.get());
+        std::thread alsa_write_thread(&AlsaSink::run, alsa_sink.get(), audio_stream.get());
+
         RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
         sndfile_stream_thread.join();
         printf("Sndfile stream thread joined for file %s\n", argv[k]);
-        audio_close.store(true);
-        audio_available.store(true); // Wake up any waiting threads
-        audio_available.notify_all();
+        shutdown_flag.store(true);
+        data_available.store(true); // Wake up any waiting threads
+        data_available.notify_all();
         alsa_write_thread.join();
         printf("End of threads for file %s\n", argv[k]);
         break;

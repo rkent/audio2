@@ -12,10 +12,11 @@
 #define ALSA_PERIOD_SIZE 512
 #define ALSA_BUFFER_PERIODS 4
 #define ALSA_START_PERIODS 2
+#define ALSA_DEVICE_NAME "default"
 
 // ALSA hardware parameters values
 typedef struct AlsaHwParams {
-    const char *device = "default";
+    const char *device = ALSA_DEVICE_NAME;
     unsigned int channels = 1;
     snd_pcm_uframes_t buffer_size = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
     snd_pcm_uframes_t period_size = ALSA_PERIOD_SIZE;
