@@ -868,8 +868,8 @@ void AlsaSink::run(AudioStream * audio_stream)
         std::vector<uint8_t> audio_data;
 
         // Wait to pop from queue
-        audio_stream->data_available_->wait(false); // Wait until there's something to process
-        audio_stream->data_available_->store(false);
+        audio_stream->data_available_.wait(false); // Wait until there's something to process
+        audio_stream->data_available_.store(false);
         // empty the queue
         while (audio_stream->queue_.pop(audio_data)) {
             int bytes_per_sample = snd_pcm_format_width(format_) / 8;
@@ -963,8 +963,8 @@ void SndFileSource::run(AudioStream * audio_stream)
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             printf("Pushed %d samples to audio queue\n", samples_converted);
-            audio_stream->data_available_->store(true);
-            audio_stream->data_available_->notify_one();
+            audio_stream->data_available_.store(true);
+            audio_stream->data_available_.notify_one();
         }
         next_time += duration;
         std::this_thread::sleep_until(next_time);
@@ -976,8 +976,8 @@ void SndFileSource::run(AudioStream * audio_stream)
 void AudioStream::shutdown()
 {
     shutdown_flag_->store(true);
-    data_available_->store(true);
-    data_available_->notify_all();
+    data_available_.store(true);
+    data_available_.notify_all();
 }
 
 void AudioStream::run()

@@ -17,8 +17,6 @@
 
 // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);
-// Global flag to signify that new data is available in the queue
-std::atomic<bool> data_available(false);
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
@@ -69,13 +67,10 @@ int main(int argc, [[maybe_unused]] char ** argv)
             return 1;
         }
 
-        //std::atomic<bool> audio_close(false);
-        //std::atomic<bool> audio_available(false);
         SfgRwFormat rw_format = sfg_format_from_alsa_format(ALSA_FORMAT);
 
         std::unique_ptr<AudioStream> audio_stream = std::make_unique<AudioStream>(
             &shutdown_flag,
-            &data_available,
             rw_format,
             snd_file_source.get(),
             alsa_sink.get()
