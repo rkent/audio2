@@ -22,6 +22,7 @@ typedef struct AlsaHwParams {
     snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;
     snd_pcm_format_t format = SND_PCM_FORMAT_S16;
     unsigned int samplerate = 48000;
+    snd_pcm_stream_t direction = SND_PCM_STREAM_PLAYBACK;
     bool operator!=(const AlsaHwParams& p_rhs) const
     {
         return std::tie(

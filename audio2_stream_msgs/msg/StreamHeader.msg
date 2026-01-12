@@ -11,6 +11,9 @@ uint8 handle 0
 # Description of this stream, for example filename of a sound effect, or "microphone".
 string description
 
+# Volume to apply at sink
+float32 volume
+
 # UUID to identify this stream. For example, the same file played multiple times
 # would have a different UUID for each playback.
 unique_identifier_msgs/UUID uuid

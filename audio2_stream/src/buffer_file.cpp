@@ -5,6 +5,7 @@
 #include <cstring>
 #include <ios>
 #include <fstream>
+#include <cstdio>
 
 #include "rclcpp/rclcpp.hpp"
 // #include "rclcpp/rclcpp.hpp"
@@ -826,4 +827,129 @@ std::optional<std::string>
 alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
     return alsa_play(sndfile, sfinfo.format, sfinfo.channels, alsa_dev, alsa_format, shutdown_flag);
+}
+
+std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
+{
+    AlsaHwParams hw_params;
+    hw_params.device = alsa_device_name_.c_str();
+    hw_params.channels = channels_;
+    hw_params.samplerate = samplerate_;
+    hw_params.format = format_;
+    hw_params.direction = direction;
+
+    AlsaSwParams sw_params;
+
+    return alsa_open(hw_params, sw_params, alsa_dev_);
+};
+
+void AlsaTerminal::close() {
+    if (alsa_dev_) {
+        snd_pcm_drain(alsa_dev_);
+        snd_pcm_close(alsa_dev_);
+        alsa_dev_ = nullptr;
+    }
+    return;
+}
+
+void AlsaSink::run(AudioStream * audio_stream)
+{
+    assert(audio_stream);
+    assert(alsa_dev_);
+    while (audio_stream->shutdown_flag_->load()) {
+        if (error_str_.length() > 0) {
+            break;
+        }
+        if (!alsa_dev_) {
+            error_str_ = "ALSA device is not opened";
+            break;
+        }
+        std::vector<uint8_t> audio_data;
+
+        // Wait to pop from queue
+        audio_stream->data_available_->wait(false); // Wait until there's something to process
+        audio_stream->data_available_->store(false);
+        if (!audio_stream->queue_->pop(audio_data)) {
+            // Check if shutdown has been requested
+            if (audio_stream->shutdown_flag_->load()) {
+                break;
+            }
+            // Queue is empty, sleep briefly and continue. We should not reach this.
+            printf("Audio queue is empty, waiting...");
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+        int write_result = alsa_write(
+            static_cast<int>(audio_data.size() / bytes_per_sample),
+            alsa_dev_,
+            audio_data.data(),
+            channels_, // channels
+            format_,
+            audio_stream->shutdown_flag_);
+        if (write_result < 0) {
+            printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
+        }
+    }
+    close();
+    return;
+}
+
+std::optional<std::string> SndFileSource::open()
+{
+    sndfileh_ = SndfileHandle(file_path_.c_str());
+    if (sndfileh_.error()) {
+        return sndfileh_.strError();
+    }
+    return std::nullopt;
+}
+
+void SndFileSource::run(AudioStream * audio_stream)
+{
+    const int BUFFER_FRAMES = 480;
+    auto r_format = sfg_format_from_sndfile_format(sndfileh_.format());
+    auto w_format = audio_stream->rw_format_;
+    auto r_sample_size = sample_size_from_sfg_format(r_format);
+    auto w_sample_size = sample_size_from_sfg_format(w_format);
+    auto r_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * r_sample_size;
+    auto w_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * w_sample_size;
+    std::vector<uint8_t> r_buffer(r_buffer_size);
+    std::vector<uint8_t> w_buffer(w_buffer_size);
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
+    auto next_time = std::chrono::steady_clock::now();
+    int silent_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
+
+    while (!(audio_stream->shutdown_flag_->load())) {
+        int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
+        if (samples_read <= 0) {
+            if (silent_frames > 0) {
+                // Push silence
+                std::fill(r_buffer.begin(), r_buffer.end(), 0);
+                silent_frames -= BUFFER_FRAMES;
+                samples_read = BUFFER_FRAMES * sndfileh_.channels();
+                printf("End of file reached, pushing silence (%d frames left)\n", silent_frames);
+            } else {
+                break; // End of file or error
+            }
+        }
+        int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
+        if (samples_converted < 0) {
+            RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+            break;
+        } else if (samples_converted != samples_read) {
+            RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d", samples_read, samples_converted);
+            break;
+        }
+
+        while (!audio_stream->queue_->push(w_buffer) && !audio_stream->shutdown_flag_->load()) {
+            RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        printf("Pushed %d samples to audio queue\n", samples_converted);
+        audio_stream->data_available_->store(true);
+        audio_stream->data_available_->notify_one();
+        next_time += duration;
+        std::this_thread::sleep_until(next_time);
+    }
+    printf("SndFileSource::run exiting\n");
 }

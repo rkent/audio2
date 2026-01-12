@@ -165,7 +165,7 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
     std::string error_str;
 
     do {
-        ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, SND_PCM_STREAM_PLAYBACK, 0);
+        ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, hw_vals.direction, 0);
         snd_pcm_hw_params_alloca (&hw_params);
 
         ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params);
