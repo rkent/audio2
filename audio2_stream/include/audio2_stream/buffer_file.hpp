@@ -232,6 +232,9 @@ public:
     SfgRwFormat rw_format_;
     AudioTerminal* source_;
     AudioTerminal* sink_;
+
+    void shutdown();
+    void run();
 };
 
 class AudioTerminal

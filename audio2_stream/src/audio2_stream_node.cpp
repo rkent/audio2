@@ -24,21 +24,24 @@ static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
 boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
 
+// Global pointer to audio stream for signal handler
+static AudioStream* g_audio_stream_ptr = nullptr;
+
 #define ALSA_FORMAT SND_PCM_FORMAT_S16
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {
-        RCLCPP_INFO(rcl_logger, "Keyboard interrupt received. Shutting down.");
-        shutdown_flag.store(true);
-        data_available.store(true); // Wake up any waiting threads
-        data_available.notify_all();
+        RCLCPP_INFO(rcl_logger, "SIGINT received, shutting down audio stream...");
+        if (g_audio_stream_ptr) {
+            g_audio_stream_ptr->shutdown();
+        }
         rclcpp::shutdown();
     }
 }
 
 int main(int argc, [[maybe_unused]] char ** argv)
 {
-    std::signal(SIGINT, signal_handler); // Register the signal handler
+    //std::signal(SIGINT, signal_handler); // Register the signal handler
     rclcpp::init(argc, argv);
 
     // boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
@@ -86,18 +89,12 @@ int main(int argc, [[maybe_unused]] char ** argv)
             snd_file_source.get(),
             alsa_sink.get()
         );
-
-        std::thread sndfile_stream_thread(&AudioTerminal::run, audio_stream->source_, audio_stream.get());
-        std::thread alsa_write_thread(&AudioTerminal::run, audio_stream->sink_, audio_stream.get());
+        g_audio_stream_ptr = audio_stream.get();
+        std::thread audio_thread(&AudioStream::run, audio_stream.get());
 
         RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
-        sndfile_stream_thread.join();
-        printf("Sndfile stream thread joined for file %s\n", argv[k]);
-        shutdown_flag.store(true);
-        data_available.store(true); // Wake up any waiting threads
-        data_available.notify_all();
-        alsa_write_thread.join();
-        printf("End of threads for file %s\n", argv[k]);
+        audio_thread.join();
+        printf("Stream thread joined for file %s\n", argv[k]);
         break;
         if (shutdown_flag.load()) {
             break;

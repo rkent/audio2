@@ -954,4 +954,20 @@ void SndFileSource::run(AudioStream * audio_stream)
         std::this_thread::sleep_until(next_time);
     }
     printf("SndFileSource::run exiting\n");
+    audio_stream->shutdown();
+}
+
+void AudioStream::shutdown()
+{
+    shutdown_flag_->store(true);
+    data_available_->store(true);
+    data_available_->notify_all();
+}
+
+void AudioStream::run()
+{
+    std::thread source_thread(&AudioTerminal::run, source_, this);
+    std::thread sink_thread(&AudioTerminal::run, sink_, this);
+    source_thread.join();
+    sink_thread.join();
 }
