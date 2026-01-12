@@ -87,8 +87,8 @@ int main(int argc, [[maybe_unused]] char ** argv)
             alsa_sink.get()
         );
 
-        std::thread sndfile_stream_thread(&SndFileSource::run, snd_file_source.get(), audio_stream.get());
-        std::thread alsa_write_thread(&AlsaSink::run, alsa_sink.get(), audio_stream.get());
+        std::thread sndfile_stream_thread(&AudioTerminal::run, audio_stream->source_, audio_stream.get());
+        std::thread alsa_write_thread(&AudioTerminal::run, audio_stream->sink_, audio_stream.get());
 
         RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
         sndfile_stream_thread.join();
