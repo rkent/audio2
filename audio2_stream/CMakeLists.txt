@@ -28,8 +28,9 @@ install(DIRECTORY include/ DESTINATION include)
 add_library(
     ${PROJECT_NAME}
     SHARED
-    src/alsaops.cpp
-    src/buffer_file.cpp
+    src/lib/alsaops.cpp
+    src/lib/buffer_file.cpp
+    src/lib/AudioStream.cpp
 )
 
 #set(SOURCE_FILES

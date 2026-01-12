@@ -13,6 +13,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
+#include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
