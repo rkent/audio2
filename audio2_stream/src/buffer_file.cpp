@@ -870,26 +870,20 @@ void AlsaSink::run(AudioStream * audio_stream)
         // Wait to pop from queue
         audio_stream->data_available_->wait(false); // Wait until there's something to process
         audio_stream->data_available_->store(false);
-        if (!audio_stream->queue_->pop(audio_data)) {
-            // Check if shutdown has been requested
-            if (audio_stream->shutdown_flag_->load()) {
-                break;
+        // empty the queue
+        while (audio_stream->queue_->pop(audio_data)) {
+            int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+            int write_result = alsa_write(
+                static_cast<int>(audio_data.size() / bytes_per_sample),
+                alsa_dev_,
+                audio_data.data(),
+                channels_, // channels
+                format_,
+                nullptr  // shutdown flag
+            );
+            if (write_result < 0) {
+                printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
             }
-            // Queue is empty, sleep briefly and continue. We should not reach this.
-            printf("Audio queue is empty, waiting...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-        int bytes_per_sample = snd_pcm_format_width(format_) / 8;
-        int write_result = alsa_write(
-            static_cast<int>(audio_data.size() / bytes_per_sample),
-            alsa_dev_,
-            audio_data.data(),
-            channels_, // channels
-            format_,
-            audio_stream->shutdown_flag_);
-        if (write_result < 0) {
-            printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
         }
     }
     puts("AlsaSink::run exiting\n");
@@ -941,28 +935,37 @@ void SndFileSource::run(AudioStream * audio_stream)
     std::vector<uint8_t> w_buffer(w_buffer_size);
     auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
+    bool done = false;
 
-    while (!(audio_stream->shutdown_flag_->load())) {
-        int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
-        if (samples_read <= 0) {
-            break; // End of file or error
-        }
-        int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
-        if (samples_converted < 0) {
-            RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
-            break;
-        } else if (samples_converted != samples_read) {
-            RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d", samples_read, samples_converted);
-            break;
-        }
+    while (!(audio_stream->shutdown_flag_->load()) && !done) {
+        // Fill the queue before sleeping
+        while (audio_stream->queue_->write_available() > 0 &&
+               !audio_stream->shutdown_flag_->load()) {
+            int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
+            if (samples_read <= 0) {
+                done = true;
+                break; // End of file or error
+            }
+            int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
+            if (samples_converted < 0) {
+                RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+                done = true;
+                break;
+            } else if (samples_converted != samples_read) {
+                RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d", samples_read, samples_converted);
+                done = true;
+                break;
+            }
 
-        while (!audio_stream->queue_->push(w_buffer) && !audio_stream->shutdown_flag_->load()) {
-            RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            while (!audio_stream->queue_->push(w_buffer) && !audio_stream->shutdown_flag_->load()) {
+                // We should not reach here since we checked write_available above
+                RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            printf("Pushed %d samples to audio queue\n", samples_converted);
+            audio_stream->data_available_->store(true);
+            audio_stream->data_available_->notify_one();
         }
-        printf("Pushed %d samples to audio queue\n", samples_converted);
-        audio_stream->data_available_->store(true);
-        audio_stream->data_available_->notify_one();
         next_time += duration;
         std::this_thread::sleep_until(next_time);
     }

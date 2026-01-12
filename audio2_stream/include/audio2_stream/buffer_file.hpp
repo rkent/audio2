@@ -12,6 +12,8 @@
 
 #include "audio2_stream/alsaops.hpp"
 
+const int AUDIO_QUEUE_SIZE = 10;
+
 /**
  * Convert sndfile format to human-readable string.
  * \param format The sndfile format integer.

@@ -45,7 +45,7 @@ int main(int argc, [[maybe_unused]] char ** argv)
     rclcpp::init(argc, argv);
 
     // boost::lockfree::spsc_queue<PlayBufferParams> audio_queue(10); // Queue size of 10
-    boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(10);
+    boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(AUDIO_QUEUE_SIZE);
     // Start play_buffer thread
     //std::thread playback_thread(play_buffer_thread, &audio_queue, &shutdown_flag, &data_available);
 
