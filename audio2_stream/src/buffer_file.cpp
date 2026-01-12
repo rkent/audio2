@@ -893,6 +893,28 @@ void AlsaSink::run(AudioStream * audio_stream)
         }
     }
     puts("AlsaSink::run exiting\n");
+    // Push silence to fill the buffer before closing
+    const int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+    int silence_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
+    const int silence_size = silence_frames * channels_ * bytes_per_sample;
+    std::vector<uint8_t> silence_buffer(silence_size, 0);
+    while (silence_frames > 0) {
+        int written = alsa_write(
+            silence_frames,
+            alsa_dev_,
+            silence_buffer.data(),
+            channels_,
+            format_,
+            nullptr  // no shutdown flag so we can finish writing silence
+        );
+        if (written < 0) {
+            printf("Error writing silence to ALSA device: %s\n", snd_strerror(written));
+            break;
+        }
+        printf("Wrote %d silence frames to ALSA device of %d\n", written, silence_frames);
+        silence_frames -= written;
+    }
+
     close();
     return;
 }
@@ -919,20 +941,11 @@ void SndFileSource::run(AudioStream * audio_stream)
     std::vector<uint8_t> w_buffer(w_buffer_size);
     auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
-    int silent_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 
     while (!(audio_stream->shutdown_flag_->load())) {
         int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
         if (samples_read <= 0) {
-            if (silent_frames > 0) {
-                // Push silence
-                std::fill(r_buffer.begin(), r_buffer.end(), 0);
-                silent_frames -= BUFFER_FRAMES;
-                samples_read = BUFFER_FRAMES * sndfileh_.channels();
-                printf("End of file reached, pushing silence (%d frames left)\n", silent_frames);
-            } else {
-                break; // End of file or error
-            }
+            break; // End of file or error
         }
         int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
         if (samples_converted < 0) {
