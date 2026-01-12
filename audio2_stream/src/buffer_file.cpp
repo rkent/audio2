@@ -856,7 +856,8 @@ void AlsaSink::run(AudioStream * audio_stream)
 {
     assert(audio_stream);
     assert(alsa_dev_);
-    while (audio_stream->shutdown_flag_->load()) {
+    printf("AlsaSink::run started\n");
+    while (!audio_stream->shutdown_flag_->load()) {
         if (error_str_.length() > 0) {
             break;
         }
@@ -891,6 +892,7 @@ void AlsaSink::run(AudioStream * audio_stream)
             printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
         }
     }
+    puts("AlsaSink::run exiting\n");
     close();
     return;
 }
