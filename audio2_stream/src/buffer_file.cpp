@@ -975,6 +975,7 @@ void SndFileSource::run(AudioStream * audio_stream)
 
 void AudioStream::shutdown()
 {
+    printf("AudioStream::shutdown called\n");
     shutdown_flag_.store(true);
     data_available_.store(true);
     data_available_.notify_all();

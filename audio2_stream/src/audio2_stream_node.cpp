@@ -15,9 +15,6 @@
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 
-// Global flag to signal thread shutdown
-std::atomic<bool> shutdown_flag(false);
-
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
 // Global pointer to audio stream for signal handler
@@ -37,7 +34,7 @@ void signal_handler(int signal) {
 
 int main(int argc, [[maybe_unused]] char ** argv)
 {
-    //std::signal(SIGINT, signal_handler); // Register the signal handler
+    std::signal(SIGINT, signal_handler); // Register the signal handler
     rclcpp::init(argc, argv);
 
     // Enqueue all files from command line arguments
@@ -74,6 +71,7 @@ int main(int argc, [[maybe_unused]] char ** argv)
             snd_file_source.get(),
             alsa_sink.get()
         );
+
         g_audio_stream_ptr = audio_stream.get();
         std::thread audio_thread(&AudioStream::run, audio_stream.get());
 
