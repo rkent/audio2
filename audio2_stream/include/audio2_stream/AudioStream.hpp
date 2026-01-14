@@ -15,26 +15,31 @@ class AudioStream
 public:
     AudioStream(
         SfgRwFormat rw_format,
-        AudioTerminal* source,
-        AudioTerminal* sink
+        std::unique_ptr<AudioTerminal> source,
+        std::unique_ptr<AudioTerminal> sink
     ) :
         shutdown_flag_(false),
         data_available_(false),
         queue_(AUDIO_QUEUE_SIZE),
         rw_format_(rw_format),
-        source_(source),
-        sink_(sink)
+        source_(std::move(source)),
+        sink_(std::move(sink)),
+        source_thread_(nullptr),
+        sink_thread_(nullptr)
     {}
+    ~AudioStream() = default;
 
     std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
     boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
     SfgRwFormat rw_format_;
-    AudioTerminal* source_;
-    AudioTerminal* sink_;
+    std::unique_ptr<AudioTerminal> source_;
+    std::unique_ptr<AudioTerminal> sink_;
+    std::unique_ptr<std::jthread> source_thread_;
+    std::unique_ptr<std::jthread> sink_thread_;
 
     void shutdown();
-    void run();
+    void start();
 };
 
 class AudioTerminal

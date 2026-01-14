@@ -160,12 +160,11 @@ void AudioStream::shutdown()
     shutdown_flag_.store(true);
     data_available_.store(true);
     data_available_.notify_all();
+    printf("AudioStream::shutdown notified\n");
 }
 
-void AudioStream::run()
+void AudioStream::start()
 {
-    std::thread source_thread(&AudioTerminal::run, source_, this);
-    std::thread sink_thread(&AudioTerminal::run, sink_, this);
-    source_thread.join();
-    sink_thread.join();
+    source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
+    sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
 }

@@ -17,6 +17,7 @@ find_package(builtin_interfaces REQUIRED)
 set(msg_files
   "msg/AudioChunk.msg"
   "msg/StreamHeader.msg"
+  "msg/PlayFile.msg"
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

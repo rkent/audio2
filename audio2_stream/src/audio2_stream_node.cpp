@@ -9,6 +9,7 @@
 #include <atomic>
 #include <fstream>
 #include <memory>
+#include <functional>
 
 #include "rclcpp/rclcpp.hpp"
 #include "audio2_stream/alsaops.hpp"
@@ -16,43 +17,66 @@
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 
-static auto rcl_logger = rclcpp::get_logger("audio2_stream");
+#include "audio2_stream_msgs/msg/play_file.hpp"
 
-// Global pointer to audio stream for signal handler
-static AudioStream* g_audio_stream_ptr = nullptr;
+static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
 #define ALSA_FORMAT SND_PCM_FORMAT_S16
 
-void signal_handler(int signal) {
-    if (signal == SIGINT) {
-        RCLCPP_INFO(rcl_logger, "SIGINT received, shutting down audio stream...");
-        if (g_audio_stream_ptr) {
-            g_audio_stream_ptr->shutdown();
-        }
-        rclcpp::shutdown();
+class AudioStreamsNode : public rclcpp::Node {
+public:
+    AudioStreamsNode() : Node("audio_streams_node") {
+        // Subscriber for local PlayFile messages
+        play_file_local_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::PlayFile>(
+            "play_file_local", 10,
+            std::bind(&AudioStreamsNode::play_file_callback, this, std::placeholders::_1));
+
+        // Register shutdown callback
+        rclcpp::on_shutdown(
+            std::bind(&AudioStreamsNode::stop_streams_callback, this));
+
+        // Timer to check and clean up finished streams
+        timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(20),
+            std::bind(&AudioStreamsNode::check_streams_callback, this));
+        RCLCPP_INFO(rcl_logger, "AudioStreamsNode initialized.");
     }
-}
 
-int main(int argc, [[maybe_unused]] char ** argv)
-{
-    std::signal(SIGINT, signal_handler); // Register the signal handler
-    rclcpp::init(argc, argv);
+    void check_streams_callback()
+    {
+        std::erase_if(audio_streams_, [](const std::unique_ptr<AudioStream>& stream) {
+            return stream->shutdown_flag_.load();
+        });
+    }
 
-    // Enqueue all files from command line arguments
-    for (int k = 1; k < argc; k++) {
-        auto file_path = std::string(argv[k]);
+    void stop_streams_callback()
+    {
+        for (auto& stream : audio_streams_) {
+            stream->shutdown();
+        }
+        audio_streams_.clear();
+    }
+
+    void play_file_callback(const audio2_stream_msgs::msg::PlayFile::SharedPtr msg) {
+        RCLCPP_INFO(rcl_logger, "Received PlayFile message: path=%s, play_type=%d",
+            msg->path.c_str(), msg->play_type);
+        auto file_path = msg->path;
+
+        // Open the local file
         std::unique_ptr<SndFileSource> snd_file_source = std::make_unique<SndFileSource>(file_path);
         auto open_result = snd_file_source->open();
+        if (open_result.has_value()) {
+            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), open_result.value().c_str());
+            return;
+        }
+
         int channels = snd_file_source->sndfileh_.channels();
         int samplerate = snd_file_source->sndfileh_.samplerate();
         int sndfile_format = snd_file_source->sndfileh_.format();
-        if (open_result.has_value()) {
-            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), open_result.value().c_str());
-            return 1;
-        }
         RCLCPP_INFO(rcl_logger, "Opened file %s: channels=%d, samplerate=%d, format=0x%X",
             file_path.c_str(), channels, samplerate, sndfile_format);
 
+        // Open the playback device
         std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
             ALSA_DEVICE_NAME,
             channels,
@@ -62,27 +86,36 @@ int main(int argc, [[maybe_unused]] char ** argv)
         auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
         if (alsa_open_result.has_value()) {
             RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device: %s", alsa_open_result->c_str());
-            return 1;
+            return;
         }
 
         SfgRwFormat rw_format = sfg_format_from_alsa_format(ALSA_FORMAT);
-
-        std::unique_ptr<AudioStream> audio_stream = std::make_unique<AudioStream>(
+        auto audio_stream = std::make_unique<AudioStream>(
             rw_format,
-            snd_file_source.get(),
-            alsa_sink.get()
+            std::move(snd_file_source),
+            std::move(alsa_sink)
         );
 
-        g_audio_stream_ptr = audio_stream.get();
-        std::thread audio_thread(&AudioStream::run, audio_stream.get());
+        audio_stream->start();
+        audio_streams_.push_back(std::move(audio_stream));
 
-        RCLCPP_INFO(rcl_logger, "Enqueued file %s", argv[k]);
-        audio_thread.join();
-        printf("Stream thread joined for file %s\n", argv[k]);
-        break;
+        RCLCPP_INFO(rcl_logger, "Enqueued file %s", file_path.c_str());
+
     }
+private:
+    rclcpp::Subscription<audio2_stream_msgs::msg::PlayFile>::SharedPtr play_file_local_subscriber_;
+    std::vector<std::unique_ptr<AudioStream>> audio_streams_;
+    rclcpp::TimerBase::SharedPtr timer_;
+};
 
-    RCLCPP_INFO(rcl_logger, "Shutting down...");
+
+int main(int argc, [[maybe_unused]] char ** argv)
+{
+    RCLCPP_INFO(rcl_logger, "Starting AudioStreamsNode...");
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<AudioStreamsNode>();
+    rclcpp::spin(node);
+    RCLCPP_INFO(rcl_logger, "AudioStreamsNode shutting down...");
     rclcpp::shutdown();
     return 0;
 }

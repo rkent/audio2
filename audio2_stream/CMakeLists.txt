@@ -104,6 +104,7 @@ target_link_libraries(audio2_stream_node
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
+    ${audio2_stream_msgs_TARGETS}
 )
 
 include_directories(${SNDFILE_INCLUDE_DIRS})
