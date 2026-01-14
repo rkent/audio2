@@ -166,7 +166,7 @@ int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int sam
  * \param samples The number of samples to write.
  * \return        The number of samples written, or a negative error code.
  */
-int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples);
+int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples);
 
 /**
  * alsa_play: Play audio from a SNDFILE using ALSA
@@ -206,5 +206,8 @@ private:
     std::atomic<bool>* data_available_;
     boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue_;
 };
+
+void create_convert_vectors(SfgRwFormat from_format, SfgRwFormat to_format, int samples,
+    std::vector<uint8_t>& r_buffer, std::vector<uint8_t>& w_buffer);
 
 #endif // SNDPLAY_BUFFER_FILE_HPP

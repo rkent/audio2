@@ -1,5 +1,6 @@
 # Command to play a file
 string path
+string topic
 
 # Whether to repeat a file
 int8 PLAY_STOP = 0 # Stop this sound from playing

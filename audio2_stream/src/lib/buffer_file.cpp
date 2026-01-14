@@ -159,7 +159,7 @@ int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int sam
 }
 
 // Write samples from a buffer to a SNDFILE with scaling and conversion.
-int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples)
+int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples)
 {
     if (samples <= 0) {
         return samples;
@@ -178,7 +178,7 @@ int sfg_write_convert(SNDFILE * sndfile, SfgRwFormat from_format, SfgRwFormat to
             return samples_converted; // Conversion error
         }
         // Write converted samples to sndfile
-        int written = sfg_write2(sndfile, to_format, byte_buffer, samples_converted);
+        int written = sfg_write2(fileh.rawHandle(), to_format, byte_buffer, samples_converted);
         if (written < 0) {
             printf("Error writing to sndfile: %d\n", written);
             return written; // Write error
@@ -584,6 +584,19 @@ scale_data(int readcount, snd_pcm_format_t read_format, snd_pcm_format_t alsa_fo
     return 0;
 }
 
+void create_convert_vectors(SfgRwFormat r_format, SfgRwFormat w_format, int samples,
+    std::vector<uint8_t>& r_buffer, std::vector<uint8_t>& w_buffer)
+{
+    auto r_sample_size = sample_size_from_sfg_format(r_format);
+    auto w_sample_size = sample_size_from_sfg_format(w_format);
+    auto r_buffer_size = samples * r_sample_size;
+    auto w_buffer_size = samples * w_sample_size;
+    r_buffer.reserve(r_buffer_size);
+    w_buffer.reserve(w_buffer_size);
+}
+
+
+// Convert audio data between different SfgRwFormat types.
 int convert_types(SfgRwFormat from_format, SfgRwFormat to_format, const void* in_buffer, void* out_buffer, int samples)
 {
     const short* in_short = reinterpret_cast<const short*>(in_buffer);

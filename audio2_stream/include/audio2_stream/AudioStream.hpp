@@ -27,7 +27,7 @@ public:
         source_thread_(nullptr),
         sink_thread_(nullptr)
     {}
-    ~AudioStream() = default;
+    ~AudioStream() { printf("AudioStream::~AudioStream called\n");};
 
     std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
@@ -107,6 +107,25 @@ public:
 
     void run(AudioStream * audio_stream) override;
 
+};
+
+class MessageSink : public AudioTerminal
+{
+public:
+    MessageSink(
+        std::string topic,
+        int channels,
+        int samplerate,
+        int sfFormat
+    );
+
+    void run(AudioStream * audio_stream) override;
+
+protected:
+    std::string topic_;
+    int channels_;
+    int samplerate_;
+    int sfFormat_;
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

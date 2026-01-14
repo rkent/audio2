@@ -33,6 +33,8 @@ void AlsaTerminal::close() {
     return;
 }
 
+const int BUFFER_FRAMES = 480;
+
 void AlsaSink::run(AudioStream * audio_stream)
 {
     assert(audio_stream);
@@ -105,15 +107,13 @@ std::optional<std::string> SndFileSource::open()
 
 void SndFileSource::run(AudioStream * audio_stream)
 {
-    const int BUFFER_FRAMES = 480;
     auto r_format = sfg_format_from_sndfile_format(sndfileh_.format());
     auto w_format = audio_stream->rw_format_;
     auto r_sample_size = sample_size_from_sfg_format(r_format);
     auto w_sample_size = sample_size_from_sfg_format(w_format);
-    auto r_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * r_sample_size;
-    auto w_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * w_sample_size;
-    std::vector<uint8_t> r_buffer(r_buffer_size);
-    std::vector<uint8_t> w_buffer(w_buffer_size);
+    std::vector<uint8_t> r_buffer;
+    std::vector<uint8_t> w_buffer;
+    create_convert_vectors(r_format, w_format, BUFFER_FRAMES * sndfileh_.channels(), r_buffer, w_buffer);
     auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
     bool done = false;
@@ -163,8 +163,62 @@ void AudioStream::shutdown()
     printf("AudioStream::shutdown notified\n");
 }
 
+MessageSink::MessageSink(
+    std::string topic,
+    int channels,
+    int samplerate,
+    int sfFormat
+) :
+    AudioTerminal(),
+    topic_(topic),
+    channels_(channels),
+    samplerate_(samplerate),
+    sfFormat_(sfFormat)
+{}
+
+void MessageSink::run(AudioStream * audio_stream)
+{
+    assert(audio_stream);
+    printf("MessageSink::run started\n");
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (samplerate_)));
+    auto next_time = std::chrono::steady_clock::now();
+    std::vector<uint8_t> audio_data;
+    bool done = false;
+
+    while (!done) {
+
+        // Wait to pop from queue
+        // audio_stream->data_available_.wait(false);
+        // audio_stream->data_available_.store(false);
+
+        // Send a single chunk as a message
+        if (audio_stream->queue_.pop(audio_data)) {
+            // Minimal implementation: just print info about the data
+            auto time_since_epoch = next_time.time_since_epoch();
+            auto hours = std::chrono::duration_cast<std::chrono::hours>(time_since_epoch) % 24;
+            auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
+            auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
+            auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
+            printf("MessageSink sending audio chunk of %zu bytes on topic %s at %02ld:%02ld:%02ld:%03ld\n", 
+                   audio_data.size(), topic_.c_str(), hours.count(), minutes.count(), seconds.count(), milliseconds.count());
+
+            // Here you would create and publish the ROS2
+        } else {
+            // No data available. Maybe shutdown was requested.
+            if (audio_stream->shutdown_flag_.load()) {
+                done = true;
+            } else {
+                printf("MessageSink: no audio data available in queue\n");
+            }
+        }
+        next_time += duration;
+        std::this_thread::sleep_until(next_time);
+    }
+    printf("MessageSink::run exiting\n");
+}
+
 void AudioStream::start()
 {
-    source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
     sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
+    source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
 }

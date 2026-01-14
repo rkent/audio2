@@ -113,7 +113,7 @@ public:
             //mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
             //printf("Bitrate mode: %d\n", mode);
 
-            int samples_written = sfg_write_convert(tw_vio_sndfileh.fileh.rawHandle(), file_rw_format, topic_rw_format, file_buffer.data(), samples_read);
+            int samples_written = sfg_write_convert(tw_vio_sndfileh.fileh, file_rw_format, topic_rw_format, file_buffer.data(), samples_read);
             if (samples_written != samples_read) {
                 RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written, samples_read);
                 break;
