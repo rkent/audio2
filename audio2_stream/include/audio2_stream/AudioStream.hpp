@@ -7,13 +7,28 @@
 #include <atomic>
 #include <vector>
 #include <string>
+#include <cstdint>
+#include <random>
 
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "unique_identifier_msgs/msg/uuid.hpp"
 
 const SfgRwFormat SFG_RW_FORMAT = SFG_FLOAT;
 const int MAX_HEADER = 128;
 const int BUFFER_FRAMES = 480;
+
+// Adapted from https://github.com/autowarefoundation/autoware_utils/tree/main/autoware_utils_uuid
+inline unique_identifier_msgs::msg::UUID generate_uuid()
+{
+  // Generate random number
+  unique_identifier_msgs::msg::UUID uuid;
+  std::mt19937 gen(std::random_device{}());
+  std::independent_bits_engine<std::mt19937, 8, uint8_t> bit_eng(gen);
+  std::generate(uuid.uuid.begin(), uuid.uuid.end(), bit_eng);
+
+  return uuid;
+}
 
 class AudioTerminal;
 
@@ -32,7 +47,8 @@ public:
         source_(std::move(source)),
         sink_(std::move(sink)),
         source_thread_(nullptr),
-        sink_thread_(nullptr)
+        sink_thread_(nullptr),
+        stream_uuid_(generate_uuid())
     {}
     ~AudioStream() { printf("AudioStream::~AudioStream called\n");};
 
@@ -45,6 +61,7 @@ public:
     std::unique_ptr<AudioTerminal> sink_;
     std::unique_ptr<std::jthread> source_thread_;
     std::unique_ptr<std::jthread> sink_thread_;
+    unique_identifier_msgs::msg::UUID stream_uuid_;
 
     void shutdown();
     void start();
@@ -138,6 +155,18 @@ protected:
     int sfFormat_;
     rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
     std::string description_;
+};
+
+class MessageSource : public AudioTerminal
+{
+public:
+    MessageSource(std::string topic);
+
+    void run(AudioStream * audio_stream) override;
+    void callback(const audio2_stream_msgs::msg::AudioChunk::SharedPtr msg, AudioStream * audio_stream);
+
+protected:
+    std::string topic_;
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

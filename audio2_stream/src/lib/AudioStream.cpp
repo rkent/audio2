@@ -5,24 +5,8 @@
 #include <fstream>
 #include <cstdio>
 #include <audio2_stream/AudioStream.hpp>
-#include <cstdint>
-#include <random>
-
-#include "unique_identifier_msgs/msg/uuid.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
-
-// Adapted from https://github.com/autowarefoundation/autoware_utils/tree/main/autoware_utils_uuid
-inline unique_identifier_msgs::msg::UUID generate_uuid()
-{
-  // Generate random number
-  unique_identifier_msgs::msg::UUID uuid;
-  std::mt19937 gen(std::random_device{}());
-  std::independent_bits_engine<std::mt19937, 8, uint8_t> bit_eng(gen);
-  std::generate(uuid.uuid.begin(), uuid.uuid.end(), bit_eng);
-
-  return uuid;
-}
 
 std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 {
@@ -291,10 +275,81 @@ void MessageSink::run(AudioStream * audio_stream)
     printf("MessageSink::run exiting\n");
 }
 
+MessageSource::MessageSource(
+    std::string topic
+) :
+    AudioTerminal(),
+    topic_(topic)
+{}
+
+void MessageSource::run([[maybe_unused]]AudioStream * audio_stream)
+{
+    // This is just a placeholder, no need for a separate thread as ros2 handles callbacks.
+    printf("MessageSource::run exiting (not needed)\n");
+}
+
+void MessageSource::callback(
+    const audio2_stream_msgs::msg::AudioChunk::SharedPtr message,
+    AudioStream * audio_stream
+)
+{
+    assert(audio_stream);
+    printf("MessageSource received audio chunk with %zu bytes on topic %s\n", message->data.size(), topic_.c_str());
+    if ((message->header.sequence == message->header.SEQUENCE_EOS)) {
+        printf("MessageSource received end-of-stream message\n");
+        audio_stream->shutdown();
+        return;
+    }
+
+    VIO_SOUNDFILE_HANDLE tr_handle;
+    tr_handle.vio_data.data = reinterpret_cast<char *>(message->data.data());
+    tr_handle.vio_data.length = message->data.size();
+    tr_handle.vio_data.offset = 0;
+    tr_handle.vio_data.capacity =  message->data.size();
+
+    if (auto err = open_sndfile_from_buffer2(tr_handle, SFM_READ)) {
+        RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
+        return;
+    }
+
+    auto r_format = sfg_format_from_sndfile_format(tr_handle.fileh.format());
+    auto w_format = audio_stream->rw_format_;
+    std::vector<uint8_t> r_buffer;
+    std::vector<uint8_t> w_buffer;
+    create_convert_vectors(r_format, w_format, BUFFER_FRAMES * tr_handle.fileh.channels(), r_buffer, w_buffer);
+
+    bool done = false;
+    while (!(audio_stream->shutdown_flag_.load()) && !done) {
+        int samples_read = sfg_read2(tr_handle.fileh, r_format, r_buffer.data(), BUFFER_FRAMES * tr_handle.fileh.channels());
+        if (samples_read <= 0) {
+            done = true;
+            break; // End of file or error
+        }
+        int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
+        if (samples_converted < 0) {
+            RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+            done = true;
+            break;
+        } else if (samples_converted != samples_read) {
+            RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d", samples_read, samples_converted);
+            done = true;
+            break;
+        }
+
+        while (!audio_stream->queue_.push(w_buffer) && !audio_stream->shutdown_flag_.load()) {
+            RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        printf("Pushed %d samples to audio queue\n", samples_converted);
+        audio_stream->data_available_.store(true);
+        audio_stream->data_available_.notify_one();
+    }
+}
+
 void AudioStream::start()
 {
-    sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
-    source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
+    if (sink_) sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
+    if (source_) source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
 }
 
 void AudioStream::shutdown()
