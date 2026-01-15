@@ -8,6 +8,13 @@
 #include <vector>
 #include <string>
 
+#include "audio2_stream_msgs/msg/audio_chunk.hpp"
+#include "rclcpp/rclcpp.hpp"
+
+const SfgRwFormat SFG_RW_FORMAT = SFG_FLOAT;
+const int MAX_HEADER = 128;
+const int BUFFER_FRAMES = 480;
+
 class AudioTerminal;
 
 class AudioStream
@@ -31,6 +38,7 @@ public:
 
     std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
+    // TODO: consider making this a unique pointer to reduce copies
     boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
     SfgRwFormat rw_format_;
     std::unique_ptr<AudioTerminal> source_;
@@ -116,7 +124,9 @@ public:
         std::string topic,
         int channels,
         int samplerate,
-        int sfFormat
+        int sfFormat,
+        rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
+        std::string description
     );
 
     void run(AudioStream * audio_stream) override;
@@ -126,6 +136,8 @@ protected:
     int channels_;
     int samplerate_;
     int sfFormat_;
+    rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
+    std::string description_;
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

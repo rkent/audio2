@@ -159,7 +159,7 @@ int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int sam
 }
 
 // Write samples from a buffer to a SNDFILE with scaling and conversion.
-int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format, const char * buffer, int samples)
+int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format, char * buffer, int samples)
 {
     if (samples <= 0) {
         return samples;
@@ -591,8 +591,8 @@ void create_convert_vectors(SfgRwFormat r_format, SfgRwFormat w_format, int samp
     auto w_sample_size = sample_size_from_sfg_format(w_format);
     auto r_buffer_size = samples * r_sample_size;
     auto w_buffer_size = samples * w_sample_size;
-    r_buffer.reserve(r_buffer_size);
-    w_buffer.reserve(w_buffer_size);
+    r_buffer.resize(r_buffer_size);
+    w_buffer.resize(w_buffer_size);
 }
 
 

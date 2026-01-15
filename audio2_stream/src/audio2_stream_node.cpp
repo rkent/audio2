@@ -18,11 +18,12 @@
 #include "boost/lockfree/spsc_queue.hpp"
 
 #include "audio2_stream_msgs/msg/play_file.hpp"
+#include "audio2_stream_msgs/msg/audio_chunk.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
 #define ALSA_FORMAT SND_PCM_FORMAT_S16
-#define SFG_RW_FORMAT SFG_FLOAT
+
 #define SF_FORMAT_DEFAULT (SF_FORMAT_WAV | SF_FORMAT_PCM_16)
 
 class AudioStreamsNode : public rclcpp::Node {
@@ -123,6 +124,8 @@ public:
             return;
         }
 
+        // Create the message publisher
+        auto publisher = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>(msg->topic, 10);
         int channels = snd_file_source->sndfileh_.channels();
         int samplerate = snd_file_source->sndfileh_.samplerate();
         int sndfile_format = snd_file_source->sndfileh_.format();
@@ -134,7 +137,9 @@ public:
             msg->topic,
             channels,
             samplerate,
-            SF_FORMAT_DEFAULT
+            SF_FORMAT_DEFAULT,
+            publisher,
+            file_path
         );
 
         auto audio_stream = std::make_unique<AudioStream>(
@@ -146,8 +151,7 @@ public:
         audio_stream->start();
         audio_streams_.push_back(std::move(audio_stream));
 
-        RCLCPP_INFO(rcl_logger, "Enqueued file %s", file_path.c_str());
-
+        RCLCPP_INFO(rcl_logger, "Enqueued file for remote playback '%s'", file_path.c_str());
     }
 private:
     rclcpp::Subscription<audio2_stream_msgs::msg::PlayFile>::SharedPtr play_file_local_subscriber_;
