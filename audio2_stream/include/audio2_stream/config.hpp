@@ -45,4 +45,7 @@ const int AUDIO_QUEUE_SIZE = 10;
 // Default sound file format for audio streams in ROS2 messages
 const int SF_FORMAT_DEFAULT = (SF_FORMAT_WAV | SF_FORMAT_FLOAT);
 
+// QOS settings for audio chunk message publishers and subscribers
+const int AUDIO_CHUNK_QOS = 100;
+
 #endif // AUDIO2_STREAM_CONFIG_HPP

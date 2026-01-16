@@ -204,26 +204,20 @@ void MessageSink::run(AudioStream * audio_stream)
     audio_stream->data_available_.wait(false); // Wait until there's something to process
     audio_stream->data_available_.store(false);
 
-    // Create and populate the AudioChunk message
-    auto message = audio2_stream_msgs::msg::AudioChunk();
-
-    // Fill in the message header
-    // ToDo: consider making message lifetime match the AudioStream lifetime.
-    message.header.handle = 0; // Placeholder handle
-    message.header.description = description_;
-    message.header.volume = 1.0f; // Placeholder volume
-    message.header.handle = 0; // Placeholder handle
-    message.header.uuid = uuid;
-
     bool done = false;
     while (!done) {
         // Send a single chunk as a message
         if (audio_stream->queue_.pop(audio_data)) {
 
-            // Fill in the message header
-            message.header.sequence = ++sequence_number;
-            message.header.chunk_start_time = rclcpp::Clock().now();
-            message.data.clear();
+            // Create and populate the AudioChunk message
+            auto message = std::make_unique<audio2_stream_msgs::msg::AudioChunk>();
+            message->header.handle = 0; // Placeholder handle
+            message->header.description = description_;
+            message->header.volume = 1.0f; // Placeholder volume
+            message->header.handle = 0; // Placeholder handle
+            message->header.sequence = ++sequence_number;
+            message->header.chunk_start_time = rclcpp::Clock().now();
+            message->header.uuid = uuid;
 
             // Create a virtual sound file in memory for topic publish
             auto data_size = audio_data.size();
@@ -254,12 +248,12 @@ void MessageSink::run(AudioStream * audio_stream)
             }
 
             // Copy the serialized data into message.data
-            message.data.reserve(samples_written * sample_size_from_sfg_format(SFG_RW_FORMAT) + MAX_HEADER);
+            message->data.reserve(samples_written * sample_size_from_sfg_format(SFG_RW_FORMAT) + MAX_HEADER);
             std::copy(snd_file_write.data(), snd_file_write.data() + m_vio_sndfileh.vio_data.length,
-                      std::back_inserter(message.data));
+                      std::back_inserter(message->data));
 
             // Publish the message
-            publisher_->publish(message);
+            publisher_->publish(std::move(message));
 
             // print info about the data
             auto time_since_epoch = next_time.time_since_epoch();
@@ -268,7 +262,7 @@ void MessageSink::run(AudioStream * audio_stream)
             auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
             auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
             printf("MessageSink sending audio chunk of %zu bytes sequence %d at %02ld:%02ld:%02ld:%03ld\n", 
-                   audio_data.size(), message.header.sequence, hours.count(), minutes.count(), seconds.count(), milliseconds.count());
+                   audio_data.size(), sequence_number, hours.count(), minutes.count(), seconds.count(), milliseconds.count());
         } else {
             // No data available. Maybe shutdown was requested.
             if (audio_stream->shutdown_flag_.load()) {
@@ -282,10 +276,16 @@ void MessageSink::run(AudioStream * audio_stream)
     }
 
     // Send a last message indicating end of stream.
-    message.header.sequence = message.header.SEQUENCE_EOS;
-    message.header.chunk_start_time = rclcpp::Clock().now();
-    message.data.clear();
-    publisher_->publish(message);
+    auto message = std::make_unique<audio2_stream_msgs::msg::AudioChunk>();
+    message->header.handle = 0; // Placeholder handle
+    message->header.description = description_;
+    message->header.volume = 1.0f; // Placeholder volume
+    message->header.handle = 0; // Placeholder handle
+    message->header.sequence = message->header.SEQUENCE_EOS;
+    message->header.chunk_start_time = rclcpp::Clock().now();
+    message->header.uuid = uuid;
+
+    publisher_->publish(std::move(message));
 
     printf("MessageSink::run exiting\n");
 }

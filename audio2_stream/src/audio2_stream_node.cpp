@@ -39,8 +39,9 @@ public:
         message_source_ = std::make_unique<MessageSource>(
             "audio_stream_chunks"
         );
+        // TODO: Figure out best QOS settings for audio chunk subscription
         chunk_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::AudioChunk>(
-            "audio_stream_chunks", 10,
+            "audio_stream_chunks", AUDIO_CHUNK_QOS,
             std::bind(&AudioStreamsNode::audio_chunk_callback, this, std::placeholders::_1));
 
         // Register shutdown callback
@@ -186,7 +187,7 @@ public:
         }
 
         // Create the message publisher
-        auto publisher = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>(msg->topic, 10);
+        auto publisher = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>(msg->topic, AUDIO_CHUNK_QOS);
         int channels = snd_file_source->sndfileh_.channels();
         int samplerate = snd_file_source->sndfileh_.samplerate();
         int sndfile_format = snd_file_source->sndfileh_.format();
