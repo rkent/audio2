@@ -13,8 +13,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "audio2_stream/buffer_file.hpp"
 
-#define ALSA_FORMAT SND_PCM_FORMAT_S16
-
  // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);
 

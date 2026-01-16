@@ -25,6 +25,7 @@ class AlsaWrite {
 public:
     int operator()(snd_pcm_t* alsa_dev, T* data, int frames, int channels, std::atomic<bool>* shutdown_flag=nullptr)
     {	static	int epipe_count = 0;
+        printf("AlsaWrite status %d\n", snd_pcm_state(alsa_dev));
 
         int total = 0;
         int retval;
@@ -139,6 +140,13 @@ int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_p
     } else if (alsa_format == SND_PCM_FORMAT_S32) {
         return channels * alsa_write_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+        float* float_data = reinterpret_cast<float*>(data);
+        float rms = 0.0f;
+        for (int i = 0; i < samples; i++) {
+            rms += float_data[i] * float_data[i];
+        }
+        rms = std::sqrt(rms / samples);
+        printf("alsa_write: RMS: %f\n", rms);
         return channels *alsa_write_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
         return channels * alsa_write_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels, shutdown_flag);
@@ -184,8 +192,8 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
         ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params);
         ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold);
         ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold);
-        ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
-        ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
+        //ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
+        //ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
         ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params);
         snd_pcm_uframes_t silence_size;
         snd_pcm_sw_params_get_silence_size(sw_params, &silence_size);

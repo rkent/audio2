@@ -1,6 +1,7 @@
 #ifndef AUDIO2_STREAM_AUDIOSTREAM_HPP
 #define AUDIO2_STREAM_AUDIOSTREAM_HPP
 
+#include "audio2_stream/config.hpp"
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
@@ -13,10 +14,6 @@
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "unique_identifier_msgs/msg/uuid.hpp"
-
-const SfgRwFormat SFG_RW_FORMAT = SFG_FLOAT;
-const int MAX_HEADER = 128;
-const int BUFFER_FRAMES = 480;
 
 // Adapted from https://github.com/autowarefoundation/autoware_utils/tree/main/autoware_utils_uuid
 inline unique_identifier_msgs::msg::UUID generate_uuid()
@@ -38,7 +35,8 @@ public:
     AudioStream(
         SfgRwFormat rw_format,
         std::unique_ptr<AudioTerminal> source,
-        std::unique_ptr<AudioTerminal> sink
+        std::unique_ptr<AudioTerminal> sink,
+        std::string description = ""
     ) :
         shutdown_flag_(false),
         data_available_(false),
@@ -48,9 +46,10 @@ public:
         sink_(std::move(sink)),
         source_thread_(nullptr),
         sink_thread_(nullptr),
-        stream_uuid_(generate_uuid())
+        stream_uuid_(generate_uuid()),
+        description_(description)
     {}
-    ~AudioStream() { printf("AudioStream::~AudioStream called\n");};
+    ~AudioStream() { printf("AudioStream::~AudioStream called for %s\n", description_.c_str());};
 
     std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
@@ -62,6 +61,7 @@ public:
     std::unique_ptr<std::jthread> source_thread_;
     std::unique_ptr<std::jthread> sink_thread_;
     unique_identifier_msgs::msg::UUID stream_uuid_;
+    std::string description_;
 
     void shutdown();
     void start();

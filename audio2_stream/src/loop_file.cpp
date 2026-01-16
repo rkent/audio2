@@ -15,7 +15,6 @@
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS) 
 //#define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
-#define ALSA_FORMAT SND_PCM_FORMAT_S16
 
  // Global flag to signal thread shutdown
 std::atomic<bool> shutdown_flag(false);

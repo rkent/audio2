@@ -22,12 +22,6 @@
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
-#define ALSA_FORMAT SND_PCM_FORMAT_S16
-const int ALSA_CHANNELS = 2;
-const int ALSA_SAMPLERATE = 48000;
-
-#define SF_FORMAT_DEFAULT (SF_FORMAT_WAV | SF_FORMAT_PCM_16)
-
 class AudioStreamsNode : public rclcpp::Node {
 public:
     AudioStreamsNode() : Node("audio_streams_node") {
@@ -76,7 +70,7 @@ public:
     }
 
     void audio_chunk_callback(const audio2_stream_msgs::msg::AudioChunk::SharedPtr msg) {
-        RCLCPP_INFO(rcl_logger, "Received audio chunk with %zu bytes", msg->data.size());
+        RCLCPP_INFO(rcl_logger, "Received audio chunk with %zu bytes sequence %u", msg->data.size(), msg->header.sequence);
         // Here you can handle incoming audio chunks if needed
         auto uuid = msg->header.uuid;
         AudioStream * audio_stream_raw = nullptr;
@@ -90,12 +84,25 @@ public:
             }
         }
         if (!audio_stream_raw) {
+
+                // We need to do an initial open of the source to get the format
+            VIO_SOUNDFILE_HANDLE tr_handle;
+            tr_handle.vio_data.data = reinterpret_cast<char *>(msg->data.data());
+            tr_handle.vio_data.length = msg->data.size();
+            tr_handle.vio_data.offset = 0;
+            tr_handle.vio_data.capacity =  msg->data.size();
+
+            if (auto err = open_sndfile_from_buffer2(tr_handle, SFM_READ)) {
+                RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
+                return;
+            }
+
             // Create a matching audio stream
             // Open the playback device
             std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
                 ALSA_DEVICE_NAME,
-                ALSA_CHANNELS,
-                ALSA_SAMPLERATE,
+                tr_handle.fileh.channels(),
+                tr_handle.fileh.samplerate(),
                 ALSA_FORMAT
             );
             auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
@@ -106,7 +113,8 @@ public:
             auto audio_stream = std::make_unique<AudioStream>(
                 sfg_format_from_alsa_format(ALSA_FORMAT),
                 nullptr,
-                std::move(alsa_sink)
+                std::move(alsa_sink),
+                std::string("Stream for topic callback")
             );
             audio_stream->stream_uuid_ = uuid;
             audio_stream->start();
@@ -153,7 +161,8 @@ public:
         auto audio_stream = std::make_unique<AudioStream>(
             rw_format,
             std::move(snd_file_source),
-            std::move(alsa_sink)
+            std::move(alsa_sink),
+            std::string("Local playback of ") + file_path
         );
 
         audio_stream->start();
@@ -197,7 +206,8 @@ public:
         auto audio_stream = std::make_unique<AudioStream>(
             SFG_RW_FORMAT,
             std::move(snd_file_source),
-            std::move(message_sink)
+            std::move(message_sink),
+            std::string("Remote playback of ") + file_path
         );
 
         audio_stream->start();

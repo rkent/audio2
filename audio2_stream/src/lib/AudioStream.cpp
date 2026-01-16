@@ -23,6 +23,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 };
 
 void AlsaTerminal::close() {
+    printf("AlsaTerminal::close called\n");
     if (alsa_dev_) {
         snd_pcm_drain(alsa_dev_);
         snd_pcm_close(alsa_dev_);
@@ -51,6 +52,18 @@ void AlsaSink::run(AudioStream * audio_stream)
         audio_stream->data_available_.store(false);
         // empty the queue
         while (audio_stream->queue_.pop(audio_data)) {
+            {
+                if (format_ == SND_PCM_FORMAT_FLOAT) {
+                    float rms = 0.0f;
+                    const float* samples = reinterpret_cast<const float*>(audio_data.data());
+                    size_t num_samples = audio_data.size() / sizeof(float);
+                    for (size_t i = 0; i < num_samples; ++i) {
+                        rms += samples[i] * samples[i];
+                    }
+                    rms = std::sqrt(rms / num_samples);
+                    printf("RMS value: %f\n", rms);
+                }
+            }
             int bytes_per_sample = snd_pcm_format_width(format_) / 8;
             int write_result = alsa_write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
@@ -65,7 +78,7 @@ void AlsaSink::run(AudioStream * audio_stream)
             }
         }
     }
-    puts("AlsaSink::run exiting\n");
+    printf("AlsaSink::run exiting, pushing silence.\n");
     // Push silence to fill the buffer before closing
     const int bytes_per_sample = snd_pcm_format_width(format_) / 8;
     int silence_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
@@ -89,6 +102,7 @@ void AlsaSink::run(AudioStream * audio_stream)
     }
 
     close();
+    printf("AlsaSink::run final exiting\n");
     return;
 }
 
@@ -107,8 +121,8 @@ void SndFileSource::run(AudioStream * audio_stream)
     auto w_format = audio_stream->rw_format_;
     std::vector<uint8_t> r_buffer;
     std::vector<uint8_t> w_buffer;
-    create_convert_vectors(r_format, w_format, BUFFER_FRAMES * sndfileh_.channels(), r_buffer, w_buffer);
-    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
+    create_convert_vectors(r_format, w_format, QUEUE_FRAMES * sndfileh_.channels(), r_buffer, w_buffer);
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * QUEUE_FRAMES / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
     bool done = false;
 
@@ -116,7 +130,8 @@ void SndFileSource::run(AudioStream * audio_stream)
         // Fill the queue before sleeping
         while (audio_stream->queue_.write_available() > 0 &&
                !audio_stream->shutdown_flag_.load()) {
-            int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
+            printf("SndFileSource: Reading from sndfile...\n");
+            int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), QUEUE_FRAMES * sndfileh_.channels());
             if (samples_read <= 0) {
                 done = true;
                 break; // End of file or error
@@ -137,7 +152,7 @@ void SndFileSource::run(AudioStream * audio_stream)
                 RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-            printf("Pushed %d samples to audio queue\n", samples_converted);
+            printf("SndFileSource: Pushed %d samples to audio queue\n", samples_converted);
             audio_stream->data_available_.store(true);
             audio_stream->data_available_.notify_one();
         }
@@ -177,12 +192,12 @@ void MessageSink::run(AudioStream * audio_stream)
     // snd_file_write is used to hold the serialized audio chunk including header
     // TODO: determine appropriate buffer size
     std::vector<char> snd_file_write;
-    auto bytes_per_chunk = BUFFER_FRAMES * channels_ * sample_size_from_sfg_format(SFG_RW_FORMAT);
+    auto bytes_per_chunk = QUEUE_FRAMES * channels_ * sample_size_from_sfg_format(SFG_RW_FORMAT);
     size_t file_size = bytes_per_chunk + MAX_HEADER;
     snd_file_write.reserve(file_size);
 
     // Messages will be sent at a constant rate based on samplerate and buffer size.
-    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (samplerate_)));
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * QUEUE_FRAMES / (samplerate_)));
     auto next_time = std::chrono::steady_clock::now();
 
     // Wait to pop from queue. After the first, we rely on time only.
@@ -252,8 +267,8 @@ void MessageSink::run(AudioStream * audio_stream)
             auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
             auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
             auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
-            printf("MessageSink sending audio chunk of %zu bytes on topic %s at %02ld:%02ld:%02ld:%03ld\n", 
-                   audio_data.size(), topic_.c_str(), hours.count(), minutes.count(), seconds.count(), milliseconds.count());
+            printf("MessageSink sending audio chunk of %zu bytes sequence %d at %02ld:%02ld:%02ld:%03ld\n", 
+                   audio_data.size(), message.header.sequence, hours.count(), minutes.count(), seconds.count(), milliseconds.count());
         } else {
             // No data available. Maybe shutdown was requested.
             if (audio_stream->shutdown_flag_.load()) {
@@ -294,7 +309,7 @@ void MessageSource::callback(
 )
 {
     assert(audio_stream);
-    printf("MessageSource received audio chunk with %zu bytes on topic %s\n", message->data.size(), topic_.c_str());
+    printf("MessageSource received audio chunk with %zu bytes sequence %d\n", message->data.size(), message->header.sequence);
     if ((message->header.sequence == message->header.SEQUENCE_EOS)) {
         printf("MessageSource received end-of-stream message\n");
         audio_stream->shutdown();
@@ -316,11 +331,12 @@ void MessageSource::callback(
     auto w_format = audio_stream->rw_format_;
     std::vector<uint8_t> r_buffer;
     std::vector<uint8_t> w_buffer;
-    create_convert_vectors(r_format, w_format, BUFFER_FRAMES * tr_handle.fileh.channels(), r_buffer, w_buffer);
+    create_convert_vectors(r_format, w_format, QUEUE_FRAMES * tr_handle.fileh.channels(), r_buffer, w_buffer);
 
     bool done = false;
     while (!(audio_stream->shutdown_flag_.load()) && !done) {
-        int samples_read = sfg_read2(tr_handle.fileh, r_format, r_buffer.data(), BUFFER_FRAMES * tr_handle.fileh.channels());
+        printf("MessageSource: Reading from message sndfile...\n");
+        int samples_read = sfg_read2(tr_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * tr_handle.fileh.channels());
         if (samples_read <= 0) {
             done = true;
             break; // End of file or error
@@ -336,11 +352,14 @@ void MessageSource::callback(
             break;
         }
 
+        // Resize buffer to actual converted sample count to avoid pushing garbage data
+        w_buffer.resize(samples_converted * sample_size_from_sfg_format(w_format));
+
         while (!audio_stream->queue_.push(w_buffer) && !audio_stream->shutdown_flag_.load()) {
             RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        printf("Pushed %d samples to audio queue\n", samples_converted);
+        printf("MessageSource: Pushed %d samples to audio queue\n", samples_converted);
         audio_stream->data_available_.store(true);
         audio_stream->data_available_.notify_one();
     }
@@ -348,15 +367,15 @@ void MessageSource::callback(
 
 void AudioStream::start()
 {
+    printf("AudioStream::start called for %s\n", description_.c_str());
     if (sink_) sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
     if (source_) source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
 }
 
 void AudioStream::shutdown()
 {
-    printf("AudioStream::shutdown called\n");
+    printf("AudioStream::shutdown called for %s\n", description_.c_str());
     shutdown_flag_.store(true);
     data_available_.store(true);
     data_available_.notify_all();
-    printf("AudioStream::shutdown notified\n");
 }

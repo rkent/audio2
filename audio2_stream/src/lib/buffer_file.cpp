@@ -197,6 +197,17 @@ int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples
         case SFG_INT:
             return sf_write_int(sndfile, reinterpret_cast<int*>(buffer), samples);
         case SFG_FLOAT:
+            // Calculate and print RMS value of float samples
+            {
+                float rms = 0.0f;
+                float* float_buffer = reinterpret_cast<float*>(buffer);
+                for (int i = 0; i < samples; ++i) {
+                    rms += float_buffer[i] * float_buffer[i];
+                }
+                rms = std::sqrt(rms / samples);
+                printf("sfg_write2: RMS value of float samples: %f\n", rms);
+            }
+            printf("sfg_write2: writing %d float samples\n", samples);
             return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
         case SFG_DOUBLE:
             return sf_write_double(sndfile, reinterpret_cast<double*>(buffer), samples);
@@ -320,13 +331,27 @@ int sfg_read2(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int sa
     if (samples <= 0) {
         return 0;
     }
+    int read_samples;
     switch (format) {
         case SFG_SHORT:
             return sndfileh.read(reinterpret_cast<short*>(buffer), samples);
         case SFG_INT:
             return sndfileh.read(reinterpret_cast<int*>(buffer), samples);
         case SFG_FLOAT:
-            return sndfileh.read(reinterpret_cast<float*>(buffer), samples);
+            {
+                read_samples = sndfileh.read(reinterpret_cast<float*>(buffer), samples);
+                if (read_samples <= 0) {
+                    return read_samples;
+                }
+                float* float_buffer = reinterpret_cast<float*>(buffer);
+                float rms = 0.0f;
+                for (int i = 0; i < read_samples; ++i) {
+                    rms += float_buffer[i] * float_buffer[i];
+                }
+                rms = std::sqrt(rms / read_samples);
+                printf("sfg_read2: RMS value of float samples: %f count %d\n", rms, read_samples);
+            }
+            return read_samples;
         case SFG_DOUBLE:
             return sndfileh.read(reinterpret_cast<double*>(buffer), samples);
         default:
@@ -738,27 +763,27 @@ SndFileStream::SndFileStream(SndfileHandle & sndfileh,
 
 void SndFileStream::run()
 {
-    const int BUFFER_FRAMES = 480;
+    const int STREAM_FRAMES = 480;
     auto r_format = sfg_format_from_sndfile_format(sndfileh_.format());
     auto w_format = sfg_format_from_alsa_format(alsa_format_);
     auto r_sample_size = sample_size_from_sfg_format(r_format);
     auto w_sample_size = sample_size_from_sfg_format(w_format);
-    auto r_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * r_sample_size;
-    auto w_buffer_size = BUFFER_FRAMES * sndfileh_.channels() * w_sample_size;
+    auto r_buffer_size = STREAM_FRAMES * sndfileh_.channels() * r_sample_size;
+    auto w_buffer_size = STREAM_FRAMES * sndfileh_.channels() * w_sample_size;
     std::vector<uint8_t> r_buffer(r_buffer_size);
     std::vector<uint8_t> w_buffer(w_buffer_size);
-    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * BUFFER_FRAMES / (sndfileh_.samplerate())));
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * STREAM_FRAMES / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
     int silent_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 
     while (!(shutdown_flag_ && shutdown_flag_->load())) {
-        int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), BUFFER_FRAMES * sndfileh_.channels());
+        int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), STREAM_FRAMES * sndfileh_.channels());
         if (samples_read <= 0) {
             if (silent_frames > 0) {
                 // Push silence
                 std::fill(r_buffer.begin(), r_buffer.end(), 0);
-                silent_frames -= BUFFER_FRAMES;
-                samples_read = BUFFER_FRAMES * sndfileh_.channels();
+                silent_frames -= STREAM_FRAMES;
+                samples_read = STREAM_FRAMES * sndfileh_.channels();
                 printf("End of file reached, pushing silence (%d frames left)\n", silent_frames);
             } else {
                 break; // End of file or error

@@ -1,28 +1,24 @@
 #ifndef SNDPLAY_ALSAOPS_HPP
 #define SNDPLAY_ALSAOPS_HPP
 
+#include "audio2_stream/config.hpp"
 #include <alsa/asoundlib.h>
-#include <limits>
+
 #include <atomic>
 #include <tuple>
 #include <optional>
 #include <string>
 #include "boost/lockfree/spsc_queue.hpp"
 
-#define ALSA_PERIOD_SIZE 512
-#define ALSA_BUFFER_PERIODS 4
-#define ALSA_START_PERIODS 2
-#define ALSA_DEVICE_NAME "default"
-
 // ALSA hardware parameters values
 typedef struct AlsaHwParams {
     const char *device = ALSA_DEVICE_NAME;
     unsigned int channels = 1;
-    snd_pcm_uframes_t buffer_size = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
+    snd_pcm_uframes_t buffer_size = ALSA_BUFFER_SIZE;
     snd_pcm_uframes_t period_size = ALSA_PERIOD_SIZE;
     snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;
-    snd_pcm_format_t format = SND_PCM_FORMAT_S16;
-    unsigned int samplerate = 48000;
+    snd_pcm_format_t format = ALSA_FORMAT;
+    unsigned int samplerate = ALSA_SAMPLERATE;
     snd_pcm_stream_t direction = SND_PCM_STREAM_PLAYBACK;
     bool operator!=(const AlsaHwParams& p_rhs) const
     {
@@ -46,11 +42,10 @@ typedef struct AlsaHwParams {
 
 // ALSA software parameters values
 typedef struct AlsaSwParams {
-    snd_pcm_uframes_t start_threshold = ALSA_PERIOD_SIZE * ALSA_START_PERIODS;
-    // Never automatically stop the alsa device
-    snd_pcm_uframes_t stop_threshold = std::numeric_limits<snd_pcm_uframes_t>::max();
-    snd_pcm_uframes_t silence_size = ALSA_PERIOD_SIZE * 1;
-    snd_pcm_uframes_t silence_threshold = ALSA_PERIOD_SIZE * 1;
+    snd_pcm_uframes_t start_threshold = ALSA_START_THRESHOLD;
+    snd_pcm_uframes_t stop_threshold = ALSA_STOP_THRESHOLD;
+    snd_pcm_uframes_t silence_size = ALSA_SILENCE_SIZE;
+    snd_pcm_uframes_t silence_threshold = ALSA_SILENCE_THRESHOLD;
 
     bool operator!=(const AlsaSwParams& p_rhs) const
     {

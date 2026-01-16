@@ -1,5 +1,7 @@
 #ifndef SNDPLAY_BUFFER_FILE_HPP
 #define SNDPLAY_BUFFER_FILE_HPP
+
+#include "audio2_stream/config.hpp"
 #include <sndfile.hh>
 #include <chrono>
 #include <thread>
@@ -12,7 +14,7 @@
 
 #include "audio2_stream/alsaops.hpp"
 
-const int AUDIO_QUEUE_SIZE = 10;
+
 
 /**
  * Convert sndfile format to human-readable string.
@@ -45,15 +47,6 @@ typedef struct {
     AlsaHwParams hw_vals;
     AlsaSwParams sw_vals;
 } PlayBufferParams;
-
-typedef enum {
-    SFG_INVALID = -1,
-    SFG_BYTE,
-    SFG_SHORT,
-    SFG_INT,
-    SFG_FLOAT,
-    SFG_DOUBLE
-} SfgRwFormat;
 
 std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode);
 
