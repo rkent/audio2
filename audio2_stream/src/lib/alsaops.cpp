@@ -20,12 +20,25 @@ if ((err = func(__VA_ARGS__)) < 0) {\
     break; \
 };
 
+static std::string format_timestamp() {
+    auto time_point = std::chrono::steady_clock::now();
+    auto time_since_epoch = time_point.time_since_epoch();
+    auto hours = std::chrono::duration_cast<std::chrono::hours>(time_since_epoch) % 24;
+    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
+    
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%03ld",
+                hours.count(), minutes.count(), seconds.count(), milliseconds.count());
+    return std::string(buffer);
+}
+
 template<typename T>
 class AlsaWrite {
 public:
     int operator()(snd_pcm_t* alsa_dev, T* data, int frames, int channels, std::atomic<bool>* shutdown_flag=nullptr)
     {	static	int epipe_count = 0;
-        printf("AlsaWrite status %d\n", snd_pcm_state(alsa_dev));
 
         int total = 0;
         int retval;
@@ -133,7 +146,8 @@ AlsaWrite<int> alsa_write_int;
 AlsaWrite<double> alsa_write_double;
 int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
-    printf("alsa_write: samples=%d, channels=%d, format=%x\n", samples, channels, alsa_format);
+    std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
+    printf("alsa_write: thread: %zu, samples=%d, channels=%d, format=%x at %s\n", hash_id, samples, channels, alsa_format, format_timestamp().c_str());
     int frames = samples / channels;
     if (alsa_format == SND_PCM_FORMAT_S16) {
         return channels * alsa_write_short(alsa_dev, reinterpret_cast<short*>(data), frames, channels, shutdown_flag);
@@ -182,7 +196,9 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
         ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &samplerate, 0);
         ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels);
         ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0);
+        printf("Requested buffer frames: %lu\n", alsa_buffer_frames);
         ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames);
+        printf("Resulting buffer frames: %lu\n", alsa_buffer_frames);
         ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
         snd_pcm_uframes_t buffer_size;
         snd_pcm_hw_params_get_buffer_size(hw_params, &buffer_size);

@@ -22,6 +22,20 @@
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 
+static std::string format_timestamp() {
+    auto time_point = std::chrono::steady_clock::now();
+    auto time_since_epoch = time_point.time_since_epoch();
+    auto hours = std::chrono::duration_cast<std::chrono::hours>(time_since_epoch) % 24;
+    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
+    
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%03ld",
+                hours.count(), minutes.count(), seconds.count(), milliseconds.count());
+    return std::string(buffer);
+}
+
 class AudioStreamsNode : public rclcpp::Node {
 public:
     AudioStreamsNode() : Node("audio_streams_node") {
@@ -71,7 +85,8 @@ public:
     }
 
     void audio_chunk_callback(const audio2_stream_msgs::msg::AudioChunk::SharedPtr msg) {
-        RCLCPP_INFO(rcl_logger, "Received audio chunk with %zu bytes sequence %u", msg->data.size(), msg->header.sequence);
+        std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
+        printf("audio_chunk_callback: thread %zu Received audio chunk with %zu bytes sequence %u at %s\n", hash_id, msg->data.size(), msg->header.sequence, format_timestamp().c_str());
         // Here you can handle incoming audio chunks if needed
         auto uuid = msg->header.uuid;
         AudioStream * audio_stream_raw = nullptr;
@@ -228,7 +243,9 @@ private:
 
 int main(int argc, [[maybe_unused]] char ** argv)
 {
-    RCLCPP_INFO(rcl_logger, "Starting AudioStreamsNode...");
+    RCLCPP_INFO(rcl_logger, "Starting AudioStreamsNode thread %zu at %s", 
+                std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000,
+                format_timestamp().c_str());
     rclcpp::init(argc, argv);
     auto node = std::make_shared<AudioStreamsNode>();
     rclcpp::spin(node);

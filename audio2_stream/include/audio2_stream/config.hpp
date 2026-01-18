@@ -21,10 +21,10 @@ const SfgRwFormat SFG_RW_FORMAT = SFG_FLOAT;
 const int MAX_HEADER = 128;
 
 // Number of frames per audio queue chunk
-const int QUEUE_FRAMES = 240;
+const int QUEUE_FRAMES = 480;
 
 // ALSA configuration defaults
-const int ALSA_PERIOD_SIZE = 512;
+const int ALSA_PERIOD_SIZE = 240;
 const int ALSA_BUFFER_PERIODS = 4;
 const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 #define ALSA_DEVICE_NAME "default"
@@ -40,7 +40,7 @@ const long unsigned int ALSA_SILENCE_SIZE = std::numeric_limits<snd_pcm_uframes_
 const long unsigned int ALSA_SILENCE_THRESHOLD = 0;
 
 // Size of audio queue for buffering between source and sink
-const int AUDIO_QUEUE_SIZE = 10;
+const int AUDIO_QUEUE_SIZE = 100;
 
 // Default sound file format for audio streams in ROS2 messages
 const int SF_FORMAT_DEFAULT = (SF_FORMAT_WAV | SF_FORMAT_FLOAT);

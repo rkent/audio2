@@ -205,9 +205,8 @@ int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples
                     rms += float_buffer[i] * float_buffer[i];
                 }
                 rms = std::sqrt(rms / samples);
-                printf("sfg_write2: RMS value of float samples: %f\n", rms);
+                printf("sfg_write2: writing %d float samples RMS %f\n", samples, rms);
             }
-            printf("sfg_write2: writing %d float samples\n", samples);
             return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
         case SFG_DOUBLE:
             return sf_write_double(sndfile, reinterpret_cast<double*>(buffer), samples);
