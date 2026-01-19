@@ -63,9 +63,12 @@ public:
             std::bind(&AudioStreamsNode::stop_streams_callback, this));
 
         // Timer to check and clean up finished streams
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(20),
-            std::bind(&AudioStreamsNode::check_streams_callback, this));
+        check_thread_ = std::make_unique<std::jthread>([this](){
+            while (rclcpp::ok()) {
+                check_streams_callback();
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+        });
         RCLCPP_INFO(rcl_logger, "AudioStreamsNode initialized.");
     }
 
@@ -238,6 +241,7 @@ private:
     std::vector<std::unique_ptr<AudioStream>> audio_streams_;
     std::unique_ptr<MessageSource> message_source_;
     rclcpp::TimerBase::SharedPtr timer_;
+    std::unique_ptr<std::jthread> check_thread_;
 };
 
 
