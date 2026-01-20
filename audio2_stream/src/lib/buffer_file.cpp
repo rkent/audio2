@@ -124,6 +124,61 @@ std::optional<std::string> open_sndfile_from_buffer2(VIO_SOUNDFILE_HANDLE & vio_
     return std::nullopt;
 }
 
+// Open a virtual sound file for reading from a vector buffer.
+std::optional<std::string> ropen_vio_from_vector(
+    const std::vector<unsigned char> & vector,
+    VIO_SOUNDFILE_HANDLE & vio_sndfileh
+)
+{
+    // TODO: Standardize types to avoid monstrosities like this
+    vio_sndfileh.vio_data.data = const_cast<char *>(reinterpret_cast<const char *>(vector.data()));
+    vio_sndfileh.vio_data.length = static_cast<sf_count_t>(vector.size());
+    vio_sndfileh.vio_data.offset = 0;
+    vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(vector.capacity());
+    vio_sndfileh.fileh = SndfileHandle(
+        vio,
+        &vio_sndfileh.vio_data,
+        SFM_READ
+    );
+    if (vio_sndfileh.fileh.error()) {
+        return std::string("Failed to open buffer as sound file: ") + vio_sndfileh.fileh.strError();
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> wopen_vio_to_vector(
+    std::vector<unsigned char> & vector,
+    VIO_SOUNDFILE_HANDLE & vio_sndfileh,
+    SfgRwFormat sfg_format,
+    int sf_format,
+    int channels,
+    int samplerate,
+    int frames
+)
+{
+    auto bytes_per_chunk = frames * channels * sample_size_from_sfg_format(sfg_format);
+    size_t file_size = bytes_per_chunk + MAX_HEADER;
+    vector.reserve(file_size);
+    vector.clear();
+
+    vio_sndfileh.vio_data.data = reinterpret_cast<char *>(vector.data());
+    vio_sndfileh.vio_data.length = 0;
+    vio_sndfileh.vio_data.offset = 0;
+    vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(vector.capacity());
+    vio_sndfileh.fileh = SndfileHandle(
+        vio,
+        &vio_sndfileh.vio_data,
+        SFM_WRITE,
+        sf_format,
+        channels,
+        samplerate
+    );
+    if (vio_sndfileh.fileh.error()) {
+        return std::string("Failed to open buffer as sound file for writing: ") + vio_sndfileh.fileh.strError();
+    }
+    return std::nullopt;
+}
+
 int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples)
 {
     int bytes_per_sample = snd_pcm_format_width(format) / 8;

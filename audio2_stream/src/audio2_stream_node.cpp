@@ -104,14 +104,9 @@ public:
         }
         if (!audio_stream_raw) {
 
-                // We need to do an initial open of the source to get the format
-            VIO_SOUNDFILE_HANDLE tr_handle;
-            tr_handle.vio_data.data = reinterpret_cast<char *>(msg->data.data());
-            tr_handle.vio_data.length = msg->data.size();
-            tr_handle.vio_data.offset = 0;
-            tr_handle.vio_data.capacity =  msg->data.size();
-
-            if (auto err = open_sndfile_from_buffer2(tr_handle, SFM_READ)) {
+            // We need to do an initial open of the source to get the format
+            VIO_SOUNDFILE_HANDLE vio_handle;
+            if (auto err = ropen_vio_from_vector(msg->data, vio_handle)) {
                 RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
                 return;
             }
@@ -120,8 +115,8 @@ public:
             // Open the playback device
             std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
                 ALSA_DEVICE_NAME,
-                tr_handle.fileh.channels(),
-                tr_handle.fileh.samplerate(),
+                vio_handle.fileh.channels(),
+                vio_handle.fileh.samplerate(),
                 ALSA_FORMAT
             );
             auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);

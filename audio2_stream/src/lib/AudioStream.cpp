@@ -225,7 +225,7 @@ void MessageSink::run(AudioStream * audio_stream)
 
     // snd_file_write is used to hold the serialized audio chunk including header
     // TODO: determine appropriate buffer size
-    std::vector<char> snd_file_write;
+    std::vector<unsigned char> snd_file_write;
     auto bytes_per_chunk = QUEUE_FRAMES * channels_ * sample_size_from_sfg_format(SFG_RW_FORMAT);
     size_t file_size = bytes_per_chunk + MAX_HEADER;
     snd_file_write.reserve(file_size);
@@ -256,22 +256,16 @@ void MessageSink::run(AudioStream * audio_stream)
             // Create a virtual sound file in memory for topic publish
             auto data_size = audio_data.size();
 
-            if (data_size > snd_file_write.capacity() - MAX_HEADER) {
-                RCLCPP_WARN(rcl_logger, "Audio data size %zu exceeds buffer capacity %zu, resizing", data_size, snd_file_write.capacity() - MAX_HEADER);
-                snd_file_write.reserve(data_size + MAX_HEADER);
-            }
-            snd_file_write.clear();
-
             VIO_SOUNDFILE_HANDLE m_vio_sndfileh;
-            // TODO: revise VIO to have consistent types
-            m_vio_sndfileh.vio_data.data = snd_file_write.data();
-            m_vio_sndfileh.vio_data.length = 0;
-            m_vio_sndfileh.vio_data.offset = 0;
-            m_vio_sndfileh.vio_data.capacity = snd_file_write.capacity();
-            if (auto err = open_sndfile_from_buffer2(m_vio_sndfileh, SFM_WRITE, sfFormat_, channels_, samplerate_)) {
+            if (auto err = wopen_vio_to_vector(snd_file_write, m_vio_sndfileh, SFG_RW_FORMAT, sfFormat_,  channels_, samplerate_, QUEUE_FRAMES)) {
                 printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
+
+            //if (data_size > snd_file_write.capacity() - MAX_HEADER) {
+            //    RCLCPP_WARN(rcl_logger, "Audio data size %zu exceeds buffer capacity %zu, resizing", data_size, snd_file_write.capacity() - MAX_HEADER);
+            //    snd_file_write.reserve(data_size + MAX_HEADER);
+            //}
 
             auto data_samples = static_cast<int>(data_size) / sample_size_from_sfg_format(SFG_RW_FORMAT);
             int samples_written = sfg_write_convert(m_vio_sndfileh.fileh, SFG_RW_FORMAT, SFG_RW_FORMAT,
@@ -352,27 +346,22 @@ void MessageSource::callback(
         return;
     }
 
-    VIO_SOUNDFILE_HANDLE tr_handle;
-    tr_handle.vio_data.data = reinterpret_cast<char *>(message->data.data());
-    tr_handle.vio_data.length = message->data.size();
-    tr_handle.vio_data.offset = 0;
-    tr_handle.vio_data.capacity =  message->data.size();
+    VIO_SOUNDFILE_HANDLE vio_handle;
 
-    if (auto err = open_sndfile_from_buffer2(tr_handle, SFM_READ)) {
+    if (auto err = ropen_vio_from_vector(message->data, vio_handle)) {
         RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
         return;
     }
 
-    auto r_format = sfg_format_from_sndfile_format(tr_handle.fileh.format());
+    auto r_format = sfg_format_from_sndfile_format(vio_handle.fileh.format());
     auto w_format = audio_stream->rw_format_;
     std::vector<uint8_t> r_buffer;
     std::vector<uint8_t> w_buffer;
-    create_convert_vectors(r_format, w_format, QUEUE_FRAMES * tr_handle.fileh.channels(), r_buffer, w_buffer);
-
+    create_convert_vectors(r_format, w_format, QUEUE_FRAMES * vio_handle.fileh.channels(), r_buffer, w_buffer); 
     bool done = false;
     while (!(audio_stream->shutdown_flag_.load()) && !done) {
         printf("MessageSource: Reading from message sndfile...\n");
-        int samples_read = sfg_read2(tr_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * tr_handle.fileh.channels());
+        int samples_read = sfg_read2(vio_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * vio_handle.fileh.channels());
         printf("MessageSource: Read %d samples from message sndfile\n", samples_read);
         if (samples_read <= 0) {
             done = true;

@@ -211,4 +211,36 @@ private:
 void create_convert_vectors(SfgRwFormat from_format, SfgRwFormat to_format, int samples,
     std::vector<uint8_t>& r_buffer, std::vector<uint8_t>& w_buffer);
 
+/**
+ * Open a virtual sound file for reading from a vector buffer.
+ *
+ * \param vector       The vector containing the audio data.
+ * \param vio_sndfileh The VIO_SOUNDFILE_HANDLE to initialize.
+ * \return             Optional error string if an error occurs.
+ */
+std::optional<std::string> ropen_vio_from_vector(
+    const std::vector<unsigned char> & vector,
+    VIO_SOUNDFILE_HANDLE & vio_sndfileh);
+
+/**
+ * Open a virtual sound file for writing to a vector buffer.
+ *
+ * \param vector       The vector to contain the audio data.
+ * \param vio_sndfileh The VIO_SOUNDFILE_HANDLE to initialize.
+ * \param sfg_format   The SfgRwFormat to use (e.g. SFG_SHORT).
+ * \param sf_format    The sndfile format to use (e.g. SF_FORMAT_WAV | SF_FORMAT_PCM_16).
+ * \param channels     Number of audio channels.
+ * \param sample_rate  Sample rate of the audio data in frames per second.
+ * \param frames       Number of frames to allocate space for.
+ * \return             Optional error string if an error occurs.
+ */
+std::optional<std::string> wopen_vio_to_vector(
+    std::vector<unsigned char> & vector,
+    VIO_SOUNDFILE_HANDLE & vio_sndfileh,
+    SfgRwFormat sfg_format,
+    int sf_format,
+    int channels,
+    int sample_rate,
+    int frames);
+
 #endif // SNDPLAY_BUFFER_FILE_HPP
