@@ -107,7 +107,6 @@ public:
 
     std::optional<std::string> open(snd_pcm_stream_t direction);
 
-    protected:
     std::string alsa_device_name_;
     int channels_;
     int samplerate_;

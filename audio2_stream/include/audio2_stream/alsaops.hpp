@@ -71,7 +71,7 @@ typedef struct AlsaSwParams {
  * \return         Optional error string if opening fails.
  */
 std::optional<std::string>
-alsa_open(AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& device);
+alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& device);
 
 /**
  * Write audio data to ALSA device.

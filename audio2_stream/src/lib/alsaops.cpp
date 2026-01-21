@@ -12,14 +12,6 @@
 #include <cstdio>
 #include <cstdarg>
 
-#define _S(cstr) std::string(cstr)
-// We allow either a std::string or a const char* to be passed in as estr
-#define ECALL(func, estr, ...) \
-if ((err = func(__VA_ARGS__)) < 0) {\
-    error_str = std::format("alsa_open error: {} ({})", estr, snd_strerror (err)); \
-    break; \
-};
-
 static std::string format_timestamp() {
     auto time_point = std::chrono::steady_clock::now();
     auto time_since_epoch = time_point.time_since_epoch();
@@ -169,47 +161,57 @@ int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_p
     }   
 }
 
+// Macro definitions for alsa_open
+#define _S(cstr) std::string(cstr)
+// We allow either a std::string or a const char* to be passed in as estr
+#define ECALL(func, estr, ...) \
+if ((err = func(__VA_ARGS__)) < 0) {\
+    error_str = std::format("alsa_open error: {} ({})", estr, snd_strerror (err)); \
+    continue; \
+};
+
 std::optional<std::string>
-alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
-{	
+alsa_open (AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev)
+{
+    auto requested_hw_vals = hw_vals; // Copy for reporting
     const char * device = hw_vals.device;
-    unsigned	samplerate = hw_vals.samplerate;
-    int		channels = hw_vals.channels;
     alsa_dev = nullptr;
     snd_pcm_hw_params_t *hw_params;
-    snd_pcm_uframes_t alsa_period_size, alsa_buffer_frames;
     snd_pcm_sw_params_t *sw_params;
 
     int err;
 
-    alsa_period_size = hw_vals.period_size;
-    alsa_buffer_frames = hw_vals.buffer_size;
+    // Sometimes open fails with a requested format, but succeeds with a different one.
     std::string error_str;
-
-    do {
+    for (snd_pcm_format_t format : {hw_vals.format, SND_PCM_FORMAT_S32, SND_PCM_FORMAT_S16, SND_PCM_FORMAT_FLOAT}) {
+        if (error_str.length() > 0) {
+            printf("alsa_open failed: (%s)\nretrying with format %d\n", error_str.c_str(), format);
+            error_str.clear();
+            hw_vals = requested_hw_vals; // Reset to requested values
+        }
+        hw_vals.format = format;
         ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, hw_vals.direction, 0);
         snd_pcm_hw_params_alloca (&hw_params);
 
         ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params);
         ECALL(snd_pcm_hw_params_set_access, "cannot set access type", alsa_dev, hw_params, hw_vals.access);
-        ECALL(snd_pcm_hw_params_set_format, "cannot set sample format", alsa_dev, hw_params, hw_vals.format);
-        ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &samplerate, 0);
-        ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, channels);
-        ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &alsa_period_size, 0);
-        printf("Requested buffer frames: %lu\n", alsa_buffer_frames);
-        ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &alsa_buffer_frames);
-        printf("Resulting buffer frames: %lu\n", alsa_buffer_frames);
+        ECALL(snd_pcm_hw_params_set_format, "cannot set sample format", alsa_dev, hw_params, format);
+        ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &hw_vals.samplerate, 0);
+        ECALL(snd_pcm_hw_params_set_channels, "cannot set channel count", alsa_dev, hw_params, hw_vals.channels);
+        ECALL(snd_pcm_hw_params_set_period_size_near, "cannot set period size", alsa_dev, hw_params, &hw_vals.period_size, 0);
+        if (hw_vals.buffer_size < hw_vals.period_size * 2) {
+            hw_vals.buffer_size = hw_vals.period_size * 2;
+        }
+        ECALL(snd_pcm_hw_params_set_buffer_size_near, "cannot set buffer size", alsa_dev, hw_params, &hw_vals.buffer_size);
         ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
-        snd_pcm_uframes_t buffer_size;
-        snd_pcm_hw_params_get_buffer_size(hw_params, &buffer_size);
-        printf("ALSA device: Buffer Size: %lu\n", buffer_size);
 
+        // TODO: set sw_vals based on actual buffer size and period size.
         snd_pcm_sw_params_alloca(&sw_params);
         ECALL(snd_pcm_sw_params_current, "snd_pcm_sw_params_current", alsa_dev, sw_params);
         ECALL(snd_pcm_sw_params_set_start_threshold, "cannot set start threshold", alsa_dev, sw_params, sw_vals.start_threshold);
         ECALL(snd_pcm_sw_params_set_stop_threshold, "cannot set stop threshold", alsa_dev, sw_params, sw_vals.stop_threshold);
-        //ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
-        //ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
+        ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
+        ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
         ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params);
         snd_pcm_uframes_t silence_size;
         snd_pcm_sw_params_get_silence_size(sw_params, &silence_size);
@@ -218,8 +220,23 @@ alsa_open (AlsaHwParams hw_vals, AlsaSwParams sw_vals, snd_pcm_t *& alsa_dev)
         snd_pcm_sw_params_get_silence_threshold(sw_params, &silence_threshold);
         printf("ALSA device: Silence Threshold: %lu\n", silence_threshold);
         snd_pcm_reset (alsa_dev);
-    } while (false);
+        if (error_str.empty()) {
+            break;
+        }
+    }
     if (error_str.empty()) {
+        if (hw_vals.format != requested_hw_vals.format) {
+            printf("\nWarning: Requested ALSA format %d not available, using %d instead.\n", requested_hw_vals.format, hw_vals.format);
+        }
+        if (hw_vals.samplerate != requested_hw_vals.samplerate) {
+            printf("\nWarning: Requested ALSA samplerate %u not available, using %u instead.\n", requested_hw_vals.samplerate, hw_vals.samplerate);
+        }
+        if (hw_vals.period_size != requested_hw_vals.period_size) {
+            printf("\nWarning: Requested ALSA period size %lu not available, using %lu instead.\n", requested_hw_vals.period_size, hw_vals.period_size);
+        }
+        if (hw_vals.buffer_size != requested_hw_vals.buffer_size) {
+            printf("\nWarning: Requested ALSA buffer size %lu not available, using %lu instead.\n", requested_hw_vals.buffer_size, hw_vals.buffer_size);
+        }
         return std::nullopt;
     }
     if (alsa_dev)

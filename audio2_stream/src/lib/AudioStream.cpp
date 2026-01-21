@@ -40,7 +40,18 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
     
     AlsaSwParams sw_params;
 
-    return alsa_open(hw_params, sw_params, alsa_dev_);
+    auto result = alsa_open(hw_params, sw_params, alsa_dev_);
+    if (result.has_value()) {
+        error_str_ = result.value();
+        return error_str_;
+    }
+    format_ = hw_params.format;
+    if (samplerate_ != static_cast<int>(hw_params.samplerate)) {
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n", samplerate_, hw_params.samplerate);
+        return std::string(buffer);
+    }
+    return std::nullopt;
 };
 
 void AlsaTerminal::close() {

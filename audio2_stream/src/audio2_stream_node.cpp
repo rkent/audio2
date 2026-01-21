@@ -125,7 +125,7 @@ public:
                 return;
             }
             auto audio_stream = std::make_unique<AudioStream>(
-                sfg_format_from_alsa_format(ALSA_FORMAT),
+                sfg_format_from_alsa_format(alsa_sink->format_),
                 nullptr,
                 std::move(alsa_sink),
                 std::string("Stream for topic callback")
@@ -171,7 +171,7 @@ public:
             return;
         }
 
-        SfgRwFormat rw_format = sfg_format_from_alsa_format(ALSA_FORMAT);
+        SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->format_);
         auto audio_stream = std::make_unique<AudioStream>(
             rw_format,
             std::move(snd_file_source),
