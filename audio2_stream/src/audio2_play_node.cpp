@@ -60,12 +60,10 @@ public:
             std::bind(&Audio2PlayNode::stop_streams_callback, this));
 
         // Timer to check and clean up finished streams
-        check_thread_ = std::make_unique<std::jthread>([this](){
-            while (rclcpp::ok()) {
-                check_streams_callback();
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            }
-        });
+        timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(20),
+            std::bind(&Audio2PlayNode::check_streams_callback, this));
+
         RCLCPP_INFO(rcl_logger, "Audio2PlayNode initialized.");
     }
 
