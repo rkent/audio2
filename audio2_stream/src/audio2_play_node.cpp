@@ -20,13 +20,25 @@
 #include "audio2_stream_msgs/msg/play_file.hpp"
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 
-static auto rcl_logger = rclcpp::get_logger("audio2_stream");
+static auto rcl_logger = rclcpp::get_logger("audio2_play");
 
 class Audio2PlayNode : public rclcpp::Node {
 public:
     Audio2PlayNode() : Node("audio2_play_node") {
-        // Subscriber for local PlayFile messages
+        // Parameters
 
+        auto param_desc = rcl_interfaces::msg::ParameterDescriptor();
+        param_desc.description = "ALSA device name for audio playback";
+        param_desc.additional_constraints = "Must be a valid ALSA device name (a string).";
+        param_desc.read_only = false;
+        this->declare_parameter<std::string>("alsa_device_name", ALSA_DEVICE_NAME, param_desc);
+
+        param_desc.description = "ALSA audio format for playback";
+        param_desc.additional_constraints = "Must be a valid snd_pcm_format_t integer value.";
+        param_desc.read_only = false;
+        this->declare_parameter<int>("alsa_format", static_cast<int>(ALSA_FORMAT), param_desc);
+
+        // Subscriber for local PlayFile messages
         play_file_local_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::PlayFile>(
             "play_file_local", 10,
             std::bind(&Audio2PlayNode::play_file_local_callback, this, std::placeholders::_1));
@@ -95,10 +107,10 @@ public:
             // Create a matching audio stream
             // Open the playback device
             std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
-                ALSA_DEVICE_NAME,
+                get_parameter("alsa_device_name").as_string(),
                 vio_handle.fileh.channels(),
                 vio_handle.fileh.samplerate(),
-                ALSA_FORMAT
+                static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int())
             );
             auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
             if (alsa_open_result.has_value()) {
@@ -141,10 +153,10 @@ public:
 
         // Open the playback device
         std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
-            ALSA_DEVICE_NAME,
+            get_parameter("alsa_device_name").as_string(),
             channels,
             samplerate,
-            ALSA_FORMAT
+            static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int())
         );
         auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
         if (alsa_open_result.has_value()) {
