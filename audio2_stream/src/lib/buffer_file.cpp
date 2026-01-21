@@ -198,16 +198,6 @@ int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
         case SFG_INT:
             return sf_write_int(sndfile, reinterpret_cast<int*>(buffer), samples);
         case SFG_FLOAT:
-            // Calculate and print RMS value of float samples
-            {
-                float rms = 0.0f;
-                float* float_buffer = reinterpret_cast<float*>(buffer);
-                for (int i = 0; i < samples; ++i) {
-                    rms += float_buffer[i] * float_buffer[i];
-                }
-                rms = std::sqrt(rms / samples);
-                printf("sfg_write: writing %d float samples RMS %f\n", samples, rms);
-            }
             return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
         case SFG_DOUBLE:
             return sf_write_double(sndfile, reinterpret_cast<double*>(buffer), samples);
@@ -310,27 +300,13 @@ int sfg_read(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int sam
     if (samples <= 0) {
         return 0;
     }
-    int read_samples;
     switch (format) {
         case SFG_SHORT:
             return sndfileh.read(reinterpret_cast<short*>(buffer), samples);
         case SFG_INT:
             return sndfileh.read(reinterpret_cast<int*>(buffer), samples);
         case SFG_FLOAT:
-            {
-                read_samples = sndfileh.read(reinterpret_cast<float*>(buffer), samples);
-                if (read_samples <= 0) {
-                    return read_samples;
-                }
-                float* float_buffer = reinterpret_cast<float*>(buffer);
-                float rms = 0.0f;
-                for (int i = 0; i < read_samples; ++i) {
-                    rms += float_buffer[i] * float_buffer[i];
-                }
-                rms = std::sqrt(rms / read_samples);
-                printf("sfg_read: RMS value of float samples: %f count %d\n", rms, read_samples);
-            }
-            return read_samples;
+            return sndfileh.read(reinterpret_cast<float*>(buffer), samples);
         case SFG_DOUBLE:
             return sndfileh.read(reinterpret_cast<double*>(buffer), samples);
         default:

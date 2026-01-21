@@ -166,6 +166,7 @@ public:
             return;
         }
 
+        // during open, alsa may change the format if the original is unsupported.
         SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->format_);
         auto audio_stream = std::make_unique<AudioStream>(
             rw_format,

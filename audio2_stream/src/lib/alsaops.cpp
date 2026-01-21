@@ -146,13 +146,6 @@ int alsa_write(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_p
     } else if (alsa_format == SND_PCM_FORMAT_S32) {
         return channels * alsa_write_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
-        float* float_data = reinterpret_cast<float*>(data);
-        float rms = 0.0f;
-        for (int i = 0; i < samples; i++) {
-            rms += float_data[i] * float_data[i];
-        }
-        rms = std::sqrt(rms / samples);
-        printf("alsa_write: RMS: %f\n", rms);
         return channels *alsa_write_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels, shutdown_flag);
     } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
         return channels * alsa_write_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels, shutdown_flag);

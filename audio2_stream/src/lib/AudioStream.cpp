@@ -45,6 +45,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
         error_str_ = result.value();
         return error_str_;
     }
+    // alsa_open may change the format if original is not supported.
     format_ = hw_params.format;
     if (samplerate_ != static_cast<int>(hw_params.samplerate)) {
         char buffer[256];
@@ -91,16 +92,6 @@ void AlsaSink::run(AudioStream * audio_stream)
             printf("After AlsaSink: popped audio data from queue result %d \n", pop_result);
             if (!pop_result) {
                 break;
-            }
-            if (format_ == SND_PCM_FORMAT_FLOAT) {
-                float rms = 0.0f;
-                const float* samples = reinterpret_cast<const float*>(audio_data.data());
-                size_t num_samples = audio_data.size() / sizeof(float);
-                for (size_t i = 0; i < num_samples; ++i) {
-                    rms += samples[i] * samples[i];
-                }
-                rms = std::sqrt(rms / num_samples);
-                printf("AlsaSink RMS value: %f ra:%zu wa:%zu\n", rms, audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
             }
             int bytes_per_sample = snd_pcm_format_width(format_) / 8;
             snd_pcm_status_t * stat;

@@ -24,7 +24,7 @@ const int MAX_HEADER = 128;
 const int QUEUE_FRAMES = 480;
 
 // ALSA configuration defaults
-const int ALSA_PERIOD_SIZE = 240;
+const int ALSA_PERIOD_SIZE = 1024;
 const int ALSA_BUFFER_PERIODS = 4;
 const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 #define ALSA_DEVICE_NAME "default"
