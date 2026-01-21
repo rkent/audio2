@@ -37,22 +37,10 @@ add_library(
 #  src/audio2_stream_node.cpp
 #  src/alsaops.cpp
 #  src/buffer_file.cpp
-#  src/publish_file.cpp
 #)
 add_executable(file_play src/file_play.cpp)
-add_executable(publish_file src/publish_file.cpp)
-add_executable(subscribe_file src/subscribe_file.cpp)
 add_executable(audio2_stream_node src/audio2_stream_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
-
-
-# Set RPATH for executables to find the shared library
-## TODO: This was added by claude to make it work, but should not be needed. Check why.
-#set_target_properties(publish_file subscribe_file audio2_stream_node PROPERTIES
-#  INSTALL_RPATH "$ORIGIN/../../lib"
-#  BUILD_WITH_INSTALL_RPATH FALSE
-#  INSTALL_RPATH_USE_LINK_PATH TRUE
-#)
 
 target_link_libraries(audio2_stream 
   PRIVATE
@@ -61,19 +49,12 @@ target_link_libraries(audio2_stream
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
+
 target_include_directories(${PROJECT_NAME}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(publish_file
-  PRIVATE
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-)
 target_link_libraries(loop_file
   PRIVATE
     ${PROJECT_NAME}
@@ -82,6 +63,7 @@ target_link_libraries(loop_file
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
+
 target_link_libraries(file_play
   PRIVATE
     ${PROJECT_NAME}
@@ -90,14 +72,7 @@ target_link_libraries(file_play
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
-target_link_libraries(subscribe_file
-  PRIVATE
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-)
+
 target_link_libraries(audio2_stream_node
   PRIVATE
     ${PROJECT_NAME}
@@ -128,10 +103,8 @@ install(TARGETS
   RUNTIME DESTINATION bin)
 
 install(TARGETS
-  publish_file
   file_play
   loop_file
-  subscribe_file
   audio2_stream_node
   DESTINATION lib/${PROJECT_NAME})
 

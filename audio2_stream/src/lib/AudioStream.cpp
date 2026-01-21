@@ -176,7 +176,7 @@ void SndFileSource::run(AudioStream * audio_stream)
         // Fill the queue before sleeping
         while (audio_stream->queue_.write_available() > 0 &&
                !audio_stream->shutdown_flag_.load()) {
-            int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), QUEUE_FRAMES * sndfileh_.channels());
+            int samples_read = sfg_read(sndfileh_, r_format, r_buffer.data(), QUEUE_FRAMES * sndfileh_.channels());
             if (samples_read <= 0) {
                 done = true;
                 break; // End of file or error
@@ -372,7 +372,7 @@ void MessageSource::callback(
     bool done = false;
     while (!(audio_stream->shutdown_flag_.load()) && !done) {
         printf("MessageSource: Reading from message sndfile...\n");
-        int samples_read = sfg_read2(vio_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * vio_handle.fileh.channels());
+        int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * vio_handle.fileh.channels());
         printf("MessageSource: Read %d samples from message sndfile\n", samples_read);
         if (samples_read <= 0) {
             done = true;

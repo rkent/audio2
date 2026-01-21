@@ -78,7 +78,7 @@ public:
 
         int samples_read = 0;
         do {
-            samples_read = sfg_read2(fileh_, file_rw_format, file_buffer.data(), read_frames * fileh_.channels());
+            samples_read = sfg_read(fileh_, file_rw_format, file_buffer.data(), read_frames * fileh_.channels());
             printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format));
             if (samples_read <= 0) {
                 if (samples_read < 0) {
@@ -98,7 +98,7 @@ public:
             tw_vio_sndfileh.vio_data.length = 0;
             tw_vio_sndfileh.vio_data.offset = 0;
             tw_vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
-            if (auto err = open_sndfile_from_buffer2(tw_vio_sndfileh, SFM_WRITE, TOPIC_FORMAT, fileh_.channels(), fileh_.samplerate())) {
+            if (auto err = open_sndfile_from_buffer(tw_vio_sndfileh, SFM_WRITE, TOPIC_FORMAT, fileh_.channels(), fileh_.samplerate())) {
                 printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
@@ -127,7 +127,7 @@ public:
             tr_handle.vio_data.offset = 0;
             tr_handle.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
 
-            if (auto err = open_sndfile_from_buffer2(tr_handle, SFM_READ)) {
+            if (auto err = open_sndfile_from_buffer(tr_handle, SFM_READ)) {
                 RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
                 return;
             }

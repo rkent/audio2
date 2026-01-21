@@ -9,8 +9,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-static auto rcl_logger = rclcpp::get_logger("audio2_stream/buffer_file");
-
 // Virtual I/O callbacks
 static sf_count_t vio_get_filelen(void *user_data) {
     VIO_DATA *vio = (VIO_DATA *)user_data;
@@ -96,25 +94,7 @@ std::string format_to_string(int format)
     return std::string(major_info.name);
 }
 
-std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE & vio_sndfile, int mode)
-{
-    //vio_sndfile.sndfile = sf_open_virtual(&vio, mode, &vio_sndfile.sfinfo, &vio_sndfile.vio_data);
-    SndfileHandle handle = SndfileHandle(vio, &vio_sndfile.vio_data, mode);
-    printf("Opened virtual sound file from buffer with mode %d\n", mode);
-    printf("File info - frames: %lld, samplerate: %d, channels: %d, format: %X\n",
-        static_cast<long long>(handle.frames()), handle.samplerate(), handle.channels(),
-        handle.format());
-    if (handle.error()) {
-        return handle.strError();
-    }
-    vio_sndfile.sndfile = handle.rawHandle();
-    //if (!vio_sndfile.sndfile) {
-    //    return std::string("Failed to open sound file from buffer: ") + sf_strerror(nullptr);
-    // }
-    return std::nullopt;
-}
-
-std::optional<std::string> open_sndfile_from_buffer2(VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode,
+std::optional<std::string> open_sndfile_from_buffer(VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode,
     int format, int channels, int samplerate)
 {
     vio_sndfileh.fileh = SndfileHandle(vio, &vio_sndfileh.vio_data, mode, format, channels, samplerate);
@@ -179,40 +159,6 @@ std::optional<std::string> wopen_vio_to_vector(
     return std::nullopt;
 }
 
-int sfg_write(SNDFILE * sndfile, void * buffer, snd_pcm_format_t format, int samples)
-{
-    int bytes_per_sample = snd_pcm_format_width(format) / 8;
-    bool is_unsigned = snd_pcm_format_unsigned(format);
-    bool is_float = snd_pcm_format_float(format);
-
-    if (samples <= 0) {
-        return 0;
-    }
-
-    if (is_float) {
-        if (bytes_per_sample == 4) {
-            return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
-        } else if (bytes_per_sample == 8) {
-            return sf_write_double(sndfile, reinterpret_cast<double*>(buffer), samples);
-        } else {
-            return -2; // Unsupported float byte size
-        }
-    } else {
-        if (is_unsigned) {
-            // Currently not handling unsigned formats
-            return -1;
-        }
-        if (bytes_per_sample == 2) {
-            return sf_write_short(sndfile, reinterpret_cast<short*>(buffer), samples);
-        } else if (bytes_per_sample == 4) {
-            return sf_write_int(sndfile, reinterpret_cast<int*>(buffer), samples);
-        } else {
-            return -3; // Unsupported integer byte size
-        }
-    }
-    return -4; // Should not reach here
-}
-
 // Write samples from a buffer to a SNDFILE with scaling and conversion.
 int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format, char * buffer, int samples)
 {
@@ -233,7 +179,7 @@ int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwForma
             return samples_converted; // Conversion error
         }
         // Write converted samples to sndfile
-        int written = sfg_write2(fileh.rawHandle(), to_format, byte_buffer, samples_converted);
+        int written = sfg_write(fileh.rawHandle(), to_format, byte_buffer, samples_converted);
         if (written < 0) {
             printf("Error writing to sndfile: %d\n", written);
             return written; // Write error
@@ -244,7 +190,7 @@ int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwForma
     }
     return total;
 }
-int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
+int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
 {
     switch (format) {
         case SFG_SHORT:
@@ -260,7 +206,7 @@ int sfg_write2(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples
                     rms += float_buffer[i] * float_buffer[i];
                 }
                 rms = std::sqrt(rms / samples);
-                printf("sfg_write2: writing %d float samples RMS %f\n", samples, rms);
+                printf("sfg_write: writing %d float samples RMS %f\n", samples, rms);
             }
             return sf_write_float(sndfile, reinterpret_cast<float*>(buffer), samples);
         case SFG_DOUBLE:
@@ -359,28 +305,7 @@ SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
     }
 }
 
-int sfg_read(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
-{
-    if (samples <= 0) {
-        return 0;
-    }
-
-    switch (format) {
-        case SFG_SHORT:
-            return sf_read_short(sndfile, reinterpret_cast<short*>(buffer), samples);
-        case SFG_INT:
-            return sf_read_int(sndfile, reinterpret_cast<int*>(buffer), samples);
-        case SFG_FLOAT:
-            return sf_read_float(sndfile, reinterpret_cast<float*>(buffer), samples);
-        case SFG_DOUBLE:
-            return sf_read_double(sndfile, reinterpret_cast<double*>(buffer), samples);
-        default:
-            return -1; // Unsupported format
-    }
-    return -2; // Should not reach here
-}
-
-int sfg_read2(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int samples)
+int sfg_read(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int samples)
 {
     if (samples <= 0) {
         return 0;
@@ -403,7 +328,7 @@ int sfg_read2(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int sa
                     rms += float_buffer[i] * float_buffer[i];
                 }
                 rms = std::sqrt(rms / read_samples);
-                printf("sfg_read2: RMS value of float samples: %f count %d\n", rms, read_samples);
+                printf("sfg_read: RMS value of float samples: %f count %d\n", rms, read_samples);
             }
             return read_samples;
         case SFG_DOUBLE:
@@ -412,164 +337,6 @@ int sfg_read2(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int sa
             return -1; // Unsupported format
     }
     return -2; // Should not reach here
-}
-
-
-/*
-int write_buffer(void* buffer, int sf_format, snd_pcm_format_t snd_format, int frames, int channels, int sample_rate)
-{
-    SF_INFO sfinfo;
-    memset (&sfinfo, 0, sizeof (sfinfo)) ;
-    sfinfo.format = sf_format;
-    sfinfo.channels = channels;
-    sfinfo.samplerate = sample_rate;
-    sfinfo.frames = frames;
-
-    printf("Preparing to write buffer: sf_format=%x, frames=%d, channels=%d, sample_rate=%d\n", sf_format, frames, channels, sample_rate);
-    const int MAX_HEADER = 128;
-    int sample_size = sample_size_from_alsa_format(snd_format);
-    if (sample_size < 0) {
-        RCLCPP_ERROR(rcl_logger, "Unsupported format for writing buffer: %x", sfinfo.format);
-        return -1;
-    }
-    int file_size = sfinfo.frames * sfinfo.channels * sample_size + MAX_HEADER;
-    printf("Allocating buffer of size %d bytes for writing\n", file_size);
-    std::vector<char> file_data(file_size);
-    VIO_SOUNDFILE vio_sndfile;
-    vio_sndfile.vio_data.data = file_data.data();
-    vio_sndfile.vio_data.length = 0;
-    vio_sndfile.vio_data.offset = 0;
-    vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(file_data.size());
-    vio_sndfile.sfinfo = sfinfo;
-    if (auto err = open_sndfile_from_buffer(vio_sndfile, SFM_WRITE)) {
-        printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
-        return -1;
-    }
-    int write_count = sfg_write(vio_sndfile.sndfile, buffer, snd_format, frames * channels);
-    if (write_count < 0) {
-        RCLCPP_ERROR(rcl_logger, "Error writing to buffer: %s", sf_strerror(vio_sndfile.sndfile));
-        return -1;
-    }
-    printf("Wrote %d samples to buffer\n", write_count);
-    return 0;
-}
-*/
-
-// Read an entire binary file into memory.
-std::optional<std::string> get_file(const char * file_path, std::shared_ptr<std::vector<char>> & out_data)
-{
-    // Read entire file into memory
-    std::ifstream file(file_path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        return std::string("Cannot open file: ") + file_path;
-    }
-
-    std::streamsize file_size = file.tellg();
-    file.seekg(0, std::ios::beg);
-    out_data = std::make_shared<std::vector<char>>(file_size);
-    if (!file.read(reinterpret_cast<char*>(out_data->data()), file_size)) {
-        file.close();
-        return std::string("Cannot read file: ") + file_path;
-    }
-    file.close();
-    return std::nullopt;
-}
-
-//play_buffer thread function that listens to the audio_queue
-void
-play_buffer_thread(boost::lockfree::spsc_queue<PlayBufferParams>* audio_queue, std::atomic<bool>* shutdown_flag, std::atomic<bool>* data_available)
-{
-    snd_pcm_t* alsa_dev = nullptr;
-    bool first_call = true;
-    AlsaHwParams old_hw_vals;
-    AlsaSwParams old_sw_vals;
-
-    RCLCPP_INFO(rcl_logger, "Play buffer thread started");
-
-    while (!shutdown_flag->load()) {
-        PlayBufferParams params;
-
-        // Try to pop from queue
-        data_available->wait(false); // Wait until there's something to process
-        data_available->store(false);
-        if (!audio_queue->pop(params)) {
-            // Check if shutdown has been requested
-            if (shutdown_flag && shutdown_flag->load()) {
-                RCLCPP_INFO(rcl_logger, "Playback interrupted by shutdown signal");
-                break;
-            }
-            // Queue is empty, sleep briefly and continue. We should not reach this
-            RCLCPP_INFO(rcl_logger, "Audio queue is empty, waiting...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-
-        // Process the audio buffer
-        std::shared_ptr<std::vector<char>> file_data = params.file_data;
-        AlsaHwParams hw_vals = params.hw_vals;
-        AlsaSwParams sw_vals = params.sw_vals;
-        VIO_SOUNDFILE vio_sndfile;
-        
-        vio_sndfile.vio_data.data = file_data->data();
-        vio_sndfile.vio_data.length = static_cast<sf_count_t>(file_data->size());
-        vio_sndfile.vio_data.offset = 0;
-        vio_sndfile.vio_data.capacity = static_cast<sf_count_t>(file_data->size());
-
-        if (auto err = open_sndfile_from_buffer(vio_sndfile, SFM_READ)) {
-            RCLCPP_ERROR(rcl_logger, err->c_str());
-            continue;
-        }
-        hw_vals.channels = vio_sndfile.sfinfo.channels;
-        hw_vals.samplerate = vio_sndfile.sfinfo.samplerate;
-        
-        // Check if we need to reopen the device
-        bool need_reopen = first_call || !alsa_dev || hw_vals != old_hw_vals || sw_vals != old_sw_vals;
-        
-        if (need_reopen) {
-            if (!first_call) {
-                RCLCPP_INFO(rcl_logger, "ALSA device reopened with new parameters");
-                if (alsa_dev) {
-                    snd_pcm_drain(alsa_dev);
-                    snd_pcm_close(alsa_dev);
-                    alsa_dev = nullptr;
-                }
-            }
-            auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
-            if (open_result) {
-                RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device: %s", open_result->c_str());
-                sf_close(vio_sndfile.sndfile);
-                continue;
-            }
-            old_hw_vals = hw_vals;
-            old_sw_vals = sw_vals;
-            first_call = false;
-        }
-
-        // Capture alsa_dev in a local variable to avoid issues with static storage
-        snd_pcm_t* current_alsa_dev = alsa_dev;
-        
-        // Play the audio
-        auto result = alsa_play(vio_sndfile.sndfile, vio_sndfile.sfinfo, current_alsa_dev, hw_vals.format, shutdown_flag);
-
-        if (result) {
-            RCLCPP_ERROR(rcl_logger, "Playback failed: %s", result->c_str() );
-        } else {
-            RCLCPP_INFO(rcl_logger, "Playback completed successfully");
-        }
-
-        // Clean up
-        if (vio_sndfile.sndfile) {
-            sf_close(vio_sndfile.sndfile);
-        }
-    }
-
-    if (alsa_dev)
-    {
-        snd_pcm_drain(alsa_dev);
-        snd_pcm_close(alsa_dev);
-    }
-
-    RCLCPP_INFO(rcl_logger, "Play buffer thread exiting");
 }
 
 #define	BUFFER_LEN			(1000*4)
@@ -800,75 +567,14 @@ std::string format_to_string(snd_pcm_format_t format)
     }
 }
 
+// Play audio from a SNDFILE using ALSA
 std::optional<std::string>
 alsa_play (SndfileHandle fileh, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
 {
-    return alsa_play(fileh.rawHandle(), fileh.format(), fileh.channels(), alsa_dev, alsa_format, shutdown_flag);
-}
+    auto sndfile = fileh.rawHandle();
+    int format = fileh.format();
+    int channels = fileh.channels();
 
-SndFileStream::SndFileStream(SndfileHandle & sndfileh,
-    snd_pcm_format_t alsa_format,
-    std::atomic<bool>* shutdown_flag,
-    std::atomic<bool>* data_available,
-    boost::lockfree::spsc_queue<std::vector<uint8_t>>* queue)
-    : sndfileh_(sndfileh), alsa_format_(alsa_format),
-      shutdown_flag_(shutdown_flag), data_available_(data_available), queue_(queue)
-{}
-
-void SndFileStream::run()
-{
-    const int STREAM_FRAMES = 480;
-    auto r_format = sfg_format_from_sndfile_format(sndfileh_.format());
-    auto w_format = sfg_format_from_alsa_format(alsa_format_);
-    auto r_sample_size = sample_size_from_sfg_format(r_format);
-    auto w_sample_size = sample_size_from_sfg_format(w_format);
-    auto r_buffer_size = STREAM_FRAMES * sndfileh_.channels() * r_sample_size;
-    auto w_buffer_size = STREAM_FRAMES * sndfileh_.channels() * w_sample_size;
-    std::vector<uint8_t> r_buffer(r_buffer_size);
-    std::vector<uint8_t> w_buffer(w_buffer_size);
-    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * STREAM_FRAMES / (sndfileh_.samplerate())));
-    auto next_time = std::chrono::steady_clock::now();
-    int silent_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
-
-    while (!(shutdown_flag_ && shutdown_flag_->load())) {
-        int samples_read = sfg_read2(sndfileh_, r_format, r_buffer.data(), STREAM_FRAMES * sndfileh_.channels());
-        if (samples_read <= 0) {
-            if (silent_frames > 0) {
-                // Push silence
-                std::fill(r_buffer.begin(), r_buffer.end(), 0);
-                silent_frames -= STREAM_FRAMES;
-                samples_read = STREAM_FRAMES * sndfileh_.channels();
-                printf("End of file reached, pushing silence (%d frames left)\n", silent_frames);
-            } else {
-                break; // End of file or error
-            }
-        }
-        int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
-        if (samples_converted < 0) {
-            RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
-            break;
-        } else if (samples_converted != samples_read) {
-            RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d", samples_read, samples_converted);
-            break;
-        }
-
-        while (!queue_->push(w_buffer) && !shutdown_flag_->load()) {
-            RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        printf("Pushed %d samples to audio queue\n", samples_converted);
-        data_available_->store(true);
-        data_available_->notify_one();
-        next_time += duration;
-        std::this_thread::sleep_until(next_time);
-    }
-    printf("SndFileStream thread exiting\n");
-}
-
-// Play audio from a SNDFILE using ALSA
-std::optional<std::string>
-alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
-{
     static char r_buffer [BUFFER_LEN] ; // read buffer
     static char w_buffer [BUFFER_LEN] ; // write buffer
 
@@ -883,7 +589,7 @@ alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_
     printf("Starting ALSA playback: alsa_format=%s, samples=%d\n",
         format_to_string(alsa_format).c_str(), samples) ;
 
-    while ((readcount = sfg_read(sndfile, read_sfg_format, r_buffer, samples)) > 0) {
+    while ((readcount = sfg_read(fileh, read_sfg_format, r_buffer, samples)) > 0) {
         printf("Read %d samples from sound file expecting %d\n", readcount, samples);
         if (readcount < 0) {
             return std::string("Error reading from sound file");
@@ -913,9 +619,3 @@ alsa_play (SNDFILE *sndfile, int format, int channels, snd_pcm_t* alsa_dev, snd_
     }
     return std::nullopt;
 } /* alsa_play */
-
-std::optional<std::string>
-alsa_play (SNDFILE *sndfile, SF_INFO sfinfo, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
-{
-    return alsa_play(sndfile, sfinfo.format, sfinfo.channels, alsa_dev, alsa_format, shutdown_flag);
-}
