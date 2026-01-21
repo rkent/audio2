@@ -140,6 +140,22 @@ public:
 
 };
 
+class AlsaSource : public AlsaTerminal
+{
+public:
+    AlsaSource(
+        std::string alsa_device_name,
+        int channels,
+        int samplerate,
+        snd_pcm_format_t format
+    ) :
+    AlsaTerminal(alsa_device_name, channels, samplerate, format)
+    {}
+
+    void run(AudioStream * audio_stream) override;
+
+};
+
 class MessageSink : public AudioTerminal
 {
 public:

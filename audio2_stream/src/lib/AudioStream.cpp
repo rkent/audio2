@@ -131,6 +131,84 @@ void AlsaSink::run(AudioStream * audio_stream)
     return;
 }
 
+void AlsaSource::run(AudioStream * audio_stream)
+{
+    assert(audio_stream);
+    assert(alsa_dev_);
+    printf("AlsaSource::run started\n");
+    while (!audio_stream->shutdown_flag_.load()) {
+        if (error_str_.length() > 0) {
+            break;
+        }
+        if (!alsa_dev_) {
+            error_str_ = "ALSA device is not opened";
+            break;
+        }
+        std::vector<uint8_t> audio_data;
+
+        // Wait to pop from queue
+        audio_stream->data_available_.wait(false); // Wait until there's something to process
+        std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
+        printf("\nAlsaSource::run thread %zu woke up to process audio data at %s\n", hash_id, format_timestamp().c_str());
+        audio_stream->data_available_.store(false);
+        // empty the queue
+       do {
+            printf("AlsaSource: popping audio data from queue ra: %zu wa: %zu \n", audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
+            auto pop_result = audio_stream->queue_.pop(audio_data);
+            if (!pop_result) {
+                break;
+            }
+            int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+            if (true) {
+                // Output ALSA status for debugging
+                snd_pcm_status_t * stat;
+                snd_pcm_status_alloca(&stat);
+                snd_pcm_status(alsa_dev_, stat);
+                snd_output_t *output;
+                snd_output_stdio_attach(&output, stdout, 0);
+                snd_pcm_status_dump(stat, output);
+            }
+            int write_result = alsa_write(
+                static_cast<int>(audio_data.size() / bytes_per_sample),
+                alsa_dev_,
+                audio_data.data(),
+                channels_, // channels
+                format_,
+                nullptr  // shutdown flag
+            );
+            if (write_result < 0) {
+                printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
+            }
+        }  while (true);
+    }
+    printf("AlsaSource::run exiting, pushing silence.\n");
+    // Push silence to fill the buffer before closing
+    const int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+    int silence_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
+    const int silence_size = silence_frames * channels_ * bytes_per_sample;
+    std::vector<uint8_t> silence_buffer(silence_size, 0);
+    while (silence_frames > 0) {
+        int written = alsa_write(
+            silence_frames,
+            alsa_dev_,
+            silence_buffer.data(),
+            channels_,
+            format_,
+            nullptr  // no shutdown flag so we can finish writing silence
+        );
+        if (written < 0) {
+            printf("Error writing silence to ALSA device: %s\n", snd_strerror(written));
+            break;
+        }
+        printf("Wrote %d silence frames to ALSA device of %d\n", written, silence_frames);
+        silence_frames -= written;
+    }
+
+    close();
+    printf("AlsaSource::run final exiting\n");
+    return;
+}
+
 std::optional<std::string> SndFileSource::open()
 {
     sndfileh_ = SndfileHandle(file_path_.c_str());
