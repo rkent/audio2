@@ -12,20 +12,6 @@
 #include <cstdio>
 #include <cstdarg>
 
-static std::string format_timestamp() {
-    auto time_point = std::chrono::steady_clock::now();
-    auto time_since_epoch = time_point.time_since_epoch();
-    auto hours = std::chrono::duration_cast<std::chrono::hours>(time_since_epoch) % 24;
-    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
-    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
-    
-    char buffer[256];
-    snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%03ld",
-                hours.count(), minutes.count(), seconds.count(), milliseconds.count());
-    return std::string(buffer);
-}
-
 template<typename T>
 class AlsaWrite {
 public:
@@ -182,8 +168,11 @@ alsa_open (AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev
             error_str.clear();
             hw_vals = requested_hw_vals; // Reset to requested values
         }
+        printf("alsa_open: Trying to open device %s with format %d at %s\n", device, format, format_timestamp().c_str());
         hw_vals.format = format;
+        // TODO: pre-open alsa device to reduce latency.
         ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device, hw_vals.direction, 0);
+        printf("alsa_open: snd_pcm_open succeeded at %s\n", format_timestamp().c_str());
         snd_pcm_hw_params_alloca (&hw_params);
 
         ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev, hw_params);
@@ -206,16 +195,11 @@ alsa_open (AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev
         ECALL(snd_pcm_sw_params_set_silence_size, "cannot set silence size", alsa_dev, sw_params, sw_vals.silence_size);
         ECALL(snd_pcm_sw_params_set_silence_threshold, "cannot set silence threshold", alsa_dev, sw_params, sw_vals.silence_threshold);
         ECALL(snd_pcm_sw_params, "cannot install sw params", alsa_dev, sw_params);
-        snd_pcm_uframes_t silence_size;
-        snd_pcm_sw_params_get_silence_size(sw_params, &silence_size);
-        printf("ALSA device: Silence Size: %lu\n", silence_size);
-        snd_pcm_uframes_t silence_threshold;
-        snd_pcm_sw_params_get_silence_threshold(sw_params, &silence_threshold);
-        printf("ALSA device: Silence Threshold: %lu\n", silence_threshold);
         snd_pcm_reset (alsa_dev);
         if (error_str.empty()) {
             break;
         }
+        printf("alsa_open: alsa_open succeeded at %s\n", format_timestamp().c_str());
     }
     if (error_str.empty()) {
         if (hw_vals.format != requested_hw_vals.format) {

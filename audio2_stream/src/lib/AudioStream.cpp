@@ -8,20 +8,6 @@
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
-static std::string format_timestamp() {
-    auto time_point = std::chrono::steady_clock::now();
-    auto time_since_epoch = time_point.time_since_epoch();
-    auto hours = std::chrono::duration_cast<std::chrono::hours>(time_since_epoch) % 24;
-    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
-    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) % 1000;
-    
-    char buffer[256];
-    snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%03ld",
-                hours.count(), minutes.count(), seconds.count(), milliseconds.count());
-    return std::string(buffer);
-}
-
 std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 {
     AlsaHwParams hw_params;
@@ -31,6 +17,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
     hw_params.format = format_;
     hw_params.direction = direction;
 
+    printf("AlsaTerminal::open called at %s\n", format_timestamp().c_str());
     printf("AlsaTerminal::open called with hw_params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
            hw_params.device,
            hw_params.channels,
@@ -41,6 +28,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
     AlsaSwParams sw_params;
 
     auto result = alsa_open(hw_params, sw_params, alsa_dev_);
+    printf("AlsaTerminal::open completed at %s\n", format_timestamp().c_str());
     if (result.has_value()) {
         error_str_ = result.value();
         return error_str_;
@@ -164,7 +152,7 @@ void SndFileSource::run(AudioStream * audio_stream)
     bool done = false;
 
     while (!(audio_stream->shutdown_flag_.load()) && !done) {
-        // Fill the queue before sleeping
+        // Add one to the queue each duration
         while (audio_stream->queue_.write_available() > 0 &&
                !audio_stream->shutdown_flag_.load()) {
             int samples_read = sfg_read(sndfileh_, r_format, r_buffer.data(), QUEUE_FRAMES * sndfileh_.channels());
@@ -191,9 +179,9 @@ void SndFileSource::run(AudioStream * audio_stream)
             printf("SndFileSource: Pushed %d samples to audio queue at %s\n", samples_converted, format_timestamp().c_str());
             audio_stream->data_available_.store(true);
             audio_stream->data_available_.notify_one();
+            next_time += duration;
+            std::this_thread::sleep_until(next_time);
         }
-        next_time += duration;
-        std::this_thread::sleep_until(next_time);
     }
     printf("SndFileSource::run exiting\n");
     audio_stream->shutdown();
