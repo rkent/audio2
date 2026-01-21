@@ -25,6 +25,13 @@ static auto rcl_logger = rclcpp::get_logger("audio2_stream");
 class Audio2PlayRemoteNode : public rclcpp::Node {
 public:
     Audio2PlayRemoteNode() : Node("audio2_play_remote_node") {
+        // Parameters
+        auto param_desc = rcl_interfaces::msg::ParameterDescriptor();
+        param_desc.description = "Number of frames per audio chunk in the stream";
+        param_desc.additional_constraints = "Must be a positive integer.";
+        param_desc.read_only = false;
+        this->declare_parameter<int>("stream_queue_frames", STREAM_QUEUE_FRAMES, param_desc);
+
         // Subscriber for local PlayFile messages
 
         play_file_remote_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::PlayFile>(
@@ -94,7 +101,8 @@ public:
             SFG_RW_FORMAT,
             std::move(snd_file_source),
             std::move(message_sink),
-            std::string("Remote playback of ") + file_path
+            std::string("Remote playback of ") + file_path,
+            get_parameter("stream_queue_frames").as_int()
         );
 
         audio_stream->start();

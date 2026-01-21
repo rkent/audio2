@@ -146,8 +146,8 @@ void SndFileSource::run(AudioStream * audio_stream)
     auto w_format = audio_stream->rw_format_;
     std::vector<uint8_t> r_buffer;
     std::vector<uint8_t> w_buffer;
-    create_convert_vectors(r_format, w_format, QUEUE_FRAMES * sndfileh_.channels(), r_buffer, w_buffer);
-    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * QUEUE_FRAMES / (sndfileh_.samplerate())));
+    create_convert_vectors(r_format, w_format, audio_stream->queue_frames_ * sndfileh_.channels(), r_buffer, w_buffer);
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * audio_stream->queue_frames_ / (sndfileh_.samplerate())));
     auto next_time = std::chrono::steady_clock::now();
     bool done = false;
 
@@ -155,7 +155,7 @@ void SndFileSource::run(AudioStream * audio_stream)
         // Add one to the queue each duration
         while (audio_stream->queue_.write_available() > 0 &&
                !audio_stream->shutdown_flag_.load()) {
-            int samples_read = sfg_read(sndfileh_, r_format, r_buffer.data(), QUEUE_FRAMES * sndfileh_.channels());
+            int samples_read = sfg_read(sndfileh_, r_format, r_buffer.data(), audio_stream->queue_frames_ * sndfileh_.channels());
             if (samples_read <= 0) {
                 done = true;
                 break; // End of file or error
@@ -216,12 +216,12 @@ void MessageSink::run(AudioStream * audio_stream)
     // snd_file_write is used to hold the serialized audio chunk including header
     // TODO: determine appropriate buffer size
     std::vector<unsigned char> snd_file_write;
-    auto bytes_per_chunk = QUEUE_FRAMES * channels_ * sample_size_from_sfg_format(SFG_RW_FORMAT);
+    auto bytes_per_chunk = audio_stream->queue_frames_ * channels_ * sample_size_from_sfg_format(SFG_RW_FORMAT);
     size_t file_size = bytes_per_chunk + MAX_HEADER;
     snd_file_write.reserve(file_size);
 
     // Messages will be sent at a constant rate based on samplerate and buffer size.
-    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * QUEUE_FRAMES / (samplerate_)));
+    auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 * audio_stream->queue_frames_ / (samplerate_)));
     auto next_time = std::chrono::steady_clock::now();
 
     // Wait to pop from queue. After the first, we rely on time only.
@@ -247,7 +247,7 @@ void MessageSink::run(AudioStream * audio_stream)
             auto data_size = audio_data.size();
 
             VIO_SOUNDFILE_HANDLE m_vio_sndfileh;
-            if (auto err = wopen_vio_to_vector(snd_file_write, m_vio_sndfileh, SFG_RW_FORMAT, sfFormat_,  channels_, samplerate_, QUEUE_FRAMES)) {
+            if (auto err = wopen_vio_to_vector(snd_file_write, m_vio_sndfileh, SFG_RW_FORMAT, sfFormat_,  channels_, samplerate_, audio_stream->queue_frames_)) {
                 printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
                 return;
             }
@@ -347,14 +347,16 @@ void MessageSource::callback(
     auto w_format = audio_stream->rw_format_;
     std::vector<uint8_t> r_buffer;
     std::vector<uint8_t> w_buffer;
-    create_convert_vectors(r_format, w_format, QUEUE_FRAMES * vio_handle.fileh.channels(), r_buffer, w_buffer); 
+    create_convert_vectors(r_format, w_format, audio_stream->queue_frames_ * vio_handle.fileh.channels(), r_buffer, w_buffer);
     bool done = false;
+    printf("MessageSource read: length %zu bytes from audio chunk\n", vio_handle.vio_data.length);
     while (!(audio_stream->shutdown_flag_.load()) && !done) {
-        int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * vio_handle.fileh.channels());
+        int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(), audio_stream->queue_frames_ * vio_handle.fileh.channels());
         if (samples_read <= 0) {
             done = true;
             break; // End of file or error
         }
+        printf("MessageSource: read %d samples from audio chunk at %s\n", samples_read, format_timestamp().c_str());
         int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
         if (samples_converted < 0) {
             RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);

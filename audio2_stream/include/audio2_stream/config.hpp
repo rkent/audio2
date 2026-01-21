@@ -21,7 +21,7 @@ const SfgRwFormat SFG_RW_FORMAT = SFG_FLOAT;
 const int MAX_HEADER = 128;
 
 // Number of frames per audio queue chunk
-const int QUEUE_FRAMES = 480;
+const int STREAM_QUEUE_FRAMES = 480;
 
 // ALSA configuration defaults
 const int ALSA_PERIOD_SIZE = 1024;

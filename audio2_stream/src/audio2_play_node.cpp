@@ -38,6 +38,11 @@ public:
         param_desc.read_only = false;
         this->declare_parameter<int>("alsa_format", static_cast<int>(ALSA_FORMAT), param_desc);
 
+        param_desc.description = "Number of frames per audio chunk in the stream";
+        param_desc.additional_constraints = "Must be a positive integer.";
+        param_desc.read_only = false;
+        this->declare_parameter<int>("stream_queue_frames", STREAM_QUEUE_FRAMES, param_desc);
+
         // Subscriber for local PlayFile messages
         play_file_local_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::PlayFile>(
             "play_file_local", 10,
@@ -121,7 +126,8 @@ public:
                 sfg_format_from_alsa_format(alsa_sink->format_),
                 nullptr,
                 std::move(alsa_sink),
-                std::string("Stream for topic callback")
+                std::string("Stream for topic callback"),
+                get_parameter("stream_queue_frames").as_int()
             );
             audio_stream->stream_uuid_ = uuid;
             audio_stream->start();
@@ -170,7 +176,8 @@ public:
             rw_format,
             std::move(snd_file_source),
             std::move(alsa_sink),
-            std::string("Local playback of ") + file_path
+            std::string("Local playback of ") + file_path,
+            get_parameter("stream_queue_frames").as_int()
         );
 
         audio_stream->start();

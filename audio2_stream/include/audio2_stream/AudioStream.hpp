@@ -36,7 +36,8 @@ public:
         SfgRwFormat rw_format,
         std::unique_ptr<AudioTerminal> source,
         std::unique_ptr<AudioTerminal> sink,
-        std::string description = ""
+        std::string description = "",
+        std::size_t queue_frames = STREAM_QUEUE_FRAMES
     ) :
         shutdown_flag_(false),
         data_available_(false),
@@ -47,9 +48,14 @@ public:
         source_thread_(nullptr),
         sink_thread_(nullptr),
         stream_uuid_(generate_uuid()),
-        description_(description)
-    {}
-    ~AudioStream() { printf("AudioStream::~AudioStream called for %s\n", description_.c_str());};
+        description_(description),
+        queue_frames_(queue_frames)
+    {
+        printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(), queue_frames_);
+    }
+    ~AudioStream() {
+        printf("AudioStream::~AudioStream called for %s\n", description_.c_str());
+    };
 
     std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
@@ -62,6 +68,7 @@ public:
     std::unique_ptr<std::jthread> sink_thread_;
     unique_identifier_msgs::msg::UUID stream_uuid_;
     std::string description_;
+    int queue_frames_;
 
     void shutdown();
     void start();
