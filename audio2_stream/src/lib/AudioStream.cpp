@@ -89,18 +89,19 @@ void AlsaSink::run(AudioStream * audio_stream)
        do {
             printf("AlsaSink: popping audio data from queue ra: %zu wa: %zu \n", audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
             auto pop_result = audio_stream->queue_.pop(audio_data);
-            printf("After AlsaSink: popped audio data from queue result %d \n", pop_result);
             if (!pop_result) {
                 break;
             }
             int bytes_per_sample = snd_pcm_format_width(format_) / 8;
-            snd_pcm_status_t * stat;
-            snd_pcm_status_alloca(&stat);
-            snd_pcm_status(alsa_dev_, stat);
-            snd_output_t *output;
-            snd_output_stdio_attach(&output, stdout, 0);
-            snd_pcm_status_dump(stat, output);
-
+            if (true) {
+                // Output ALSA status for debugging
+                snd_pcm_status_t * stat;
+                snd_pcm_status_alloca(&stat);
+                snd_pcm_status(alsa_dev_, stat);
+                snd_output_t *output;
+                snd_output_stdio_attach(&output, stdout, 0);
+                snd_pcm_status_dump(stat, output);
+            }
             int write_result = alsa_write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 alsa_dev_,
@@ -109,7 +110,6 @@ void AlsaSink::run(AudioStream * audio_stream)
                 format_,
                 nullptr  // shutdown flag
             );
-            puts("After alsa_write");
             if (write_result < 0) {
                 printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
             }
@@ -362,9 +362,7 @@ void MessageSource::callback(
     create_convert_vectors(r_format, w_format, QUEUE_FRAMES * vio_handle.fileh.channels(), r_buffer, w_buffer); 
     bool done = false;
     while (!(audio_stream->shutdown_flag_.load()) && !done) {
-        printf("MessageSource: Reading from message sndfile...\n");
         int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(), QUEUE_FRAMES * vio_handle.fileh.channels());
-        printf("MessageSource: Read %d samples from message sndfile\n", samples_read);
         if (samples_read <= 0) {
             done = true;
             break; // End of file or error
@@ -394,11 +392,11 @@ void MessageSource::callback(
             audio_stream->data_available_.notify_one();
             continue;
         }
-        printf("MessageSource: Pushed %d samples to audio queue ra: %lu wa: %lu\n", samples_converted, audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
+        printf("MessageSource: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n", samples_converted, audio_stream->queue_.read_available(), audio_stream->queue_.write_available(), format_timestamp().c_str());
         audio_stream->data_available_.store(true);
         audio_stream->data_available_.notify_one();
     }
-    printf("MessageSource::callback exiting\n");
+    printf("MessageSource: callback exiting at %s\n", format_timestamp().c_str());
 }
 
 void AudioStream::start()
