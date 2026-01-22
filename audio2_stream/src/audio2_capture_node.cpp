@@ -58,7 +58,7 @@ public:
         param_desc.description = "Topic name for publishing captured audio chunks";
         param_desc.additional_constraints = "Must be a valid ROS topic name.";
         param_desc.read_only = false;
-        this->declare_parameter<std::string>("audio_topic", "audio_capture_chunks", param_desc);
+        this->declare_parameter<std::string>("audio_topic", "audio_stream_chunks", param_desc);
 
         param_desc.description = "Auto-start capturing on node initialization";
         param_desc.additional_constraints = "Boolean value (true/false).";
@@ -66,8 +66,11 @@ public:
         this->declare_parameter<bool>("auto_start", true, param_desc);
 
         // Register shutdown callback
-        rclcpp::on_shutdown(
-            std::bind(&Audio2CaptureNode::stop_streams_callback, this));
+        using rclcpp::contexts::get_global_default_context;
+        get_global_default_context()->add_pre_shutdown_callback(
+            [this]() {
+                this->stop_streams_callback();
+            });
 
         // Timer to check and clean up finished streams
         timer_ = this->create_wall_timer(
