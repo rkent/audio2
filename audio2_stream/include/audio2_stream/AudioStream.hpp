@@ -43,10 +43,10 @@ public:
         data_available_(false),
         queue_(AUDIO_QUEUE_SIZE),
         rw_format_(rw_format),
-        source_(std::move(source)),
         sink_(std::move(sink)),
-        source_thread_(nullptr),
+        source_(std::move(source)),
         sink_thread_(nullptr),
+        source_thread_(nullptr),
         stream_uuid_(generate_uuid()),
         description_(description),
         queue_frames_(queue_frames)
@@ -54,18 +54,19 @@ public:
         printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(), queue_frames_);
     }
     ~AudioStream() {
-        printf("AudioStream::~AudioStream called for %s\n", description_.c_str());
+        printf("AudioStream::~AudioStream thread %zu called for %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000, description_.c_str());
     };
 
     std::atomic<bool> shutdown_flag_;
     std::atomic<bool> data_available_;
+    std::atomic<bool> shutdown_complete_{false};
     // TODO: consider making this a unique pointer to reduce copies
     boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
     SfgRwFormat rw_format_;
-    std::unique_ptr<AudioTerminal> source_;
     std::unique_ptr<AudioTerminal> sink_;
-    std::unique_ptr<std::jthread> source_thread_;
+    std::unique_ptr<AudioTerminal> source_;
     std::unique_ptr<std::jthread> sink_thread_;
+    std::unique_ptr<std::jthread> source_thread_;
     unique_identifier_msgs::msg::UUID stream_uuid_;
     std::string description_;
     int queue_frames_;
@@ -149,8 +150,10 @@ public:
         int samplerate,
         snd_pcm_format_t format
     ) :
-    AlsaTerminal(alsa_device_name, channels, samplerate, format)
-    {}
+    AlsaTerminal(alsa_device_name, channels, samplerate, format) {}
+    ~AlsaSource() {
+        printf("AlsaSource::~AlsaSource called\n");
+    }
 
     void run(AudioStream * audio_stream) override;
 
@@ -167,6 +170,10 @@ public:
         rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
         std::string description
     );
+
+    ~MessageSink() {
+        printf("MessageSink::~MessageSink called\n");
+    }
 
     void run(AudioStream * audio_stream) override;
 

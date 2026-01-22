@@ -70,6 +70,10 @@ public:
         RCLCPP_INFO(rcl_logger, "Audio2PlayNode initialized.");
     }
 
+    ~Audio2PlayNode() {
+        RCLCPP_INFO(rcl_logger, "Audio2PlayNode shutting down.");
+    }
+
     void check_streams_callback()
     {
         std::erase_if(audio_streams_, [](const std::unique_ptr<AudioStream>& stream) {
@@ -205,7 +209,7 @@ int main(int argc, [[maybe_unused]] char ** argv)
     rclcpp::init(argc, argv);
     auto node = std::make_shared<Audio2PlayNode>();
     rclcpp::spin(node);
-    RCLCPP_INFO(rcl_logger, "Audio2PlayNode shutting down...");
+    RCLCPP_INFO(rcl_logger, "audio2_play_node shutting down...");
     rclcpp::shutdown();
     return 0;
 }

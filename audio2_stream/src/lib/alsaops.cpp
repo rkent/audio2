@@ -66,28 +66,6 @@ public:
                             };
                         epipe_count += 100;
 
-    #if 0
-                        if (0)
-                        {	snd_pcm_status_t *status;
-
-                            snd_pcm_status_alloca (&status);
-                            if ((retval = snd_pcm_status (alsa_dev, status)) < 0)
-                                fprintf (stderr, "alsa_out: xrun. can't determine length\n");
-                            else if (snd_pcm_status_get_state (status) == SND_PCM_STATE_XRUN)
-                            {	struct timeval now, diff, tstamp;
-
-                                gettimeofday (&now, 0);
-                                snd_pcm_status_get_trigger_tstamp (status, &tstamp);
-                                timersub (&now, &tstamp, &diff);
-
-                                fprintf (stderr, "alsa_write xrun: of at least %.3f msecs. resetting stream\n",
-                                        diff.tv_sec * 1000 + diff.tv_usec / 1000.0);
-                                }
-                            else
-                                fprintf (stderr, "alsa_write: xrun. can't determine length\n");
-                            };
-    #endif
-
                         snd_pcm_prepare (alsa_dev);
                         break;
 
@@ -300,4 +278,91 @@ void AlsaWriteThread::run()
     }
     close();
     return;
+}
+
+template<typename T>
+class AlsaRead {
+public:
+    int operator()(snd_pcm_t* alsa_dev, T* data, int frames, int channels, std::atomic<bool>* shutdown_flag=nullptr)
+    {	static	int epipe_count = 0;
+
+        int total = 0;
+        int retval;
+
+        if (epipe_count > 0)
+            epipe_count --;
+
+        while (total < frames)
+        {
+            // Check if shutdown has been requested
+            if (shutdown_flag && shutdown_flag->load()) {
+                break;
+            }
+
+            retval = snd_pcm_readi(alsa_dev, data + total * channels, frames - total);
+
+            if (retval > 0) {
+                total += retval;
+                if (total == frames) {
+                    return total;
+                }
+                continue;
+            }
+
+            switch (retval)
+            {
+                case 0:
+                    continue;
+                case -EAGAIN :
+                    puts ("alsa_read: EAGAIN");
+                    continue;
+                    break;
+
+                case -EPIPE :
+                    if (epipe_count > 0) {
+                        printf ("alsa_read: EPIPE %d\n", epipe_count);
+                        if (epipe_count > 140) {
+                            return retval;
+                        }
+                    }
+                    epipe_count += 100;
+                    snd_pcm_prepare (alsa_dev);
+                    break;
+
+                case -EBADFD :
+                    fprintf (stderr, "alsa_read: Bad PCM state.n");
+                    return 0;
+                    break;
+
+                default :
+                    fprintf (stderr, "alsa_read: retval = %d\n", retval);
+                    return 0;
+                    break;
+                }; /* switch */
+            }; /* while */
+
+        return total;
+    }
+}; /* AlsaRead */
+
+AlsaRead<float> alsa_read_float;
+AlsaRead<short> alsa_read_short;
+AlsaRead<int> alsa_read_int;
+AlsaRead<double> alsa_read_double;
+int alsa_read(int samples, snd_pcm_t* alsa_dev, void* data, int channels, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag)
+{
+    std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
+    printf("alsa_read: thread: %zu, samples=%d, channels=%d, format=%x at %s\n", hash_id, samples, channels, alsa_format, format_timestamp().c_str());
+    int frames = samples / channels;
+    if (alsa_format == SND_PCM_FORMAT_S16) {
+        return channels * alsa_read_short(alsa_dev, reinterpret_cast<short*>(data), frames, channels, shutdown_flag);
+    } else if (alsa_format == SND_PCM_FORMAT_S32) {
+        return channels * alsa_read_int(alsa_dev, reinterpret_cast<int*>(data), frames, channels, shutdown_flag);
+    } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+        return channels *alsa_read_float(alsa_dev, reinterpret_cast<float*>(data), frames, channels, shutdown_flag);
+    } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+        return channels * alsa_read_double(alsa_dev, reinterpret_cast<double*>(data), frames, channels, shutdown_flag);
+    } else {
+        return -1;
+    }
 }
