@@ -44,7 +44,7 @@ add_executable(audio2_play_node src/audio2_play_node.cpp)
 add_executable(audio2_capture_node src/audio2_capture_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
 
-target_link_libraries(audio2_stream 
+target_link_libraries(audio2_stream
   PRIVATE
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
@@ -117,7 +117,6 @@ if(BUILD_TESTING)
 
   # Add GTest and GMock for unit testing
   find_package(ament_cmake_gtest REQUIRED)
-  find_package(ament_cmake_gmock REQUIRED)
 
   # Enable thread sanitizer for thread safety validation
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=thread -g")
@@ -140,7 +139,7 @@ if(BUILD_TESTING)
   )
 
   # Unit tests for ALSA operations with mocking
-  ament_add_gmock(test_alsa_mocked
+  ament_add_gtest(test_alsa_mocked
     test/test_alsa_mocked.cpp
   )
   target_link_libraries(test_alsa_mocked

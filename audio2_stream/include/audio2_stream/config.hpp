@@ -5,13 +5,14 @@
 #include <alsa/asoundlib.h>
 #include <sndfile.hh>
 
-typedef enum {
-    SFG_INVALID = -1,
-    SFG_BYTE,
-    SFG_SHORT,
-    SFG_INT,
-    SFG_FLOAT,
-    SFG_DOUBLE
+typedef enum
+{
+  SFG_INVALID = -1,
+  SFG_BYTE,
+  SFG_SHORT,
+  SFG_INT,
+  SFG_FLOAT,
+  SFG_DOUBLE
 } SfgRwFormat;
 
 // Default read/write format for audio streams
@@ -33,7 +34,7 @@ const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
 const int ALSA_CHANNELS = 2;
 const int ALSA_SAMPLERATE = 48000;
 const int ALSA_START_PERIODS = ALSA_BUFFER_PERIODS / 2;
-const long unsigned int ALSA_START_THRESHOLD =  ALSA_PERIOD_SIZE * ALSA_START_PERIODS;
+const long unsigned int ALSA_START_THRESHOLD = ALSA_PERIOD_SIZE * ALSA_START_PERIODS;
 // Never automatically stop the alsa device
 const long unsigned int ALSA_STOP_THRESHOLD = std::numeric_limits<snd_pcm_uframes_t>::max();
 // settings for "samples are zeroed after they are played back"

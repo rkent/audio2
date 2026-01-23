@@ -22,16 +22,18 @@
 std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
-typedef struct {
-    char *data = nullptr;
-    sf_count_t length = 0;
-    sf_count_t offset = 0;
-    sf_count_t capacity = 0;
+typedef struct
+{
+  char *data = nullptr;
+  sf_count_t length = 0;
+  sf_count_t offset = 0;
+  sf_count_t capacity = 0;
 } VIO_DATA;
 
-typedef struct {
-    SndfileHandle fileh;
-    VIO_DATA vio_data;
+typedef struct
+{
+  SndfileHandle fileh;
+  VIO_DATA vio_data;
 } VIO_SOUNDFILE_HANDLE;
 
 /**
@@ -42,8 +44,9 @@ typedef struct {
  * \param samplerate   The sample rate (only for write mode).
  */
 std::optional<std::string>
-open_sndfile_from_buffer(VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode = SFM_READ,
-    int format = 0, int channels = 0, int samplerate = 0);
+open_sndfile_from_buffer(
+  VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode = SFM_READ,
+  int format = 0, int channels = 0, int samplerate = 0);
 
 /**
  * Read samples from a SNDFILE into a buffer.
@@ -53,7 +56,7 @@ open_sndfile_from_buffer(VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode = SFM_REA
  * \param samples The number of samples to read.
  * \return        The number of samples read, or a negative error code.
  */
-int sfg_read(SndfileHandle& sndfileh, SfgRwFormat format, void * buffer, int samples);
+int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int samples);
 
 /**
  * Write samples from a buffer to a SNDFILE.
@@ -108,7 +111,9 @@ const char * sfg_format_to_string(SfgRwFormat format);
  * \param samples     Number of samples to convert.
  * \return            Number of samples converted, or negative error code.
  */
-int convert_types(SfgRwFormat from_format, SfgRwFormat to_format, const void* in_buffer, void* out_buffer, int samples);
+int convert_types(
+  SfgRwFormat from_format, SfgRwFormat to_format, const void * in_buffer,
+  void * out_buffer, int samples);
 
 /**
  * Write samples from a buffer to a SNDFILE with scaling and conversion.
@@ -119,7 +124,9 @@ int convert_types(SfgRwFormat from_format, SfgRwFormat to_format, const void* in
  * \param samples The number of samples to write.
  * \return        The number of samples written, or a negative error code.
  */
-int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format, char * buffer, int samples);
+int sfg_write_convert(
+  SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format,
+  char * buffer, int samples);
 
 /**
  * alsa_play: Play audio from a SNDFILE using ALSA
@@ -130,7 +137,9 @@ int sfg_write_convert(SndfileHandle & fileh, SfgRwFormat from_format, SfgRwForma
  * @return Optional error message string if an error occurs, std::nullopt on success
  */
 std::optional<std::string>
-alsa_play(SndfileHandle fileh, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format, std::atomic<bool>* shutdown_flag);
+alsa_play(
+  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
+  std::atomic<bool> * shutdown_flag);
 
 /**
  * Create read and write buffers for format conversion.
@@ -140,8 +149,9 @@ alsa_play(SndfileHandle fileh, snd_pcm_t* alsa_dev, snd_pcm_format_t alsa_format
  * \param r_buffer    Reference to the read buffer vector.
  * \param w_buffer    Reference to the write buffer vector.
  */
-void create_convert_vectors(SfgRwFormat from_format, SfgRwFormat to_format, int samples,
-    std::vector<uint8_t>& r_buffer, std::vector<uint8_t>& w_buffer);
+void create_convert_vectors(
+  SfgRwFormat from_format, SfgRwFormat to_format, int samples,
+  std::vector<uint8_t> & r_buffer, std::vector<uint8_t> & w_buffer);
 
 /**
  * Open a virtual sound file for reading from a vector buffer.
@@ -152,8 +162,8 @@ void create_convert_vectors(SfgRwFormat from_format, SfgRwFormat to_format, int 
  */
 std::optional<std::string>
 ropen_vio_from_vector(
-    const std::vector<unsigned char> & vector,
-    VIO_SOUNDFILE_HANDLE & vio_sndfileh);
+  const std::vector<unsigned char> & vector,
+  VIO_SOUNDFILE_HANDLE & vio_sndfileh);
 
 /**
  * Open a virtual sound file for writing to a vector buffer.
@@ -169,12 +179,12 @@ ropen_vio_from_vector(
  */
 std::optional<std::string>
 wopen_vio_to_vector(
-    std::vector<unsigned char> & vector,
-    VIO_SOUNDFILE_HANDLE & vio_sndfileh,
-    SfgRwFormat sfg_format,
-    int sf_format,
-    int channels,
-    int sample_rate,
-    int frames);
+  std::vector<unsigned char> & vector,
+  VIO_SOUNDFILE_HANDLE & vio_sndfileh,
+  SfgRwFormat sfg_format,
+  int sf_format,
+  int channels,
+  int sample_rate,
+  int frames);
 
 #endif // SNDPLAY_BUFFER_FILE_HPP

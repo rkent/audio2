@@ -11,52 +11,57 @@
 class AlsaDeviceImpl : public IAlsaDevice
 {
 public:
-    AlsaDeviceImpl() : alsa_dev_(nullptr), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
-    
-    virtual ~AlsaDeviceImpl() {
-        close();
-    }
+  AlsaDeviceImpl()
+  : alsa_dev_(nullptr), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
 
-    std::optional<std::string> open(
-        AlsaHwParams & hw_vals,
-        AlsaSwParams & sw_vals,
-        snd_pcm_stream_t direction
-    ) override;
+  virtual ~AlsaDeviceImpl()
+  {
+    close();
+  }
 
-    void close() override;
+  std::optional<std::string> open(
+    AlsaHwParams & hw_vals,
+    AlsaSwParams & sw_vals,
+    snd_pcm_stream_t direction
+  ) override;
 
-    int write(
-        int samples,
-        void* data,
-        int channels,
-        snd_pcm_format_t format,
-        std::atomic<bool>* shutdown_flag = nullptr
-    ) override;
+  void close() override;
 
-    int read(
-        int samples,
-        void* data,
-        int channels,
-        snd_pcm_format_t format,
-        std::atomic<bool>* shutdown_flag = nullptr
-    ) override;
+  int write(
+    int samples,
+    void * data,
+    int channels,
+    snd_pcm_format_t format,
+    std::atomic<bool> * shutdown_flag = nullptr
+  ) override;
 
-    snd_pcm_t* get_handle() override {
-        return alsa_dev_;
-    }
+  int read(
+    int samples,
+    void * data,
+    int channels,
+    snd_pcm_format_t format,
+    std::atomic<bool> * shutdown_flag = nullptr
+  ) override;
 
-    std::string get_error() const override {
-        return error_str_;
-    }
+  snd_pcm_t * get_handle() override
+  {
+    return alsa_dev_;
+  }
 
-    snd_pcm_format_t get_format() const override {
-        return format_;
-    }
+  std::string get_error() const override
+  {
+    return error_str_;
+  }
+
+  snd_pcm_format_t get_format() const override
+  {
+    return format_;
+  }
 
 private:
-    snd_pcm_t* alsa_dev_;
-    std::string error_str_;
-    snd_pcm_format_t format_;
+  snd_pcm_t * alsa_dev_;
+  std::string error_str_;
+  snd_pcm_format_t format_;
 };
 
 #endif // AUDIO2_STREAM_ALSADEVICEIMPL_HPP

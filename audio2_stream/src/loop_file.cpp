@@ -13,7 +13,7 @@
 
 #define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)
-//#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS) 
+//#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_OPUS)
 //#define TOPIC_FORMAT (SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III)
 
  // Global flag to signal thread shutdown
@@ -23,85 +23,96 @@ std::atomic<bool> data_available(false);
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/loop_file");
 
-void signal_handler(int signal) {
-    if (signal == SIGINT) {
-        RCLCPP_INFO(rcl_logger, "Keyboard interrupt received. Shutting down.");
-        shutdown_flag.store(true);
-        rclcpp::shutdown();
-    }
+void signal_handler(int signal)
+{
+  if (signal == SIGINT) {
+    RCLCPP_INFO(rcl_logger, "Keyboard interrupt received. Shutting down.");
+    shutdown_flag.store(true);
+    rclcpp::shutdown();
+  }
 }
 
 class FileLooperNode : public rclcpp::Node {
 public:
-    FileLooperNode() : Node("file_looper") {
-    }
-    void publish_file_data(const std::string & file_path) {
+  FileLooperNode()
+  : Node("file_looper")
+  {
+  }
+  void publish_file_data(const std::string & file_path)
+  {
         // Open the sound file
-        RCLCPP_INFO(rcl_logger, "Streaming audio data from file: %s", file_path.c_str());
+    RCLCPP_INFO(rcl_logger, "Streaming audio data from file: %s", file_path.c_str());
         // SF_INFO file_sfinfo;
-        fileh_ = SndfileHandle(file_path);
-        if (fileh_.error()) {
-            RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), fileh_.strError());
-            return;
-        }
-        RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(), fileh_.samplerate(), fileh_.format());
-        printf("channels: %d\n", fileh_.channels());
+    fileh_ = SndfileHandle(file_path);
+    if (fileh_.error()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(), fileh_.strError());
+      return;
+    }
+    RCLCPP_INFO(rcl_logger, "File opened: %s, Sample Rate: %d, Format %X", file_path.c_str(),
+      fileh_.samplerate(), fileh_.format());
+    printf("channels: %d\n", fileh_.channels());
 
-        AlsaHwParams hw_vals;
-        hw_vals.channels = fileh_.channels();
-        hw_vals.samplerate = fileh_.samplerate();
-        hw_vals.format = ALSA_FORMAT;
-        AlsaSwParams sw_vals;
-        snd_pcm_t * alsa_dev = nullptr;
-        auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
-        if (open_result.has_value()) {
-            RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish: %s", open_result->c_str());
-            return;
-        }
+    AlsaHwParams hw_vals;
+    hw_vals.channels = fileh_.channels();
+    hw_vals.samplerate = fileh_.samplerate();
+    hw_vals.format = ALSA_FORMAT;
+    AlsaSwParams sw_vals;
+    snd_pcm_t * alsa_dev = nullptr;
+    auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
+    if (open_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish: %s",
+        open_result->c_str());
+      return;
+    }
 
         // Disable normalization since we are handling scaling ourselves.
-        fileh_.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE) ;
-        fileh_.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE) ;
+    fileh_.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE);
+    fileh_.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE);
 
-        SfgRwFormat file_rw_format = sfg_format_from_sndfile_format(fileh_.format());
-        int file_sample_size = sample_size_from_sfg_format(file_rw_format);
-        const int MAX_HEADER = 128;
-        const int read_frames = 1024 * 16;
-        int file_buffer_size = read_frames * fileh_.channels() * file_sample_size;
-        std::vector<char> file_buffer(file_buffer_size);
+    SfgRwFormat file_rw_format = sfg_format_from_sndfile_format(fileh_.format());
+    int file_sample_size = sample_size_from_sfg_format(file_rw_format);
+    const int MAX_HEADER = 128;
+    const int read_frames = 1024 * 16;
+    int file_buffer_size = read_frames * fileh_.channels() * file_sample_size;
+    std::vector<char> file_buffer(file_buffer_size);
 
-        SfgRwFormat topic_rw_format = sfg_format_from_sndfile_format(TOPIC_FORMAT);
-        int topic_sample_size = sample_size_from_sfg_format(topic_rw_format);
-        int topic_file_size = read_frames * fileh_.channels() * topic_sample_size + MAX_HEADER;
-        printf("Topic publish file size: %d bytes\n", topic_file_size);
-        std::vector<char> topic_buffer(topic_file_size);
+    SfgRwFormat topic_rw_format = sfg_format_from_sndfile_format(TOPIC_FORMAT);
+    int topic_sample_size = sample_size_from_sfg_format(topic_rw_format);
+    int topic_file_size = read_frames * fileh_.channels() * topic_sample_size + MAX_HEADER;
+    printf("Topic publish file size: %d bytes\n", topic_file_size);
+    std::vector<char> topic_buffer(topic_file_size);
 
-        int samples_read = 0;
-        do {
-            samples_read = sfg_read(fileh_, file_rw_format, file_buffer.data(), read_frames * fileh_.channels());
-            printf("Read %d samples from file using format %s\n", samples_read, sfg_format_to_string(file_rw_format));
-            if (samples_read <= 0) {
-                if (samples_read < 0) {
-                    RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", fileh_.strError(), samples_read);
-                }
-                break;
-            }
+    int samples_read = 0;
+    do {
+      samples_read = sfg_read(fileh_, file_rw_format, file_buffer.data(),
+        read_frames * fileh_.channels());
+      printf("Read %d samples from file using format %s\n", samples_read,
+        sfg_format_to_string(file_rw_format));
+      if (samples_read <= 0) {
+        if (samples_read < 0) {
+          RCLCPP_ERROR(rcl_logger, "Error reading from file: %s %d", fileh_.strError(),
+            samples_read);
+        }
+        break;
+      }
 
             // At this point, we have read samples_read samples into file_buffer
             // Create a virtual sound file in memory for topic publish
             // Virtual file for topic publish
 
-            RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(TOPIC_FORMAT).c_str());
+      RCLCPP_INFO(rcl_logger, "Topic publish format: %s", format_to_string(TOPIC_FORMAT).c_str());
 
-            VIO_SOUNDFILE_HANDLE tw_vio_sndfileh;
-            tw_vio_sndfileh.vio_data.data = topic_buffer.data();
-            tw_vio_sndfileh.vio_data.length = 0;
-            tw_vio_sndfileh.vio_data.offset = 0;
-            tw_vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
-            if (auto err = open_sndfile_from_buffer(tw_vio_sndfileh, SFM_WRITE, TOPIC_FORMAT, fileh_.channels(), fileh_.samplerate())) {
-                printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
-                return;
-            }
+      VIO_SOUNDFILE_HANDLE tw_vio_sndfileh;
+      tw_vio_sndfileh.vio_data.data = topic_buffer.data();
+      tw_vio_sndfileh.vio_data.length = 0;
+      tw_vio_sndfileh.vio_data.offset = 0;
+      tw_vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
+      if (auto err = open_sndfile_from_buffer(tw_vio_sndfileh, SFM_WRITE, TOPIC_FORMAT,
+        fileh_.channels(), fileh_.samplerate()))
+      {
+        printf("Failed to open sound file for writing to buffer: %s\n", err->c_str());
+        return;
+      }
 
             // Set compression level for OGG/OPUS
             //double compression_level = 0.5; // 0.0 (fastest) to 1.0 (best)
@@ -112,49 +123,54 @@ public:
             //mode = sf_command(t_vio_sndfile.sndfile, SFC_GET_BITRATE_MODE, NULL, 0);
             //printf("Bitrate mode: %d\n", mode);
 
-            int samples_written = sfg_write_convert(tw_vio_sndfileh.fileh, file_rw_format, topic_rw_format, file_buffer.data(), samples_read);
-            if (samples_written != samples_read) {
-                RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written, samples_read);
-                break;
-            }
-            printf("Wrote %d samples to virtual topic buffer using format %s\n", samples_written, sfg_format_to_string(topic_rw_format));
-            
+      int samples_written = sfg_write_convert(tw_vio_sndfileh.fileh, file_rw_format,
+        topic_rw_format, file_buffer.data(), samples_read);
+      if (samples_written != samples_read) {
+        RCLCPP_ERROR(rcl_logger, "samples_written %d does not match expected %d", samples_written,
+          samples_read);
+        break;
+      }
+      printf("Wrote %d samples to virtual topic buffer using format %s\n", samples_written,
+        sfg_format_to_string(topic_rw_format));
+
             // Reopen the file for reading
             // sf_close(tw_vio_sndfileh.fileh.rawHandle());
-            VIO_SOUNDFILE_HANDLE tr_handle;
-            tr_handle.vio_data.data = topic_buffer.data();
-            tr_handle.vio_data.length = tw_vio_sndfileh.vio_data.length;
-            tr_handle.vio_data.offset = 0;
-            tr_handle.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
+      VIO_SOUNDFILE_HANDLE tr_handle;
+      tr_handle.vio_data.data = topic_buffer.data();
+      tr_handle.vio_data.length = tw_vio_sndfileh.vio_data.length;
+      tr_handle.vio_data.offset = 0;
+      tr_handle.vio_data.capacity = static_cast<sf_count_t>(topic_buffer.size());
 
-            if (auto err = open_sndfile_from_buffer(tr_handle, SFM_READ)) {
-                RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s", err->c_str());
-                return;
-            }
-
-            auto err = alsa_play(tr_handle.fileh, alsa_dev, hw_vals.format, &shutdown_flag);
-            if (err) {
-                RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
-            }
-            
-        } while (!shutdown_flag.load());
-        snd_pcm_drain(alsa_dev);
-        snd_pcm_close(alsa_dev);
+      if (auto err = open_sndfile_from_buffer(tr_handle, SFM_READ)) {
+        RCLCPP_ERROR(rcl_logger, "Failed to open sound file for reading from buffer: %s",
+          err->c_str());
         return;
-    }
+      }
+
+      auto err = alsa_play(tr_handle.fileh, alsa_dev, hw_vals.format, &shutdown_flag);
+      if (err) {
+        RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
+      }
+
+    } while (!shutdown_flag.load());
+    snd_pcm_drain(alsa_dev);
+    snd_pcm_close(alsa_dev);
+    return;
+  }
+
 private:
-   SndfileHandle fileh_;
+  SndfileHandle fileh_;
 };
 
 int main(int argc, char ** argv)
 {
-    std::signal(SIGINT, signal_handler); // Register the signal handler
-    rclcpp::init(argc, argv);
+  std::signal(SIGINT, signal_handler);   // Register the signal handler
+  rclcpp::init(argc, argv);
 
-    auto file_publisher = std::make_shared<FileLooperNode>();
+  auto file_publisher = std::make_shared<FileLooperNode>();
     // Enqueue all files from command line arguments
-    file_publisher-> publish_file_data(argv[1]);
-    rclcpp::spin(file_publisher);
-    rclcpp::shutdown();
-    return 0;
+  file_publisher->publish_file_data(argv[1]);
+  rclcpp::spin(file_publisher);
+  rclcpp::shutdown();
+  return 0;
 }

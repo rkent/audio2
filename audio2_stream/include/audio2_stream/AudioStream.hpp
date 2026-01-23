@@ -33,173 +33,181 @@ class AudioTerminal;
 class AudioStream
 {
 public:
-    AudioStream(
-        SfgRwFormat rw_format,
-        std::unique_ptr<AudioTerminal> source,
-        std::unique_ptr<AudioTerminal> sink,
-        std::string description = "",
-        std::size_t queue_frames = STREAM_QUEUE_FRAMES
-    ) :
-        shutdown_flag_(false),
-        data_available_(false),
-        queue_(AUDIO_QUEUE_SIZE),
-        rw_format_(rw_format),
-        sink_(std::move(sink)),
-        source_(std::move(source)),
-        sink_thread_(nullptr),
-        source_thread_(nullptr),
-        stream_uuid_(generate_uuid()),
-        description_(description),
-        queue_frames_(queue_frames)
-    {
-        printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(), queue_frames_);
-    }
-    ~AudioStream() {
-        printf("AudioStream::~AudioStream thread %zu called for %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000, description_.c_str());
-    };
+  AudioStream(
+    SfgRwFormat rw_format,
+    std::unique_ptr<AudioTerminal> source,
+    std::unique_ptr<AudioTerminal> sink,
+    std::string description = "",
+    std::size_t queue_frames = STREAM_QUEUE_FRAMES
+  )
+  : shutdown_flag_(false),
+    data_available_(false),
+    queue_(AUDIO_QUEUE_SIZE),
+    rw_format_(rw_format),
+    sink_(std::move(sink)),
+    source_(std::move(source)),
+    sink_thread_(nullptr),
+    source_thread_(nullptr),
+    stream_uuid_(generate_uuid()),
+    description_(description),
+    queue_frames_(queue_frames)
+  {
+    printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(),
+      queue_frames_);
+  }
+  ~AudioStream()
+  {
+    printf("AudioStream::~AudioStream thread %zu called for %s\n",
+      std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000, description_.c_str());
+  }
 
-    std::atomic<bool> shutdown_flag_;
-    std::atomic<bool> data_available_;
-    std::atomic<bool> shutdown_complete_{false};
+  std::atomic<bool> shutdown_flag_;
+  std::atomic<bool> data_available_;
+  std::atomic<bool> shutdown_complete_{false};
     // TODO: consider making this a unique pointer to reduce copies
-    boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
-    SfgRwFormat rw_format_;
-    std::unique_ptr<AudioTerminal> sink_;
-    std::unique_ptr<AudioTerminal> source_;
-    std::unique_ptr<std::jthread> sink_thread_;
-    std::unique_ptr<std::jthread> source_thread_;
-    unique_identifier_msgs::msg::UUID stream_uuid_;
-    std::string description_;
-    int queue_frames_;
+  boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
+  SfgRwFormat rw_format_;
+  std::unique_ptr<AudioTerminal> sink_;
+  std::unique_ptr<AudioTerminal> source_;
+  std::unique_ptr<std::jthread> sink_thread_;
+  std::unique_ptr<std::jthread> source_thread_;
+  unique_identifier_msgs::msg::UUID stream_uuid_;
+  std::string description_;
+  int queue_frames_;
 
-    void shutdown();
-    void start();
+  void shutdown();
+  void start();
 };
 
 class AudioTerminal
 {
 public:
-    AudioTerminal() = default;
-    virtual ~AudioTerminal() = default;
+  AudioTerminal() = default;
+  virtual ~AudioTerminal() = default;
 
-    virtual void run(AudioStream * audio_stream) = 0;
+  virtual void run(AudioStream * audio_stream) = 0;
 };
 
 class SndFileSource : public AudioTerminal
 {
 public:
-    SndFileSource(const std::string & file_path) : file_path_(file_path) {}
-    virtual ~SndFileSource() = default;
-    std::optional<std::string> open();
-    void run(AudioStream * audio_stream) override;
-    SndfileHandle sndfileh_;
+  SndFileSource(const std::string & file_path)
+  : file_path_(file_path) {}
+  virtual ~SndFileSource() = default;
+  std::optional<std::string> open();
+  void run(AudioStream * audio_stream) override;
+  SndfileHandle sndfileh_;
 
 protected:
-    std::string file_path_;
+  std::string file_path_;
 };
 
 class AlsaTerminal : public AudioTerminal
 {
 public:
-    AlsaTerminal(
-        std::string alsa_device_name,
-        int channels,
-        int samplerate,
-        snd_pcm_format_t format,
-        std::unique_ptr<IAlsaDevice> alsa_device = nullptr
-    ) :
-        alsa_device_name_(alsa_device_name),
-        channels_(channels),
-        samplerate_(samplerate),
-        format_(format),
-        alsa_device_(std::move(alsa_device))
-    {}
+  AlsaTerminal(
+    std::string alsa_device_name,
+    int channels,
+    int samplerate,
+    snd_pcm_format_t format,
+    std::unique_ptr<IAlsaDevice> alsa_device = nullptr
+  )
+  : alsa_device_name_(alsa_device_name),
+    channels_(channels),
+    samplerate_(samplerate),
+    format_(format),
+    alsa_device_(std::move(alsa_device))
+  {}
 
-    std::optional<std::string> open(snd_pcm_stream_t direction);
+  std::optional<std::string> open(snd_pcm_stream_t direction);
 
-    std::string alsa_device_name_;
-    int channels_;
-    int samplerate_;
-    snd_pcm_format_t format_;
-    std::unique_ptr<IAlsaDevice> alsa_device_;
+  std::string alsa_device_name_;
+  int channels_;
+  int samplerate_;
+  snd_pcm_format_t format_;
+  std::unique_ptr<IAlsaDevice> alsa_device_;
 
-    void close();
+  void close();
 };
 
 class AlsaSink : public AlsaTerminal
 {
 public:
-    AlsaSink(
-        std::string alsa_device_name,
-        int channels,
-        int samplerate,
-        snd_pcm_format_t format,
-        std::unique_ptr<IAlsaDevice> alsa_device = nullptr
-    ) :
-    AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
-    {}
+  AlsaSink(
+    std::string alsa_device_name,
+    int channels,
+    int samplerate,
+    snd_pcm_format_t format,
+    std::unique_ptr<IAlsaDevice> alsa_device = nullptr
+  )
+  :AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
+  {}
 
-    void run(AudioStream * audio_stream) override;
+  void run(AudioStream * audio_stream) override;
 
 };
 
 class AlsaSource : public AlsaTerminal
 {
 public:
-    AlsaSource(
-        std::string alsa_device_name,
-        int channels,
-        int samplerate,
-        snd_pcm_format_t format,
-        std::unique_ptr<IAlsaDevice> alsa_device = nullptr
-    ) :
-    AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
-    {}
-    ~AlsaSource() {
-        printf("AlsaSource::~AlsaSource called\n");
-    }
+  AlsaSource(
+    std::string alsa_device_name,
+    int channels,
+    int samplerate,
+    snd_pcm_format_t format,
+    std::unique_ptr<IAlsaDevice> alsa_device = nullptr
+  )
+  :AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
+  {}
+  ~AlsaSource()
+  {
+    printf("AlsaSource::~AlsaSource called\n");
+  }
 
-    void run(AudioStream * audio_stream) override;
+  void run(AudioStream * audio_stream) override;
 
 };
 
 class MessageSink : public AudioTerminal
 {
 public:
-    MessageSink(
-        std::string topic,
-        int channels,
-        int samplerate,
-        int sfFormat,
-        rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
-        std::string description
-    );
+  MessageSink(
+    std::string topic,
+    int channels,
+    int samplerate,
+    int sfFormat,
+    rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
+    std::string description
+  );
 
-    ~MessageSink() {
-        printf("MessageSink::~MessageSink called\n");
-    }
+  ~MessageSink()
+  {
+    printf("MessageSink::~MessageSink called\n");
+  }
 
-    void run(AudioStream * audio_stream) override;
+  void run(AudioStream * audio_stream) override;
 
 protected:
-    std::string topic_;
-    int channels_;
-    int samplerate_;
-    int sfFormat_;
-    rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
-    std::string description_;
+  std::string topic_;
+  int channels_;
+  int samplerate_;
+  int sfFormat_;
+  rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
+  std::string description_;
 };
 
 class MessageSource : public AudioTerminal
 {
 public:
-    MessageSource(std::string topic);
+  MessageSource(std::string topic);
 
-    void run(AudioStream * audio_stream) override;
-    void callback(const audio2_stream_msgs::msg::AudioChunk::SharedPtr msg, AudioStream * audio_stream);
+  void run(AudioStream * audio_stream) override;
+  void callback(
+    const audio2_stream_msgs::msg::AudioChunk::SharedPtr msg,
+    AudioStream * audio_stream);
 
 protected:
-    std::string topic_;
+  std::string topic_;
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP
