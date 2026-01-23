@@ -3,6 +3,7 @@
 
 #include "audio2_stream/config.hpp"
 #include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/IAlsaDevice.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
@@ -104,13 +105,14 @@ public:
         std::string alsa_device_name,
         int channels,
         int samplerate,
-        snd_pcm_format_t format
+        snd_pcm_format_t format,
+        std::unique_ptr<IAlsaDevice> alsa_device = nullptr
     ) :
         alsa_device_name_(alsa_device_name),
         channels_(channels),
         samplerate_(samplerate),
         format_(format),
-        alsa_dev_(nullptr)
+        alsa_device_(std::move(alsa_device))
     {}
 
     std::optional<std::string> open(snd_pcm_stream_t direction);
@@ -119,8 +121,7 @@ public:
     int channels_;
     int samplerate_;
     snd_pcm_format_t format_;
-    std::string error_str_;
-    snd_pcm_t* alsa_dev_;
+    std::unique_ptr<IAlsaDevice> alsa_device_;
 
     void close();
 };
@@ -132,9 +133,10 @@ public:
         std::string alsa_device_name,
         int channels,
         int samplerate,
-        snd_pcm_format_t format
+        snd_pcm_format_t format,
+        std::unique_ptr<IAlsaDevice> alsa_device = nullptr
     ) :
-    AlsaTerminal(alsa_device_name, channels, samplerate, format)
+    AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
     {}
 
     void run(AudioStream * audio_stream) override;
@@ -148,9 +150,11 @@ public:
         std::string alsa_device_name,
         int channels,
         int samplerate,
-        snd_pcm_format_t format
+        snd_pcm_format_t format,
+        std::unique_ptr<IAlsaDevice> alsa_device = nullptr
     ) :
-    AlsaTerminal(alsa_device_name, channels, samplerate, format) {}
+    AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
+    {}
     ~AlsaSource() {
         printf("AlsaSource::~AlsaSource called\n");
     }

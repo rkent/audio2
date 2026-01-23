@@ -31,6 +31,7 @@ add_library(
     src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
+    src/lib/AlsaDeviceImpl.cpp
 )
 
 #set(SOURCE_FILES
@@ -113,6 +114,46 @@ if(BUILD_TESTING)
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  # Add GTest and GMock for unit testing
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_gmock REQUIRED)
+
+  # Enable thread sanitizer for thread safety validation
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=thread -g")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=thread")
+
+  # Unit tests for AudioStream
+  ament_add_gtest(test_audio_stream
+    test/test_audio_stream.cpp
+  )
+  target_link_libraries(test_audio_stream
+    ${PROJECT_NAME}
+    ${SNDFILE_LIBRARIES}
+    ALSA::ALSA
+    rclcpp::rclcpp
+    ${audio2_stream_msgs_TARGETS}
+  )
+  target_include_directories(test_audio_stream PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+
+  # Unit tests for ALSA operations with mocking
+  ament_add_gmock(test_alsa_mocked
+    test/test_alsa_mocked.cpp
+  )
+  target_link_libraries(test_alsa_mocked
+    ${PROJECT_NAME}
+    ${SNDFILE_LIBRARIES}
+    ALSA::ALSA
+    rclcpp::rclcpp
+    ${audio2_stream_msgs_TARGETS}
+  )
+  target_include_directories(test_alsa_mocked PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
 endif()
 
 install(TARGETS

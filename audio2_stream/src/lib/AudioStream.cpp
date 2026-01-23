@@ -5,11 +5,17 @@
 #include <fstream>
 #include <cstdio>
 #include <audio2_stream/AudioStream.hpp>
+#include <audio2_stream/AlsaDeviceImpl.hpp>
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
 std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 {
+    // Create default device implementation if none provided
+    if (!alsa_device_) {
+        alsa_device_ = std::make_unique<AlsaDeviceImpl>();
+    }
+
     AlsaHwParams hw_params;
     hw_params.device = alsa_device_name_.c_str();
     hw_params.channels = channels_;
@@ -27,14 +33,13 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
     
     AlsaSwParams sw_params;
 
-    auto result = alsa_open(hw_params, sw_params, alsa_dev_);
+    auto result = alsa_device_->open(hw_params, sw_params, direction);
     printf("AlsaTerminal::open completed at %s\n", format_timestamp().c_str());
     if (result.has_value()) {
-        error_str_ = result.value();
-        return error_str_;
+        return result.value();
     }
-    // alsa_open may change the format if original is not supported.
-    format_ = hw_params.format;
+    // alsa_device_->open may change the format if original is not supported.
+    format_ = alsa_device_->get_format();
     if (samplerate_ != static_cast<int>(hw_params.samplerate)) {
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n", samplerate_, hw_params.samplerate);
@@ -45,10 +50,8 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 
 void AlsaTerminal::close() {
     printf("AlsaTerminal::close called\n");
-    if (alsa_dev_) {
-        snd_pcm_drain(alsa_dev_);
-        snd_pcm_close(alsa_dev_);
-        alsa_dev_ = nullptr;
+    if (alsa_device_) {
+        alsa_device_->close();
     }
     return;
 }
@@ -56,14 +59,14 @@ void AlsaTerminal::close() {
 void AlsaSink::run(AudioStream * audio_stream)
 {
     assert(audio_stream);
-    assert(alsa_dev_);
+    assert(alsa_device_);
     printf("AlsaSink::run started\n");
     while (!audio_stream->shutdown_flag_.load()) {
-        if (error_str_.length() > 0) {
+        std::string error_str = alsa_device_->get_error();
+        if (error_str.length() > 0) {
             break;
         }
-        if (!alsa_dev_) {
-            error_str_ = "ALSA device is not opened";
+        if (!alsa_device_->get_handle()) {
             break;
         }
         std::vector<uint8_t> audio_data;
@@ -83,16 +86,18 @@ void AlsaSink::run(AudioStream * audio_stream)
             int bytes_per_sample = snd_pcm_format_width(format_) / 8;
             if (true) {
                 // Output ALSA status for debugging
-                snd_pcm_status_t * stat;
-                snd_pcm_status_alloca(&stat);
-                snd_pcm_status(alsa_dev_, stat);
-                snd_output_t *output;
-                snd_output_stdio_attach(&output, stdout, 0);
-                snd_pcm_status_dump(stat, output);
+                snd_pcm_t* alsa_dev = alsa_device_->get_handle();
+                if (alsa_dev) {
+                    snd_pcm_status_t * stat;
+                    snd_pcm_status_alloca(&stat);
+                    snd_pcm_status(alsa_dev, stat);
+                    snd_output_t *output;
+                    snd_output_stdio_attach(&output, stdout, 0);
+                    snd_pcm_status_dump(stat, output);
+                }
             }
-            int write_result = alsa_write(
+            int write_result = alsa_device_->write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
-                alsa_dev_,
                 audio_data.data(),
                 channels_, // channels
                 format_,
@@ -110,9 +115,8 @@ void AlsaSink::run(AudioStream * audio_stream)
     const int silence_size = silence_frames * channels_ * bytes_per_sample;
     std::vector<uint8_t> silence_buffer(silence_size, 0);
     while (silence_frames > 0) {
-        int written = alsa_write(
-            silence_frames,
-            alsa_dev_,
+        int written = alsa_device_->write(
+            silence_frames * channels_,
             silence_buffer.data(),
             channels_,
             format_,
@@ -122,8 +126,8 @@ void AlsaSink::run(AudioStream * audio_stream)
             printf("Error writing silence to ALSA device: %s\n", snd_strerror(written));
             break;
         }
-        printf("Wrote %d silence frames to ALSA device of %d\n", written, silence_frames);
-        silence_frames -= written;
+        printf("Wrote %d silence frames to ALSA device of %d\n", written / channels_, silence_frames);
+        silence_frames -= written / channels_;
     }
 
     close();
@@ -141,8 +145,7 @@ void AlsaSource::run(AudioStream * audio_stream)
 
     while (!audio_stream->shutdown_flag_.load()) {
         audio_data.resize(bytes_per_chunk);
-        if (!alsa_dev_) {
-            error_str_ = "ALSA device is not opened";
+        if (!alsa_device_->get_handle()) {
             break;
         }
         if (audio_stream->queue_.write_available() == 0) {
@@ -152,9 +155,8 @@ void AlsaSource::run(AudioStream * audio_stream)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
-        auto read_result = alsa_read(
+        auto read_result = alsa_device_->read(
             audio_stream->queue_frames_ * channels_,
-            alsa_dev_,
             audio_data.data(),
             channels_,
             format_,
