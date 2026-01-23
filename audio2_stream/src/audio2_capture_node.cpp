@@ -89,14 +89,9 @@ public:
 
   void check_streams_callback()
   {
-        //static int count = 0;
-        //count++;
     std::erase_if(audio_streams_, [](const std::unique_ptr<AudioStream> & stream) {
         return stream->shutdown_complete_.load();
         });
-        //if (count == 100) {
-        //    std::raise(SIGINT);
-        //}
   }
 
   void stop_streams_callback()

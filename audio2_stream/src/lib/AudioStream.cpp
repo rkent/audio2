@@ -487,7 +487,7 @@ void AudioStream::start()
 
 void AudioStream::shutdown()
 {
-  printf("AudioStream::shutdown called for %s\n", description_.c_str());
+  printf("AudioStream::shutdown called for %s at %s\n", description_.c_str(), format_timestamp().c_str());
   shutdown_flag_.store(true);
   data_available_.store(true);
   data_available_.notify_all();
@@ -509,6 +509,6 @@ void AudioStream::shutdown()
       printf("AudioStream::shutdown: skipping sink_thread join (called from sink thread)\n");
     }
   }
+  printf("AudioStream: sending shutdown_complete for %s at %s\n", description_.c_str(), format_timestamp().c_str());
   shutdown_complete_.store(true);
-  printf("AudioStream: shutdown sent for %s\n", description_.c_str());
 }
