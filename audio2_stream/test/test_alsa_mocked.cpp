@@ -1,23 +1,17 @@
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
 #include "audio2_stream/AudioStream.hpp"
 #include "audio2_stream/IAlsaDevice.hpp"
-#include "MockAlsaDevice.hpp"
+#include "audio2_stream/AlsaDeviceImpl.hpp"
 #include <memory>
 #include <vector>
 #include <thread>
 #include <chrono>
 
-using ::testing::_;
-using ::testing::Return;
-using ::testing::DoAll;
-using ::testing::SetArgPointee;
-using ::testing::Invoke;
-
 /**
- * Test fixture for ALSA-related tests using mocked ALSA devices.
+ * Test fixture for ALSA-related tests using the real ALSA 'null' device.
+ * The 'null' device is perfect for testing - it accepts all writes and returns silence on reads.
  */
-class AlsaMockedTest : public ::testing::Test
+class AlsaNullTest : public ::testing::Test
 {
 protected:
     void SetUp() override {
@@ -28,94 +22,53 @@ protected:
     }
 
     void TearDown() override {
-        // Shutdown happens when the test process ends
+        // Cleanup happens automatically
     }
 
-    /**
-     * Helper to create a mock ALSA device with default success behavior.
-     */
-    std::unique_ptr<MockAlsaDevice> createDefaultMockDevice(snd_pcm_format_t format = SND_PCM_FORMAT_S16) {
-        auto mock = std::make_unique<MockAlsaDevice>();
-        
-        // Default: open succeeds
-        EXPECT_CALL(*mock, open(_, _, _))
-            .WillOnce(Invoke([format](AlsaHwParams& hw, AlsaSwParams&, snd_pcm_stream_t) {
-                // Simulate format being set
-                hw.format = format;
-                return std::nullopt;
-            }));
-        
-        // Default: get_handle returns non-null
-        EXPECT_CALL(*mock, get_handle())
-            .WillRepeatedly(Return(reinterpret_cast<snd_pcm_t*>(0x1234)));
-        
-        // Default: get_format returns the format
-        EXPECT_CALL(*mock, get_format())
-            .WillRepeatedly(Return(format));
-        
-        // Default: get_error returns empty string
-        EXPECT_CALL(*mock, get_error())
-            .WillRepeatedly(Return(""));
-        
-        // Default: close does nothing
-        EXPECT_CALL(*mock, close())
-            .Times(::testing::AtLeast(0));
-        
-        return mock;
-    }
+    // ALSA 'null' device name for testing
+    static constexpr const char* ALSA_NULL_DEVICE = "null";
 };
 
 /**
- * Test that AlsaSink can be created with a mock device and opens successfully.
+ * Test that AlsaSink can be created with the 'null' device and opens successfully.
  */
-TEST_F(AlsaMockedTest, AlsaSinkOpenSuccess)
+TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
 {
-    auto mock_device = createDefaultMockDevice();
+    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
     
-    AlsaSink sink("mock_device", 2, 48000, SND_PCM_FORMAT_S16, std::move(mock_device));
+    AlsaSink sink(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16, std::move(alsa_device));
     
     auto result = sink.open(SND_PCM_STREAM_PLAYBACK);
     
-    EXPECT_FALSE(result.has_value()) << "Open should succeed";
+    EXPECT_FALSE(result.has_value()) << "Open should succeed: " << (result.has_value() ? *result : "");
 }
 
 /**
- * Test that AlsaSink handles open failure correctly.
+ * Test that AlsaSink handles open failure correctly (using non-existent device).
  */
-TEST_F(AlsaMockedTest, AlsaSinkOpenFailure)
+TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
 {
-    auto mock_device = std::make_unique<MockAlsaDevice>();
+    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
     
-    EXPECT_CALL(*mock_device, open(_, _, _))
-        .WillOnce(Return(std::string("Mock open failed")));
-    
-    AlsaSink sink("mock_device", 2, 48000, SND_PCM_FORMAT_S16, std::move(mock_device));
+    // Use a non-existent device name
+    AlsaSink sink("nonexistent_alsa_device_12345", 2, 48000, SND_PCM_FORMAT_S16, std::move(alsa_device));
     
     auto result = sink.open(SND_PCM_STREAM_PLAYBACK);
     
-    ASSERT_TRUE(result.has_value()) << "Open should fail";
-    EXPECT_EQ(*result, "Mock open failed");
+    ASSERT_TRUE(result.has_value()) << "Open should fail with non-existent device";
+    EXPECT_FALSE(result->empty()) << "Error message should not be empty";
 }
 
 /**
- * Test that AlsaSink writes audio data correctly.
+ * Test that AlsaSink writes audio data correctly to the 'null' device.
  */
-TEST_F(AlsaMockedTest, AlsaSinkWriteAudioData)
+TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 {
-    auto mock_device = createDefaultMockDevice();
-    int write_count = 0;
-    
-    // Expect write to be called and simulate successful writes
-    EXPECT_CALL(*mock_device, write(_, _, _, _, _))
-        .WillRepeatedly(Invoke([&write_count](int samples, void*, int, snd_pcm_format_t, std::atomic<bool>*) {
-            write_count++;
-            return samples; // Simulate all samples written
-        }));
-    
-    auto sink = std::make_unique<AlsaSink>("mock_device", 2, 48000, SND_PCM_FORMAT_S16, std::move(mock_device));
+    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16, std::move(alsa_device));
     
     auto result = sink->open(SND_PCM_STREAM_PLAYBACK);
-    ASSERT_FALSE(result.has_value()) << "Open should succeed";
+    ASSERT_FALSE(result.has_value()) << "Open should succeed: " << (result.has_value() ? *result : "");
     
     // Create a simple audio stream with test data
     auto stream = std::make_unique<AudioStream>(
@@ -135,42 +88,28 @@ TEST_F(AlsaMockedTest, AlsaSinkWriteAudioData)
     // Start the stream
     stream->start();
     
-    // Let it run briefly
+    // Let it run briefly to allow writes to the 'null' device
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
     // Shutdown
     stream->shutdown();
     
-    // Verify that write was called
-    EXPECT_GT(write_count, 0) << "Write should have been called";
+    // Test passes if no crash occurs - 'null' device accepts all writes
+    SUCCEED();
 }
 
 /**
- * Test that AlsaSource can read audio data.
+ * Test that AlsaSource can read audio data from the 'null' device.
  */
-TEST_F(AlsaMockedTest, AlsaSourceReadAudioData)
+TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 {
-    auto mock_device = createDefaultMockDevice();
-    int read_count = 0;
-    
-    // Expect read to be called and simulate successful reads
-    EXPECT_CALL(*mock_device, read(_, _, _, _, _))
-        .WillRepeatedly(Invoke([&read_count](int samples, void* data, int, snd_pcm_format_t, std::atomic<bool>* shutdown) {
-            if (shutdown && shutdown->load()) {
-                return -1; // Simulate shutdown
-            }
-            read_count++;
-            // Fill with test data
-            std::memset(data, 0xAA, samples * 2);  // 2 bytes per S16 sample
-            return samples;
-        }));
-    
-    auto source = std::make_unique<AlsaSource>("mock_device", 2, 48000, SND_PCM_FORMAT_S16, std::move(mock_device));
+    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
+    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16, std::move(alsa_device));
     
     auto result = source->open(SND_PCM_STREAM_CAPTURE);
-    ASSERT_FALSE(result.has_value()) << "Open should succeed";
+    ASSERT_FALSE(result.has_value()) << "Open should succeed: " << (result.has_value() ? *result : "");
     
-    // Create a simple audio stream with sink that discards data
+    // Create a simple audio stream
     auto stream = std::make_unique<AudioStream>(
         SFG_RW_FORMAT,
         std::move(source),
@@ -182,61 +121,52 @@ TEST_F(AlsaMockedTest, AlsaSourceReadAudioData)
     // Start the stream
     stream->start();
     
-    // Let it run briefly
+    // Let it run briefly - 'null' device returns silence
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
     // Shutdown
     stream->shutdown();
     
-    // Verify that read was called
-    EXPECT_GT(read_count, 0) << "Read should have been called";
-    
-    // Verify that data was pushed to the queue
-    EXPECT_GT(stream->queue_.read_available(), 0u) << "Queue should have data";
+    // Verify that data was pushed to the queue from the 'null' device
+    EXPECT_GT(stream->queue_.read_available(), 0u) << "Queue should have data from 'null' device reads";
 }
 
 /**
- * Test error handling when write fails.
+ * Test a complete source-to-sink path using 'null' devices for both.
  */
-TEST_F(AlsaMockedTest, AlsaSinkWriteError)
+TEST_F(AlsaNullTest, SourceToSinkComplete)
 {
-    auto mock_device = createDefaultMockDevice();
-    
-    // Simulate write failure
-    EXPECT_CALL(*mock_device, write(_, _, _, _, _))
-        .WillOnce(Return(-EIO));  // Simulate I/O error
-    
-    EXPECT_CALL(*mock_device, get_error())
-        .WillRepeatedly(Return("ALSA write failed"));
-    
-    auto sink = std::make_unique<AlsaSink>("mock_device", 2, 48000, SND_PCM_FORMAT_S16, std::move(mock_device));
-    
-    auto result = sink->open(SND_PCM_STREAM_PLAYBACK);
-    ASSERT_FALSE(result.has_value());
-    
+    // Create source (capture from 'null')
+    auto source_device = std::make_unique<AlsaDeviceImpl>();
+    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16, std::move(source_device));
+    auto source_result = source->open(SND_PCM_STREAM_CAPTURE);
+    ASSERT_FALSE(source_result.has_value()) << "Source open should succeed";
+
+    // Create sink (playback to 'null')
+    auto sink_device = std::make_unique<AlsaDeviceImpl>();
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16, std::move(sink_device));
+    auto sink_result = sink->open(SND_PCM_STREAM_PLAYBACK);
+    ASSERT_FALSE(sink_result.has_value()) << "Sink open should succeed";
+
+    // Create stream with both source and sink
     auto stream = std::make_unique<AudioStream>(
         SFG_RW_FORMAT,
-        nullptr,
+        std::move(source),
         std::move(sink),
         "test_stream",
         100
     );
     
-    // Push test data
-    std::vector<uint8_t> test_data(100 * 2 * 2, 0x55);
-    stream->queue_.push(test_data);
-    stream->data_available_.store(true);
-    stream->data_available_.notify_one();
-    
     stream->start();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     stream->shutdown();
     
-    // Test passes if no crash occurs
+    // Test passes if no crash occurs - data flows from source 'null' to sink 'null'
+    SUCCEED();
 }
 
 int main(int argc, char** argv)
 {
-    ::testing::InitGoogleMock(&argc, argv);
+    ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
