@@ -1,8 +1,27 @@
+# Copyright 2026 R. Kent James <kent@caspia.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import threading
+
+from alsa_gain_msgs.msg import AlsaGain
+
 import rclpy
 from rclpy.node import Node
-import threading
-from alsa_gain_msgs.msg import AlsaGain
+
 from .mixer_thread import MixerThread
+
 
 class AlsaGainNode(Node):
 
@@ -25,7 +44,9 @@ class AlsaGainNode(Node):
         self.device = self.get_parameter('device').value
         publish_rate = self.get_parameter('publish_rate').value
 
-        self.get_logger().info(f"Using mixer control='{self.control}', device='{self.device}'")
+        self.get_logger().info(
+            f'Using mixer control={self.control}, device={self.device}'
+        )
 
         # guard condition used to trigger publish on changes
         self.publish_guard = self.create_guard_condition(self.publish_gain)
@@ -39,16 +60,20 @@ class AlsaGainNode(Node):
 
     def handle_set_gain(self, msg: AlsaGain):
         if not self.mixer_thread.ready:
-            self.get_logger().warning("Mixer not ready yet, cannot set gain.")
+            self.get_logger().warning('Mixer not ready yet, cannot set gain.')
             return
         percent = msg.percent
         muted = msg.muted
         if msg.control != self.control or msg.device != self.device:
             return
         if percent is None or muted is None:
-            self.get_logger().warning("Invalid gain info received, ignoring set request.")
+            self.get_logger().warning(
+                'Invalid gain info received, ignoring set request.'
+            )
             return
-        self.get_logger().info(f"Received Set Gain Request: percent: {percent}, muted: {muted}")
+        self.get_logger().info(
+            f'Received Set Gain Request: percent: {percent}, muted: {muted}'
+        )
         # Only set changes to prevent excessive ALSA calls and ROS messages
         percent = [int(val) for val in percent]
         s_percent = self.mixer_thread.volume
@@ -64,12 +89,15 @@ class AlsaGainNode(Node):
         if s_muted != muted:
             muted_changed = True
         if muted_changed:
-            self.get_logger().info(f"Setting muted to {muted} compared to {self.mixer_thread.muted}")
+            self.get_logger().info(
+                f'Setting muted to {muted} compared to '
+                f'{self.mixer_thread.muted}'
+            )
             self.mixer_thread.muted = muted
 
     def publish_gain(self):
         if not self.mixer_thread.ready:
-            self.get_logger().warning("Mixer not ready yet, skipping publish.")
+            self.get_logger().warning('Mixer not ready yet, skipping publish.')
             return
         msg = AlsaGain()
         msg.control = self.control
@@ -77,14 +105,15 @@ class AlsaGainNode(Node):
         percent = self.mixer_thread.volume
         muted = self.mixer_thread.muted
         if None in [percent, muted]:
-            self.get_logger().warning("Invalid gain info, skipping publish.")
+            self.get_logger().warning('Invalid gain info, skipping publish.')
             return
         msg.percent = percent
         msg.muted = muted
         self.publisher.publish(msg)
         self.get_logger().info(
-            f"Published Gain: {msg.percent}%, Muted: {msg.muted}"
+            f'Published Gain: {msg.percent}%, Muted: {msg.muted}'
         )
+
 
 def main(args=None):
     try:
