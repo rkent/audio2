@@ -453,11 +453,23 @@ void AudioStream::shutdown()
     shutdown_flag_.store(true);
     data_available_.store(true);
     data_available_.notify_all();
+
+    // Avoid deadlock: don't join a thread from within itself
+    auto current_thread_id = std::this_thread::get_id();
+
     if (source_thread_ && source_thread_->joinable()) {
-        source_thread_->join();
-    }
-    if (sink_thread_ && sink_thread_->joinable()) {
-        sink_thread_->join();
+        if (source_thread_->get_id() != current_thread_id) {
+            source_thread_->join();
+        } else {
+            printf("AudioStream::shutdown: skipping source_thread join (called from source thread)\n");
+        }
+     }
+     if (sink_thread_ && sink_thread_->joinable()) {
+        if (sink_thread_->get_id() != current_thread_id) {
+            sink_thread_->join();
+        } else {
+            printf("AudioStream::shutdown: skipping sink_thread join (called from sink thread)\n");
+        }
     }
     shutdown_complete_.store(true);
     printf("AudioStream: shutdown sent for %s\n", description_.c_str());
