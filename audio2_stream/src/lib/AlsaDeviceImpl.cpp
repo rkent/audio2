@@ -5,8 +5,7 @@
 std::optional<std::string> AlsaDeviceImpl::open(
   AlsaHwParams & hw_vals,
   AlsaSwParams & sw_vals,
-  snd_pcm_stream_t direction
-)
+  snd_pcm_stream_t direction)
 {
   printf("AlsaDeviceImpl::open called at %s\n", format_timestamp().c_str());
   printf(
@@ -20,6 +19,7 @@ std::optional<std::string> AlsaDeviceImpl::open(
     // Set direction in hw_vals
   hw_vals.direction = direction;
 
+    // Open the ALSA device
   auto result = alsa_open(hw_vals, sw_vals, alsa_dev_);
   printf("AlsaDeviceImpl::open completed at %s\n", format_timestamp().c_str());
 

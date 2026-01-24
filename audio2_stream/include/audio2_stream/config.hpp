@@ -29,6 +29,7 @@ const int ALSA_PERIOD_SIZE = 1024;
 const int ALSA_BUFFER_PERIODS = 4;
 const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 //#define ALSA_DEVICE_NAME "plughw:CARD=sofhdadsp,DEV=0"
+//#define ALSA_DEVICE_NAME "speaker_plug"
 #define ALSA_DEVICE_NAME "default"
 const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
 const int ALSA_CHANNELS = 2;

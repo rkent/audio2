@@ -11,8 +11,8 @@
 class AlsaDeviceImpl : public IAlsaDevice
 {
 public:
-  AlsaDeviceImpl()
-  : alsa_dev_(nullptr), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
+  AlsaDeviceImpl(snd_pcm_t * alsa_dev = nullptr)
+  : alsa_dev_(alsa_dev), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
 
   virtual ~AlsaDeviceImpl()
   {

@@ -17,6 +17,7 @@
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 
+#include "audio2_stream/AlsaDeviceImpl.hpp"
 #include "audio2_stream_msgs/msg/play_file.hpp"
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 
@@ -75,15 +76,32 @@ public:
   ~Audio2PlayNode()
   {
     RCLCPP_INFO(rcl_logger, "Audio2PlayNode shutting down.");
+    if (alsa_dev_preplay_) {
+      snd_pcm_close(alsa_dev_preplay_);
+    }
   }
 
   void check_streams_callback()
   {
-        //static int count = 0;
-        //count++;
+        // Clean up any streams that have completed shutdown
     std::erase_if(audio_streams_, [](const std::unique_ptr<AudioStream> & stream) {
         return stream->shutdown_complete_.load();
-        });
+    });
+
+        // Pre-open the playback device to reduce latency on first use.
+    if (!alsa_dev_preplay_) {
+      RCLCPP_INFO(rcl_logger, "Pre-opening ALSA device for playback: %s",
+        get_parameter("alsa_device_name").as_string().c_str());
+      auto open_result = snd_pcm_open(
+              &alsa_dev_preplay_,
+              get_parameter("alsa_device_name").as_string().c_str(),
+              SND_PCM_STREAM_PLAYBACK,
+              0);
+      if (open_result < 0) {
+        RCLCPP_WARN(rcl_logger, "Cannot pre-open ALSA device for playback: %s",
+          snd_strerror(open_result));
+      }
+    }
   }
 
   void stop_streams_callback()
@@ -122,13 +140,24 @@ public:
         return;
       }
 
-            // Create a matching audio stream
+            // Use pre-opened ALSA device if possible
+      auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
+      if (alsa_dev_preplay_) {
+        const char * name = snd_pcm_name(alsa_dev_preplay_);
+        if (name == get_parameter("alsa_device_name").as_string()) {
+          p_alsa_device = std::make_unique<AlsaDeviceImpl>(alsa_dev_preplay_);
+          alsa_dev_preplay_ = nullptr;  // transfer ownership
+          printf("audio_chunk_callback: Using pre-opened ALSA device\n");
+        }
+      }
+
             // Open the playback device
       std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
                 get_parameter("alsa_device_name").as_string(),
                 vio_handle.fileh.channels(),
                 vio_handle.fileh.samplerate(),
-                static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int())
+                static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int()),
+                std::move(p_alsa_device)
       );
       auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
       if (alsa_open_result.has_value()) {
@@ -173,12 +202,22 @@ public:
     RCLCPP_INFO(rcl_logger, "Opened file %s: channels=%d, samplerate=%d, format=0x%X",
             file_path.c_str(), channels, samplerate, sndfile_format);
 
-        // Open the playback device
+        // Use pre-opened ALSA device if possible
+    auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
+    if (alsa_dev_preplay_) {
+      const char * name = snd_pcm_name(alsa_dev_preplay_);
+      if (name == get_parameter("alsa_device_name").as_string()) {
+        p_alsa_device = std::make_unique<AlsaDeviceImpl>(alsa_dev_preplay_);
+        alsa_dev_preplay_ = nullptr;  // transfer ownership
+      }
+    }
+
     std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
             get_parameter("alsa_device_name").as_string(),
             channels,
             samplerate,
-            static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int())
+            static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int()),
+            std::move(p_alsa_device)
     );
     auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
     if (alsa_open_result.has_value()) {
@@ -210,6 +249,7 @@ private:
   std::unique_ptr<MessageSource> message_source_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::unique_ptr<std::jthread> check_thread_;
+  snd_pcm_t * alsa_dev_preplay_ = nullptr;
 };
 
 
@@ -223,5 +263,6 @@ int main(int argc, [[maybe_unused]] char ** argv)
   rclcpp::spin(node);
   RCLCPP_INFO(rcl_logger, "audio2_play_node shutting down...");
   rclcpp::shutdown();
+
   return 0;
 }

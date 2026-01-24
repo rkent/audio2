@@ -160,9 +160,11 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev)
     }
     hw_vals.format = format;
         // TODO: pre-open alsa device to reduce latency.
-    ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device,
-      hw_vals.direction, 0);
-    printf("alsa_open: snd_pcm_open succeeded at %s\n", format_timestamp().c_str());
+    if (!alsa_dev) {
+      ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device,
+        hw_vals.direction, 0);
+      printf("alsa_open: snd_pcm_open succeeded at %s\n", format_timestamp().c_str());
+    }
     snd_pcm_hw_params_alloca (&hw_params);
 
     ECALL(snd_pcm_hw_params_any, "cannot initialize hardware parameter structure", alsa_dev,
