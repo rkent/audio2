@@ -634,7 +634,7 @@ void TtsSource::run(AudioStream * audio_stream)
   bool done = false;
   printf("TtsSource read: length %zu bytes from audio chunk\n", vio_handle.vio_data.length);
   auto next_time = std::chrono::steady_clock::now();
-  while (!done) {
+  while (!(audio_stream->shutdown_flag_.load()) && !done) {
     int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(),
       audio_stream->queue_frames_ * vio_handle.fileh.channels());
     if (samples_read <= 0) {
