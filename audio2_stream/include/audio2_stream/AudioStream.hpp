@@ -216,13 +216,16 @@ public:
   TtsSource(
     const std::string & api_key = "",
     const std::string & text = "Hello world, this is a test of the OpenAI text-to-speech API.",
-    const std::string & voice = "alloy",
-    const std::string & model = "tts-1"
+    const std::string & voice = "coral",
+    const std::string & model = "gpt-4o-mini-tts",
+    const std::string & format = "wav"
   )
   : api_key_(api_key),
     text_(text),
     voice_(voice),
-    model_(model) {}
+    model_(model),
+    format_(format)
+    {}
 
   virtual ~TtsSource() = default;
 
@@ -234,6 +237,7 @@ protected:
   std::string text_;
   std::string voice_;
   std::string model_;
+  std::string format_;
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

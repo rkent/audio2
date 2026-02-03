@@ -543,6 +543,7 @@ std::optional<std::string> TtsSource::fetch_tts_audio(std::vector<uint8_t> & aud
   json_payload["model"] = model_;
   json_payload["input"] = text_;
   json_payload["voice"] = voice_;
+  json_payload["format"] = format_;
   std::string json_str = json_payload.dump();
 
   // Set up authorization header
@@ -563,7 +564,9 @@ std::optional<std::string> TtsSource::fetch_tts_audio(std::vector<uint8_t> & aud
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, static_cast<void *>(&audio_data));
 
   // Perform request
+  printf("TtsSource: Sending TTS request to OpenAI at %s\n", format_timestamp().c_str());
   CURLcode res = curl_easy_perform(curl);
+  printf("TtsSource: Received TTS response from OpenAI at %s\n", format_timestamp().c_str());
 
   // Clean up headers
   curl_slist_free_all(headers);
