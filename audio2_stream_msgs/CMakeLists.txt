@@ -18,6 +18,8 @@ set(msg_files
   "msg/AudioChunk.msg"
   "msg/StreamHeader.msg"
   "msg/PlayFile.msg"
+  "msg/TtsProvider.msg"
+  "msg/TtsRequest.msg"
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

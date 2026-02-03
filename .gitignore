@@ -3,3 +3,6 @@ install/
 log/
 *.pcd
 *.pyc
+.env
+venv/
+

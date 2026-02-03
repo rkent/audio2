@@ -210,4 +210,30 @@ protected:
   std::string topic_;
 };
 
+class TtsSource : public AudioTerminal
+{
+public:
+  TtsSource(
+    const std::string & api_key = "",
+    const std::string & text = "Hello world, this is a test of the OpenAI text-to-speech API.",
+    const std::string & voice = "alloy",
+    const std::string & model = "tts-1"
+  )
+  : api_key_(api_key),
+    text_(text),
+    voice_(voice),
+    model_(model) {}
+
+  virtual ~TtsSource() = default;
+
+  void run(AudioStream * audio_stream) override;
+  std::optional<std::string> fetch_tts_audio(std::vector<uint8_t> & audio_data);
+
+protected:
+  std::string api_key_;
+  std::string text_;
+  std::string voice_;
+  std::string model_;
+};
+
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

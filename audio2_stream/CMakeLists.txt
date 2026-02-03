@@ -18,6 +18,8 @@ find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
 find_package(ALSA REQUIRED)
 find_package(Boost REQUIRED)
 find_package(audio2_stream_msgs REQUIRED)
+find_package(CURL REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # Add all exported headers to include/<package_name> otherwise other packages cannot see it
 # This makes headers available to other packages that depend on yours.
@@ -49,6 +51,8 @@ target_link_libraries(audio2_stream
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
+    nlohmann_json::nlohmann_json
+    CURL::libcurl
     ${audio2_stream_msgs_TARGETS}
 )
 

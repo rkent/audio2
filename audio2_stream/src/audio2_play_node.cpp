@@ -20,6 +20,8 @@
 #include "audio2_stream/AlsaDeviceImpl.hpp"
 #include "audio2_stream_msgs/msg/play_file.hpp"
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
+#include "audio2_stream_msgs/msg/tts_provider.hpp"
+#include "audio2_stream_msgs/msg/tts_request.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_play");
 
@@ -45,6 +47,11 @@ public:
     param_desc.additional_constraints = "Must be a positive integer.";
     param_desc.read_only = false;
     this->declare_parameter<int>("stream_queue_frames", STREAM_QUEUE_FRAMES, param_desc);
+
+        // Subscriber for TtsRequest messages
+    tts_request_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::TtsRequest>(
+            "tts_request", 10,
+            std::bind(&Audio2PlayNode::tts_request_callback, this, std::placeholders::_1));
 
         // Subscriber for local PlayFile messages
     play_file_local_subscriber_ = this->create_subscription<audio2_stream_msgs::msg::PlayFile>(
@@ -79,6 +86,67 @@ public:
     if (alsa_dev_preplay_) {
       snd_pcm_close(alsa_dev_preplay_);
     }
+  }
+
+  void tts_request_callback(const audio2_stream_msgs::msg::TtsRequest::SharedPtr msg)
+  {
+    RCLCPP_INFO(rcl_logger, "Received TtsRequest message: provider=%s, text length=%zu",
+            msg->provider.name.c_str(), msg->text.size());
+    auto authorization = msg->provider.authorization;
+    if (msg->provider.authorization.empty()) {
+      RCLCPP_WARN(rcl_logger, "TTS request authorization is empty.");
+      const char * authorization_cstr = std::getenv("OPENAI_API_KEY");
+      if (authorization_cstr == NULL || strlen(authorization_cstr) == 0) {
+        RCLCPP_ERROR(rcl_logger, "No authorization provided for TTS request and OPENAI_API_KEY is not set.");
+        return;
+      }
+      RCLCPP_INFO(rcl_logger, "Using OPENAI_API_KEY from environment for TTS request.");
+      authorization = std::string(authorization_cstr);
+    }
+    if (authorization.empty()) {
+      RCLCPP_ERROR(rcl_logger, "Authorization is still empty after checking environment.");
+      return;
+    }
+    std::unique_ptr<TtsSource> snd_file_source = std::make_unique<TtsSource>(authorization);
+
+    int channels = 1;
+    int samplerate = 24000;  // OpenAPI TTS default
+
+        // Use pre-opened ALSA device if possible
+    auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
+    if (alsa_dev_preplay_) {
+      const char * name = snd_pcm_name(alsa_dev_preplay_);
+      if (name == get_parameter("alsa_device_name").as_string()) {
+        p_alsa_device = std::make_unique<AlsaDeviceImpl>(alsa_dev_preplay_);
+        alsa_dev_preplay_ = nullptr;  // transfer ownership
+      }
+    }
+
+    std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
+            get_parameter("alsa_device_name").as_string(),
+            channels,
+            samplerate,
+            static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int()),
+            std::move(p_alsa_device)
+    );
+    auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
+    if (alsa_open_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device: %s", alsa_open_result->c_str());
+      return;
+    }
+
+        // during open, alsa may change the format if the original is unsupported.
+    SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->format_);
+    auto audio_stream = std::make_unique<AudioStream>(
+      rw_format,
+      std::move(snd_file_source),
+      std::move(alsa_sink),
+      std::string("tts request with text ") + msg->text.substr(0, 20) + "...",
+      get_parameter("stream_queue_frames").as_int()
+    );
+
+    audio_stream->start();
+    audio_streams_.push_back(std::move(audio_stream));
   }
 
   void check_streams_callback()
@@ -245,6 +313,7 @@ public:
 private:
   rclcpp::Subscription<audio2_stream_msgs::msg::PlayFile>::SharedPtr play_file_local_subscriber_;
   rclcpp::Subscription<audio2_stream_msgs::msg::AudioChunk>::SharedPtr chunk_subscriber_;
+  rclcpp::Subscription<audio2_stream_msgs::msg::TtsRequest>::SharedPtr tts_request_subscriber_;
   std::vector<std::unique_ptr<AudioStream>> audio_streams_;
   std::unique_ptr<MessageSource> message_source_;
   rclcpp::TimerBase::SharedPtr timer_;

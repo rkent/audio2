@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <audio2_stream/AudioStream.hpp>
 #include <audio2_stream/AlsaDeviceImpl.hpp>
+#include <curl/curl.h>
+#include "nlohmann/json.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
@@ -513,4 +515,168 @@ void AudioStream::shutdown()
   printf("AudioStream: sending shutdown_complete for %s at %s\n", description_.c_str(),
     format_timestamp().c_str());
   shutdown_complete_.store(true);
+}
+
+// Callback function for CURL to write response data
+static size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
+{
+  printf("CURL write_callback called with nmemb %zu at %s\n", nmemb,
+    format_timestamp().c_str());
+  size_t realsize = size * nmemb;
+  auto * buffer = static_cast<std::vector<uint8_t> *>(userp);
+
+  uint8_t * ptr = static_cast<uint8_t *>(contents);
+  buffer->insert(buffer->end(), ptr, ptr + realsize);
+
+  return realsize;
+}
+
+std::optional<std::string> TtsSource::fetch_tts_audio(std::vector<uint8_t> & audio_data)
+{
+  CURL * curl = curl_easy_init();
+  if (!curl) {
+    return std::string("Failed to initialize CURL");
+  }
+
+  // Create JSON payload
+  nlohmann::json json_payload;
+  json_payload["model"] = model_;
+  json_payload["input"] = text_;
+  json_payload["voice"] = voice_;
+  std::string json_str = json_payload.dump();
+
+  // Set up authorization header
+  std::string auth_header = "Authorization: Bearer " + api_key_;
+  struct curl_slist * headers = nullptr;
+  headers = curl_slist_append(headers, auth_header.c_str());
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+
+  // Set CURL options
+  curl_easy_setopt(curl, CURLOPT_URL, "https://api.openai.com/v1/audio/speech");
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str.c_str());
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+  // Set up response buffer
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, static_cast<void *>(&audio_data));
+
+  // Perform request
+  CURLcode res = curl_easy_perform(curl);
+
+  // Clean up headers
+  curl_slist_free_all(headers);
+
+  if (res != CURLE_OK) {
+    std::string error_msg = std::string("CURL error: ") + curl_easy_strerror(res);
+    curl_easy_cleanup(curl);
+    return error_msg;
+  }
+
+  // Check HTTP response code
+  long http_code = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+  if (http_code != 200) {
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "HTTP error code: %ld", http_code);
+    curl_easy_cleanup(curl);
+    return std::string(buffer);
+  }
+
+  curl_easy_cleanup(curl);
+  return std::nullopt;
+}
+
+void TtsSource::run(AudioStream * audio_stream)
+{
+  assert(audio_stream);
+  printf("TtsSource::run started at %s\n", format_timestamp().c_str());
+      // TODO: make configurable
+  int sample_rate = 24000;  // OpenAI TTS default
+      // Messages will be sent at a constant rate based on samplerate and buffer size.
+  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
+        audio_stream->queue_frames_ / (sample_rate)));
+
+  std::vector<uint8_t> audio_data;
+      // Reserve some data. CURL will expand as needed.
+  audio_data.reserve(CURL_MAX_WRITE_SIZE);
+  auto fetch_result = fetch_tts_audio(audio_data);
+
+  if (fetch_result.has_value()) {
+    printf("TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
+    return;
+  }
+
+  if (audio_data.empty()) {
+    printf("TtsSource: No audio data received\n");
+    return;
+  }
+
+  printf("TtsSource: Received %zu bytes of audio data\n", audio_data.size());
+
+      // Convert the audio data (which is a file content) to the stream format
+  VIO_SOUNDFILE_HANDLE vio_handle;
+  if (auto err = ropen_vio_from_vector(audio_data, vio_handle)) {
+    printf("TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());
+    return;
+  }
+
+  auto r_format = sfg_format_from_sndfile_format(vio_handle.fileh.format());
+  auto w_format = audio_stream->rw_format_;
+  std::vector<uint8_t> r_buffer;
+  std::vector<uint8_t> w_buffer;
+  create_convert_vectors(r_format, w_format,
+    audio_stream->queue_frames_ * vio_handle.fileh.channels(), r_buffer, w_buffer);
+  bool done = false;
+  printf("TtsSource read: length %zu bytes from audio chunk\n", vio_handle.vio_data.length);
+  auto next_time = std::chrono::steady_clock::now();
+  while (!done) {
+    int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(),
+      audio_stream->queue_frames_ * vio_handle.fileh.channels());
+    if (samples_read <= 0) {
+      done = true;
+      break;       // End of file or error
+    }
+    printf("TtsSource: read %d samples from audio chunk at %s\n", samples_read,
+      format_timestamp().c_str());
+    int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(),
+      samples_read);
+    if (samples_converted < 0) {
+      RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+      done = true;
+      break;
+    } else if (samples_converted != samples_read) {
+      RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d",
+        samples_read, samples_converted);
+      done = true;
+      break;
+    }
+
+        // Resize buffer to actual converted sample count to avoid pushing garbage data
+    w_buffer.resize(samples_converted * sample_size_from_sfg_format(w_format));
+
+        // Try to push to the queue without blocking.
+        // If the queue is full, drop this chunk to avoid blocking the ROS2 executor.
+        // Blocking here would prevent other callbacks from running and cause message delivery delays.
+    if (!audio_stream->queue_.push(w_buffer)) {
+      RCLCPP_WARN(rcl_logger,
+        "Audio queue is full, dropping audio chunk to avoid blocking executor!");
+            // TODO: move this to another thread to avoid blocking the callback?
+            // Still notify in case the consumer is waiting
+      audio_stream->data_available_.store(true);
+      audio_stream->data_available_.notify_one();
+      continue;
+    }
+    printf("TtsSource: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+      samples_converted, audio_stream->queue_.read_available(),
+      audio_stream->queue_.write_available(), format_timestamp().c_str());
+    audio_stream->data_available_.store(true);
+    audio_stream->data_available_.notify_one();
+    next_time += duration;
+    std::this_thread::sleep_until(next_time);
+
+  }
+  printf("TtsSource::run completed at %s\n", format_timestamp().c_str());
+  audio_stream->shutdown();
 }

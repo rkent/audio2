@@ -291,6 +291,7 @@ SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
     case SF_FORMAT_PCM_S8:
       return SFG_BYTE;
     case SF_FORMAT_PCM_16:
+    case SF_FORMAT_MPEG_LAYER_III:
       return SFG_SHORT;
     case SF_FORMAT_PCM_24:
     case SF_FORMAT_PCM_32:
