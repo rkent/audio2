@@ -11,6 +11,8 @@
 #include <string>
 #include <cstdint>
 #include <random>
+#include <curl/curl.h>
+
 
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -214,30 +216,36 @@ class TtsSource : public AudioTerminal
 {
 public:
   TtsSource(
-    const std::string & api_key = "",
-    const std::string & text = "Hello world, this is a test of the OpenAI text-to-speech API.",
-    const std::string & voice = "coral",
-    const std::string & model = "gpt-4o-mini-tts",
-    const std::string & format = "wav"
-  )
-  : api_key_(api_key),
-    text_(text),
-    voice_(voice),
-    model_(model),
-    format_(format)
-    {}
+    const std::string & name,
+    const std::string & text,
+    const std::string & voice,
+    const std::string & model,
+    const std::string & format
+  ) : name_(name),
+      text_(text),
+      voice_(voice),
+      model_(model),
+      format_(format)
+  {}
 
-  virtual ~TtsSource() = default;
+  virtual ~TtsSource() {
+    curl_slist_free_all(headers_);
+  };
 
   void run(AudioStream * audio_stream) override;
   std::optional<std::string> fetch_tts_audio(std::vector<uint8_t> & audio_data);
+  std::optional<std::string> initialize();
+  int samplerate_;
 
 protected:
-  std::string api_key_;
+  std::string name_;
   std::string text_;
   std::string voice_;
   std::string model_;
   std::string format_;
+  struct curl_slist * headers_ = nullptr;
+  std::string json_str_;
+  std::string url_;
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

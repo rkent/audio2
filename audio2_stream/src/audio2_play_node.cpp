@@ -25,13 +25,13 @@
 
 static auto rcl_logger = rclcpp::get_logger("audio2_play");
 
-class Audio2PlayNode : public rclcpp::Node {
+class Audio2PlayNode : public rclcpp::Node
+{
 public:
   Audio2PlayNode()
   : Node("audio2_play_node")
   {
         // Parameters
-
     auto param_desc = rcl_interfaces::msg::ParameterDescriptor();
     param_desc.description = "ALSA device name for audio playback";
     param_desc.additional_constraints = "Must be a valid ALSA device name (a string).";
@@ -90,28 +90,30 @@ public:
 
   void tts_request_callback(const audio2_stream_msgs::msg::TtsRequest::SharedPtr msg)
   {
-    RCLCPP_INFO(rcl_logger, "Received TtsRequest message: provider=%s, text length=%zu",
-            msg->provider.name.c_str(), msg->text.size());
-    auto authorization = msg->provider.authorization;
-    if (msg->provider.authorization.empty()) {
-      RCLCPP_WARN(rcl_logger, "TTS request authorization is empty.");
-      const char * authorization_cstr = std::getenv("OPENAI_API_KEY");
-      if (authorization_cstr == NULL || strlen(authorization_cstr) == 0) {
-        RCLCPP_ERROR(rcl_logger, "No authorization provided for TTS request and OPENAI_API_KEY is not set.");
-        return;
-      }
-      RCLCPP_INFO(rcl_logger, "Using OPENAI_API_KEY from environment for TTS request.");
-      authorization = std::string(authorization_cstr);
-    }
-    if (authorization.empty()) {
-      RCLCPP_ERROR(rcl_logger, "Authorization is still empty after checking environment.");
+    RCLCPP_INFO(rcl_logger, "Received TtsRequest message, text: %s",
+            msg->text.c_str());
+    std::unique_ptr<TtsSource> tts_source = std::make_unique<TtsSource>(
+            msg->provider.name,
+            msg->text,
+            msg->provider.voice,
+            msg->provider.model,
+            msg->provider.format
+    );
+
+    auto init_result = tts_source->initialize();
+    if (init_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "TTS source initialization failed: %s", init_result->c_str());
       return;
     }
-    std::unique_ptr<TtsSource> snd_file_source = std::make_unique<TtsSource>(authorization);
-
+    RCLCPP_INFO(rcl_logger, "TTS source initialized with sample rate %d", tts_source->samplerate_);
+        // Audio playback parameters
     int channels = 1;
-    int samplerate = 24000;  // OpenAPI TTS default
-
+    int samplerate = tts_source->samplerate_;
+    if (samplerate <= 0) {
+      RCLCPP_ERROR(rcl_logger, "Invalid samplerate from TTS source: %d", samplerate);
+      return;
+    }
+    RCLCPP_INFO(rcl_logger, "Opening alsa");
         // Use pre-opened ALSA device if possible
     auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
     if (alsa_dev_preplay_) {
@@ -139,7 +141,7 @@ public:
     SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->format_);
     auto audio_stream = std::make_unique<AudioStream>(
       rw_format,
-      std::move(snd_file_source),
+      std::move(tts_source),
       std::move(alsa_sink),
       std::string("tts request with text ") + msg->text.substr(0, 20) + "...",
       get_parameter("stream_queue_frames").as_int()

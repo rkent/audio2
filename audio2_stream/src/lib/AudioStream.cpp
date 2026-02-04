@@ -6,7 +6,6 @@
 #include <cstdio>
 #include <audio2_stream/AudioStream.hpp>
 #include <audio2_stream/AlsaDeviceImpl.hpp>
-#include <curl/curl.h>
 #include "nlohmann/json.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
@@ -489,7 +488,7 @@ void AudioStream::start()
 
 void AudioStream::shutdown()
 {
-  printf("AudioStream::shutdown called for %s at %s\n", description_.c_str(),
+  printf("AudioStream::shutdown called for <%s> at %s\n", description_.c_str(),
     format_timestamp().c_str());
   shutdown_flag_.store(true);
   data_available_.store(true);
@@ -517,6 +516,7 @@ void AudioStream::shutdown()
   shutdown_complete_.store(true);
 }
 
+
 // Callback function for CURL to write response data
 static size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
 {
@@ -531,31 +531,120 @@ static size_t write_callback(void * contents, size_t size, size_t nmemb, void * 
   return realsize;
 }
 
+// Helper function to split a string by a delimiter
+static std::vector<std::string> split_string(const std::string & str, char delimiter)
+{
+  std::vector<std::string> result;
+  std::string current;
+  for (char c : str) {
+    if (c == delimiter) {
+      if (!current.empty()) {
+        result.push_back(current);
+        current.clear();
+      }
+    } else {
+      current += c;
+    }
+  }
+  if (!current.empty()) {
+    result.push_back(current);
+  }
+  return result;
+}
+
+
+std::optional<std::string> TtsSource::initialize()
+{
+  // We initialize here since we may need to know the samplerate for timing.
+  nlohmann::json json_payload;
+  if (name_.empty()) {
+    name_ = "openai";
+  }
+  if (text_.empty()) {
+    return std::string("TTS text cannot be empty");
+  }
+
+  if (name_ == "openai") {
+    printf("TtsSource::initialize using OpenAI TTS at %s\n", format_timestamp().c_str());
+    const char* api_key_cstr = std::getenv("OPENAI_API_KEY");
+    if (!api_key_cstr || strlen(api_key_cstr) == 0) {
+      return std::string("OPENAI_API_KEY environment variable is not set");
+    }
+    samplerate_ = 24000;
+    url_ = "https://api.openai.com/v1/audio/speech";
+      // Defaults
+    if (model_.empty()) {
+      model_ = "gpt-4o-mini-tts";
+    }
+    if (voice_.empty()) {
+      voice_ = "coral";
+    }
+    if (format_.empty()) {
+      format_ = "wav";
+    }
+    // Headers
+    std::string auth_header = "Authorization: Bearer " + std::string(api_key_cstr);
+    headers_ = curl_slist_append(headers_, auth_header.c_str());
+    // Payload
+    json_payload["model"] = model_;
+    json_payload["input"] = text_;
+    json_payload["voice"] = voice_;
+    json_payload["format"] = format_;
+  }
+  else if (name_ == "elevenlabs") {
+    printf("TtsSource::initialize using ElevenLabs TTS at %s\n", format_timestamp().c_str());
+    const char* api_key_cstr = std::getenv("ELEVENLABS_API_KEY");
+    if (!api_key_cstr || strlen(api_key_cstr) == 0) {
+      return std::string("ELEVENLABS_API_KEY environment variable is not set");
+    }
+      // Defaults
+    if (model_.empty()) {
+      model_ = "eleven_flash_v2_5";
+    }
+    if (voice_.empty()) {
+      voice_ = "JBFqnCBsd6RMkjVDRZzb";
+    }
+    if (format_.empty()) {
+      format_ = "mp3_44100_128";
+    }
+    url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" + format_;
+    auto rate_split = split_string(format_, '_');
+    if (rate_split.size() < 2) {
+      return std::string("Invalid format string for ElevenLabs TTS: ") + format_;
+    }
+    samplerate_ = std::stoi(rate_split[1]);
+      // Headers
+    std::string auth_header = "xi-api-key: " + std::string(api_key_cstr);
+    headers_ = curl_slist_append(headers_, auth_header.c_str());
+      // Payload
+    json_payload["model_id"] = model_;
+    json_payload["text"] = text_;
+    json_payload["voice_id"] = voice_;
+    json_payload["output_format"] = format_;
+  } else {
+     return std::string("Unsupported TTS provider: ") + name_;
+  }
+  json_str_ = json_payload.dump();
+  printf("TtsSource::initialize JSON payload: %s\n", json_str_.c_str());
+  headers_ = curl_slist_append(headers_, "Content-Type: application/json");
+  return std::nullopt;
+}
+
+
 std::optional<std::string> TtsSource::fetch_tts_audio(std::vector<uint8_t> & audio_data)
 {
+  printf("TtsSource::fetch_tts_audio called to url %s at %s\n", url_.c_str(), format_timestamp().c_str());
+  nlohmann::json json_payload;
+
   CURL * curl = curl_easy_init();
   if (!curl) {
     return std::string("Failed to initialize CURL");
   }
 
-  // Create JSON payload
-  nlohmann::json json_payload;
-  json_payload["model"] = model_;
-  json_payload["input"] = text_;
-  json_payload["voice"] = voice_;
-  json_payload["format"] = format_;
-  std::string json_str = json_payload.dump();
-
-  // Set up authorization header
-  std::string auth_header = "Authorization: Bearer " + api_key_;
-  struct curl_slist * headers = nullptr;
-  headers = curl_slist_append(headers, auth_header.c_str());
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-
   // Set CURL options
-  curl_easy_setopt(curl, CURLOPT_URL, "https://api.openai.com/v1/audio/speech");
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str.c_str());
+  curl_easy_setopt(curl, CURLOPT_URL, url_.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers_);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str_.c_str());
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
@@ -564,12 +653,9 @@ std::optional<std::string> TtsSource::fetch_tts_audio(std::vector<uint8_t> & aud
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, static_cast<void *>(&audio_data));
 
   // Perform request
-  printf("TtsSource: Sending TTS request to OpenAI at %s\n", format_timestamp().c_str());
+  printf("TtsSource: Sending TTS request to %s at %s\n", name_.c_str(), format_timestamp().c_str());
   CURLcode res = curl_easy_perform(curl);
-  printf("TtsSource: Received TTS response from OpenAI at %s\n", format_timestamp().c_str());
-
-  // Clean up headers
-  curl_slist_free_all(headers);
+  printf("TtsSource: Received TTS response from %s at %s\n", name_.c_str(), format_timestamp().c_str());
 
   if (res != CURLE_OK) {
     std::string error_msg = std::string("CURL error: ") + curl_easy_strerror(res);
@@ -595,11 +681,10 @@ void TtsSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
   printf("TtsSource::run started at %s\n", format_timestamp().c_str());
-      // TODO: make configurable
-  int sample_rate = 24000;  // OpenAI TTS default
-      // Messages will be sent at a constant rate based on samplerate and buffer size.
+
+    // Messages will be sent at a constant rate based on samplerate and buffer size.
   auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
-        audio_stream->queue_frames_ / (sample_rate)));
+        audio_stream->queue_frames_ / (samplerate_)));
 
   std::vector<uint8_t> audio_data;
       // Reserve some data. CURL will expand as needed.
