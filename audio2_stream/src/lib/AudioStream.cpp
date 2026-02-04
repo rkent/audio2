@@ -201,55 +201,9 @@ std::optional<std::string> SndFileSource::open()
 
 void SndFileSource::run(AudioStream * audio_stream)
 {
-  auto r_format = sfg_format_from_sndfile_format(sndfileh_.format());
-  auto w_format = audio_stream->rw_format_;
-  std::vector<uint8_t> r_buffer;
-  std::vector<uint8_t> w_buffer;
-  create_convert_vectors(r_format, w_format, audio_stream->queue_frames_ * sndfileh_.channels(),
-    r_buffer, w_buffer);
-  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
-      audio_stream->queue_frames_ / (sndfileh_.samplerate())));
-  auto next_time = std::chrono::steady_clock::now();
-  bool done = false;
-
-  while (!(audio_stream->shutdown_flag_.load()) && !done) {
-        // Add one to the queue each duration
-    while (audio_stream->queue_.write_available() > 0 &&
-      !audio_stream->shutdown_flag_.load())
-    {
-      int samples_read = sfg_read(sndfileh_, r_format, r_buffer.data(),
-        audio_stream->queue_frames_ * sndfileh_.channels());
-      if (samples_read <= 0) {
-        done = true;
-        break;         // End of file or error
-      }
-      int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(),
-        samples_read);
-      if (samples_converted < 0) {
-        RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d",
-          samples_converted);
-        done = true;
-        break;
-      } else if (samples_converted != samples_read) {
-        RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d",
-          samples_read, samples_converted);
-        done = true;
-        break;
-      }
-
-      while (!audio_stream->queue_.push(w_buffer) && !audio_stream->shutdown_flag_.load()) {
-                // We should not reach here since we checked write_available above
-        RCLCPP_WARN(rcl_logger, "Audio queue is full, waiting...");
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      }
-      printf("SndFileSource: Pushed %d samples to audio queue at %s\n", samples_converted,
-        format_timestamp().c_str());
-      audio_stream->data_available_.store(true);
-      audio_stream->data_available_.notify_one();
-      next_time += duration;
-      std::this_thread::sleep_until(next_time);
-    }
-  }
+  assert(audio_stream);
+  printf("SndFileSource::run started\n");
+  audio_stream->process_fileh(sndfileh_, sndfileh_.samplerate());
   printf("SndFileSource::run exiting\n");
   audio_stream->shutdown();
 }
@@ -516,6 +470,67 @@ void AudioStream::shutdown()
   shutdown_complete_.store(true);
 }
 
+void AudioStream::process_fileh(SndfileHandle & fileh, int samplerate)
+{
+    // Messages will be sent at a constant rate based on samplerate and buffer size.
+  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
+        queue_frames_ / (samplerate)));
+
+  auto r_format = sfg_format_from_sndfile_format(fileh.format());
+  auto w_format = rw_format_;
+  std::vector<uint8_t> r_buffer;
+  std::vector<uint8_t> w_buffer;
+  create_convert_vectors(r_format, w_format,
+    queue_frames_ * fileh.channels(), r_buffer, w_buffer);
+  bool done = false;
+  printf("AudioStream::process_fileh: length %zu bytes from audio chunk\n", fileh.frames() *
+    fileh.channels() * sample_size_from_sfg_format(r_format));
+  auto next_time = std::chrono::steady_clock::now();
+  while (!(shutdown_flag_.load()) && !done) {
+    int samples_read = sfg_read(fileh, r_format, r_buffer.data(),
+      queue_frames_ * fileh.channels());
+    if (samples_read <= 0) {
+      done = true;
+      break;       // End of file or error
+    }
+    printf("AudioStream::process_fileh: read %d samples from audio chunk at %s\n", samples_read,
+      format_timestamp().c_str());
+    int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(),
+      samples_read);
+    if (samples_converted < 0) {
+      RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+      done = true;
+      break;
+    } else if (samples_converted != samples_read) {
+      RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d",
+        samples_read, samples_converted);
+      done = true;
+      break;
+    }
+
+        // Resize buffer to actual converted sample count to avoid pushing garbage data
+    w_buffer.resize(samples_converted * sample_size_from_sfg_format(w_format));
+
+        // Try to push to the queue without blocking.
+    if (!queue_.push(w_buffer)) {
+      RCLCPP_WARN(rcl_logger,
+        "Audio queue is full, dropping audio chunk to avoid blocking executor!");
+            // TODO: move this to another thread to avoid blocking the callback?
+            // Still notify in case the consumer is waiting
+      data_available_.store(true);
+      data_available_.notify_one();
+      continue;
+    }
+    printf("AudioStream::process_fileh: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+      samples_converted, queue_.read_available(),
+      queue_.write_available(), format_timestamp().c_str());
+    data_available_.store(true);
+    data_available_.notify_one();
+    next_time += duration;
+    std::this_thread::sleep_until(next_time);
+
+  }
+}
 
 // Callback function for CURL to write response data
 static size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
@@ -682,10 +697,6 @@ void TtsSource::run(AudioStream * audio_stream)
   assert(audio_stream);
   printf("TtsSource::run started at %s\n", format_timestamp().c_str());
 
-    // Messages will be sent at a constant rate based on samplerate and buffer size.
-  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
-        audio_stream->queue_frames_ / (samplerate_)));
-
   std::vector<uint8_t> audio_data;
       // Reserve some data. CURL will expand as needed.
   audio_data.reserve(CURL_MAX_WRITE_SIZE);
@@ -702,69 +713,16 @@ void TtsSource::run(AudioStream * audio_stream)
   }
 
   printf("TtsSource: Received %zu bytes of audio data\n", audio_data.size());
-
       // Convert the audio data (which is a file content) to the stream format
+
   VIO_SOUNDFILE_HANDLE vio_handle;
   if (auto err = ropen_vio_from_vector(audio_data, vio_handle)) {
     printf("TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());
     return;
   }
 
-  auto r_format = sfg_format_from_sndfile_format(vio_handle.fileh.format());
-  auto w_format = audio_stream->rw_format_;
-  std::vector<uint8_t> r_buffer;
-  std::vector<uint8_t> w_buffer;
-  create_convert_vectors(r_format, w_format,
-    audio_stream->queue_frames_ * vio_handle.fileh.channels(), r_buffer, w_buffer);
-  bool done = false;
-  printf("TtsSource read: length %zu bytes from audio chunk\n", vio_handle.vio_data.length);
-  auto next_time = std::chrono::steady_clock::now();
-  while (!(audio_stream->shutdown_flag_.load()) && !done) {
-    int samples_read = sfg_read(vio_handle.fileh, r_format, r_buffer.data(),
-      audio_stream->queue_frames_ * vio_handle.fileh.channels());
-    if (samples_read <= 0) {
-      done = true;
-      break;       // End of file or error
-    }
-    printf("TtsSource: read %d samples from audio chunk at %s\n", samples_read,
-      format_timestamp().c_str());
-    int samples_converted = convert_types(r_format, w_format, r_buffer.data(), w_buffer.data(),
-      samples_read);
-    if (samples_converted < 0) {
-      RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
-      done = true;
-      break;
-    } else if (samples_converted != samples_read) {
-      RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d",
-        samples_read, samples_converted);
-      done = true;
-      break;
-    }
+  audio_stream->process_fileh(vio_handle.fileh, samplerate_);
 
-        // Resize buffer to actual converted sample count to avoid pushing garbage data
-    w_buffer.resize(samples_converted * sample_size_from_sfg_format(w_format));
-
-        // Try to push to the queue without blocking.
-        // If the queue is full, drop this chunk to avoid blocking the ROS2 executor.
-        // Blocking here would prevent other callbacks from running and cause message delivery delays.
-    if (!audio_stream->queue_.push(w_buffer)) {
-      RCLCPP_WARN(rcl_logger,
-        "Audio queue is full, dropping audio chunk to avoid blocking executor!");
-            // TODO: move this to another thread to avoid blocking the callback?
-            // Still notify in case the consumer is waiting
-      audio_stream->data_available_.store(true);
-      audio_stream->data_available_.notify_one();
-      continue;
-    }
-    printf("TtsSource: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
-      samples_converted, audio_stream->queue_.read_available(),
-      audio_stream->queue_.write_available(), format_timestamp().c_str());
-    audio_stream->data_available_.store(true);
-    audio_stream->data_available_.notify_one();
-    next_time += duration;
-    std::this_thread::sleep_until(next_time);
-
-  }
   printf("TtsSource::run completed at %s\n", format_timestamp().c_str());
   audio_stream->shutdown();
 }

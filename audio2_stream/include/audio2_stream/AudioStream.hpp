@@ -79,6 +79,7 @@ public:
 
   void shutdown();
   void start();
+  void process_fileh(SndfileHandle & fileh, int samplerate);
 };
 
 class AudioTerminal
