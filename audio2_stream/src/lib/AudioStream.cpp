@@ -10,6 +10,23 @@
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
+static bool isProgramInstalled(const std::string& program) {
+    std::string command = "which " + program + " > /dev/null 2>&1";
+    return system(command.c_str()) == 0;
+}
+
+static bool hasEspeak() {
+    // Initialized only the first time this function is called
+    static bool installed = isProgramInstalled("espeak");
+    return installed;
+}
+
+static bool hasEspeakNG() {
+    // Initialized only the first time this function is called
+    static bool installed = isProgramInstalled("espeak-ng");
+    return installed;
+}
+
 std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 {
     // Create default device implementation if none provided
@@ -567,7 +584,7 @@ static std::vector<std::string> split_string(const std::string & str, char delim
   return result;
 }
 
-
+// ToDo: Do not limit speed if writing to a file.
 std::optional<std::string> TtsSource::initialize()
 {
   // We initialize here since we may need to know the samplerate for timing.
@@ -579,8 +596,13 @@ std::optional<std::string> TtsSource::initialize()
     return std::string("TTS text cannot be empty");
   }
 
-  if (name_ == "openai") {
+  if (name_ == "espeak") {
+    printf("TtsSource::initialize using espeak TTS at %s\n", format_timestamp().c_str());
+    tts_method_ = TtsMethod::TTS_PROGRAM;
+    samplerate_ = 22050;
+  } else if (name_ == "openai") {
     printf("TtsSource::initialize using OpenAI TTS at %s\n", format_timestamp().c_str());
+    tts_method_ = TtsMethod::TTS_CURL;
     const char* api_key_cstr = std::getenv("OPENAI_API_KEY");
     if (!api_key_cstr || strlen(api_key_cstr) == 0) {
       return std::string("OPENAI_API_KEY environment variable is not set");
@@ -608,6 +630,7 @@ std::optional<std::string> TtsSource::initialize()
   }
   else if (name_ == "elevenlabs") {
     printf("TtsSource::initialize using ElevenLabs TTS at %s\n", format_timestamp().c_str());
+    tts_method_ = TtsMethod::TTS_CURL;
     const char* api_key_cstr = std::getenv("ELEVENLABS_API_KEY");
     if (!api_key_cstr || strlen(api_key_cstr) == 0) {
       return std::string("ELEVENLABS_API_KEY environment variable is not set");
@@ -645,10 +668,45 @@ std::optional<std::string> TtsSource::initialize()
   return std::nullopt;
 }
 
-
-std::optional<std::string> TtsSource::fetch_tts_audio(std::vector<uint8_t> & audio_data)
+std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & audio_data)
 {
-  printf("TtsSource::fetch_tts_audio called to url %s at %s\n", url_.c_str(), format_timestamp().c_str());
+  std::string command;
+  if (name_ == "espeak") {
+    if (hasEspeakNG()) {
+      command = "espeak-ng --stdout \"" + text_ + "\"";
+    } else if (hasEspeak()) {
+      command = "espeak --stdout \"" + text_ + "\"";
+    } else {
+      return std::string("Neither espeak nor espeak-ng is installed");
+    }
+  } else {
+    return std::string("Unsupported TTS provider: ") + name_;
+  }
+  printf("TtsSource::fetch_tts_program executing command: %s at %s\n", command.c_str(),
+    format_timestamp().c_str());
+  FILE * pipe = popen(command.c_str(), "r");
+  if (!pipe) {
+    return std::string("Failed to execute TTS command");
+  }
+  printf("TtsSource::fetch_tts_program started reading audio data at %s\n", format_timestamp().c_str());
+  // ToDo: the buffer size should match the audio chunk size.
+  char buffer[4096];
+  size_t bytes_read;
+  while ((bytes_read = fread(buffer, 1, sizeof(buffer), pipe)) > 0) {
+    audio_data.insert(audio_data.end(), buffer, buffer + bytes_read);
+  }
+  int result = pclose(pipe);
+  if (result != 0) {
+    return std::format("TTS command failed with code {}", result);
+  }
+  printf("TtsSource::fetch_tts_program completed with %zu bytes of audio data at %s\n",
+    audio_data.size(), format_timestamp().c_str());
+  return std::nullopt;
+}
+
+std::optional<std::string> TtsSource::fetch_tts_curl(std::vector<uint8_t> & audio_data)
+{
+  printf("TtsSource::fetch_tts_curl called to url %s at %s\n", url_.c_str(), format_timestamp().c_str());
   nlohmann::json json_payload;
 
   CURL * curl = curl_easy_init();
@@ -700,21 +758,32 @@ void TtsSource::run(AudioStream * audio_stream)
   std::vector<uint8_t> audio_data;
       // Reserve some data. CURL will expand as needed.
   audio_data.reserve(CURL_MAX_WRITE_SIZE);
-  auto fetch_result = fetch_tts_audio(audio_data);
+  if (tts_method_ == TtsMethod::TTS_PROGRAM) {
+    auto fetch_result = fetch_tts_program(audio_data);
+  
+    if (fetch_result.has_value()) {
+      printf("TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
+      return;
+    }
+  } else if (tts_method_ == TtsMethod::TTS_CURL) {
+      auto fetch_result = fetch_tts_curl(audio_data);
 
-  if (fetch_result.has_value()) {
-    printf("TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
+      if (fetch_result.has_value()) {
+        printf("TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
+        return;
+      }
+  } else {
+    printf("TtsSource: Unsupported TTS method\n");
     return;
   }
-
   if (audio_data.empty()) {
     printf("TtsSource: No audio data received\n");
     return;
   }
 
   printf("TtsSource: Received %zu bytes of audio data\n", audio_data.size());
-      // Convert the audio data (which is a file content) to the stream format
 
+      // Convert the audio data (which is a file content) to the stream format
   VIO_SOUNDFILE_HANDLE vio_handle;
   if (auto err = ropen_vio_from_vector(audio_data, vio_handle)) {
     printf("TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());

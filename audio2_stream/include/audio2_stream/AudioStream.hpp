@@ -213,6 +213,12 @@ protected:
   std::string topic_;
 };
 
+enum class TtsMethod
+{
+  TTS_CURL,
+  TTS_PROGRAM
+};
+
 class TtsSource : public AudioTerminal
 {
 public:
@@ -234,8 +240,10 @@ public:
   };
 
   void run(AudioStream * audio_stream) override;
-  std::optional<std::string> fetch_tts_audio(std::vector<uint8_t> & audio_data);
+  std::optional<std::string> fetch_tts_curl(std::vector<uint8_t> & audio_data);
+  std::optional<std::string> fetch_tts_program(std::vector<uint8_t> & audio_data);
   std::optional<std::string> initialize();
+
   int samplerate_;
 
 protected:
@@ -247,6 +255,8 @@ protected:
   struct curl_slist * headers_ = nullptr;
   std::string json_str_;
   std::string url_;
+  TtsMethod tts_method_;
+  
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP
