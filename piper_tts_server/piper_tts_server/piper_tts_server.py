@@ -19,24 +19,19 @@
 
 """Flask web server with HTTP API for Piper."""
 
-import argparse
 import io
 import json
 import logging
-import wave
 from pathlib import Path
-import threading
 from typing import Any, Dict, List, Optional
 from urllib.request import urlopen
+import wave
 
 from flask import Flask, request
-
+from piper import PiperVoice, SynthesisConfig
+from piper.download_voices import download_voice, VOICES_JSON
 import rclpy
 from rclpy.node import Node
-
-
-from piper import PiperVoice, SynthesisConfig
-from piper.download_voices import VOICES_JSON, download_voice
 
 _LOGGER = logging.getLogger()
 
@@ -84,7 +79,9 @@ class PiperTtsServerNode(Node):
         )
         debug = self.get_parameter('debug').get_parameter_value().bool_value
 
-        auto_download_voices = self.get_parameter('auto_download_voices').get_parameter_value().bool_value
+        auto_download_voices = (
+            self.get_parameter('auto_download_voices').get_parameter_value().bool_value
+        )
         # Use sentinel values to distinguish "not set" from a real value
         speaker: Optional[int] = None if speaker_param < 0 else speaker_param
         length_scale: Optional[float] = (
@@ -134,7 +131,7 @@ class PiperTtsServerNode(Node):
 
             # Load voice
             default_voice = PiperVoice.load(model_path, use_cuda=use_cuda)
-            loaded_voices: Dict[str, PiperVoice] = {default_model_id: default_voice}
+            loaded_voices = {default_model_id: default_voice}
 
         # Create Flask web server
         app = Flask(__name__)
@@ -351,4 +348,4 @@ def ros_main(args: Any = None) -> None:
 
 
 if __name__ == '__main__':
-    main()
+    ros_main()
