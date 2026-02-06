@@ -326,9 +326,10 @@ class PiperTtsServerNode(Node):
         self.declare_parameter('noise_w_scale', -1.0)
         self.declare_parameter('cuda', False)
         self.declare_parameter('sentence_silence', 0.0)
-        self.declare_parameter('data_dir', [str(Path.cwd())])
+        self.declare_parameter('data_dir', [str(Path.cwd() / 'piper_tts_voices')])
         self.declare_parameter('download_dir', '')
         self.declare_parameter('debug', False)
+        self.declare_parameter('auto_download_voices', True)
 
         # Read parameter values
         host = self.get_parameter('host').get_parameter_value().string_value
@@ -351,7 +352,7 @@ class PiperTtsServerNode(Node):
             self.get_parameter('download_dir').get_parameter_value().string_value
         )
         debug = self.get_parameter('debug').get_parameter_value().bool_value
-
+        auto_download_voices = self.get_parameter('auto_download_voices').get_parameter_value().bool_value
         # Use sentinel values to distinguish "not set" from a real value
         speaker: Optional[int] = None if speaker_param < 0 else speaker_param
         length_scale: Optional[float] = (
@@ -373,6 +374,11 @@ class PiperTtsServerNode(Node):
         if not download_dir_str:
             download_dir_str = data_dirs[0]
         download_dir = Path(download_dir_str)
+        download_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create data directories if they don't exist
+        for data_dir in data_dirs:
+            Path(data_dir).mkdir(parents=True, exist_ok=True)
 
         # Locate the model file
         default_model_id = None
@@ -434,8 +440,23 @@ class PiperTtsServerNode(Node):
             with urlopen(VOICES_JSON) as response:
                 return json.load(response)
 
+        @app.route('/download', methods=['GET'])
+        def app_download_get() -> Dict[str, Any]:
+            """Download a voice using query parameters."""
+            model_id = request.args.get('voice')
+            if not model_id:
+                raise ValueError('voice is required')
+            force_redownload = request.args.get('force_redownload', 'false').lower() == 'true'
+            download_voice(model_id, download_dir, force_redownload=force_redownload)
+
+            config_path = download_dir / f'{model_id}.onnx.json'
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as config_file:
+                    return json.load(config_file)
+            return {}
+
         @app.route('/download', methods=['POST'])
-        def app_download() -> str:
+        def app_download() -> Dict[str, Any]:
             """Download a voice."""
             data = json.loads(request.data)
             model_id = data.get('voice')
@@ -443,7 +464,12 @@ class PiperTtsServerNode(Node):
                 raise ValueError('voice is required')
             force_redownload = data.get('force_redownload', False)
             download_voice(model_id, download_dir, force_redownload=force_redownload)
-            return model_id
+
+            config_path = download_dir / f'{model_id}.onnx.json'
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as config_file:
+                    return json.load(config_file)
+            return {}
 
         @app.route('/', methods=['POST'])
         def app_synthesize() -> bytes:
@@ -465,6 +491,18 @@ class PiperTtsServerNode(Node):
                         voice = PiperVoice.load(maybe_path, use_cuda=use_cuda)
                         loaded_voices[req_model_id] = voice
                         break
+
+            if voice is None and auto_download_voices and req_model_id:
+                try:
+                    _LOGGER.info('Auto-downloading voice: %s', req_model_id)
+                    download_voice(req_model_id, download_dir, force_redownload=False)
+                    maybe_path = download_dir / f'{req_model_id}.onnx'
+                    if maybe_path.exists():
+                        _LOGGER.debug('Loading downloaded voice %s', req_model_id)
+                        voice = PiperVoice.load(maybe_path, use_cuda=use_cuda)
+                        loaded_voices[req_model_id] = voice
+                except Exception as e:
+                    _LOGGER.error('Failed to download voice %s: %s', req_model_id, e)
 
             if voice is None:
                 _LOGGER.warning(
