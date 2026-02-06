@@ -755,8 +755,19 @@ std::optional<std::string> TtsSource::initialize()
     json_payload["text"] = text_;
     json_payload["voice_id"] = voice_;
     json_payload["output_format"] = format_;
+  } else if (name_ == "piper-http") {
+      printf("TtsSource::initialize using Piper HTTP TTS at %s\n", format_timestamp().c_str());
+      tts_method_ = TtsMethod::TTS_CURL;
+      url_ = "http://localhost:5000";
+      if (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") {
+        samplerate_ = 16000;
+      } else {
+        samplerate_ = 22050;
+      }
+      json_payload["text"] = text_;
+      json_payload["voice"] = voice_;
   } else {
-     return std::string("Unsupported TTS provider: ") + name_;
+    return std::string("Unsupported TTS provider: ") + name_;
   }
   json_str_ = json_payload.dump();
   printf("TtsSource::initialize JSON payload: %s\n", json_str_.c_str());
