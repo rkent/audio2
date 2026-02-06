@@ -687,9 +687,14 @@ std::optional<std::string> TtsSource::initialize()
     printf("TtsSource::initialize using Piper TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_PROGRAM_RAW;
     // ToDo: should this depend on the voice?
-    samplerate_ = 22050;
+
     if (voice_.empty()) {
       voice_ = "en_US-amy-medium";
+    }
+    if (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") {
+      samplerate_ = 16000;
+    } else {
+      samplerate_ = 22050;
     }
   } else if (name_ == "openai") {
     printf("TtsSource::initialize using OpenAI TTS at %s\n", format_timestamp().c_str());
