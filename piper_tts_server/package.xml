@@ -6,6 +6,8 @@
   <description>piper-tts text to speech web server</description>
   <maintainer email="kent@caspia.com">R. Kent James</maintainer>
   <license>GPL-3.0-only</license>
+  <exec_depend>python3-waitress</exec_depend>
+  <exec_depend>python3-flask</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -598,13 +598,8 @@ class PiperTtsServerNode(Node):
         self._port = port
 
     def start_server(self) -> None:
-        """Start the Flask server in a background thread."""
-        self._server_thread = threading.Thread(
-            target=self._app.run,
-            kwargs={'host': self._host, 'port': self._port},
-            daemon=True,
-        )
-        self._server_thread.start()
+        from waitress import serve
+        serve(self._app, host=self._host, port=self._port)
         self.get_logger().info(
             f'Piper TTS server started on {self._host}:{self._port}'
         )
