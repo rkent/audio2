@@ -366,35 +366,41 @@ class PiperTtsServerNode(Node):
 
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
-        if not model:
-            self.get_logger().fatal('Parameter "model" is required')
-            raise RuntimeError('Parameter "model" is required')
+        #if not model:
+        #    self.get_logger().fatal('Parameter "model" is required')
+        #    raise RuntimeError('Parameter "model" is required')
 
         if not download_dir_str:
             download_dir_str = data_dirs[0]
         download_dir = Path(download_dir_str)
 
         # Locate the model file
-        model_path = Path(model)
-        if not model_path.exists():
-            voice_name = model
-            for data_dir in data_dirs:
-                maybe_model_path = Path(data_dir) / f'{voice_name}.onnx'
-                _LOGGER.debug("Checking '%s'", maybe_model_path)
-                if maybe_model_path.exists():
-                    model_path = maybe_model_path
-                    break
+        default_model_id = None
+        loaded_voices: Dict[str, PiperVoice] = {}
+        default_voice = None
+        model_path = None
 
-        if not model_path.exists():
-            raise ValueError(
-                f'Unable to find voice: {model_path} (use piper.download_voices)'
-            )
+        if model:
+            model_path = Path(model)
+            if not model_path.exists():
+                voice_name = model
+                for data_dir in data_dirs:
+                    maybe_model_path = Path(data_dir) / f'{voice_name}.onnx'
+                    _LOGGER.debug("Checking '%s'", maybe_model_path)
+                    if maybe_model_path.exists():
+                        model_path = maybe_model_path
+                        break
 
-        default_model_id = model_path.name.rstrip('.onnx')
+            if not model_path.exists():
+                raise ValueError(
+                    f'Unable to find voice: {model_path} (use piper.download_voices)'
+                )
 
-        # Load voice
-        default_voice = PiperVoice.load(model_path, use_cuda=use_cuda)
-        loaded_voices: Dict[str, PiperVoice] = {default_model_id: default_voice}
+            default_model_id = model_path.name.rstrip('.onnx')
+
+            # Load voice
+            default_voice = PiperVoice.load(model_path, use_cuda=use_cuda)
+            loaded_voices: Dict[str, PiperVoice] = {default_model_id: default_voice}
 
         # Create Flask web server
         app = Flask(__name__)
@@ -403,7 +409,9 @@ class PiperTtsServerNode(Node):
         def app_voices() -> Dict[str, Any]:
             """List downloaded voices."""
             voices_dict: Dict[str, Any] = {}
-            config_paths: List[Path] = [Path(f'{model_path}.json')]
+            config_paths: List[Path] = []
+            if model_path:
+                config_paths.append(Path(f'{model_path}.json'))
 
             for data_dir in data_dirs:
                 for onnx_path in Path(data_dir).glob('*.onnx'):
