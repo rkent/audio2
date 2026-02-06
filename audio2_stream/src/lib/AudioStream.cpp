@@ -549,6 +549,89 @@ void AudioStream::process_fileh(SndfileHandle & fileh, int samplerate)
   }
 }
 
+void AudioStream::process_raw(std::vector<uint8_t> & audio_data, int samplerate, int channels, SfgRwFormat r_format)
+{
+    // Messages will be sent at a constant rate based on samplerate and buffer size.
+  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
+        queue_frames_ / (samplerate)));
+
+  auto w_format = rw_format_;
+  std::vector<uint8_t> w_buffer;
+
+  auto r_sample_size = sample_size_from_sfg_format(r_format);
+  auto w_sample_size = sample_size_from_sfg_format(w_format);
+
+  // Calculate chunk size in samples for each iteration
+  int chunk_samples = queue_frames_ * channels;
+  int chunk_bytes = chunk_samples * r_sample_size;
+
+  // Resize write buffer to hold converted chunk
+  w_buffer.reserve(chunk_samples * w_sample_size);
+  bool done = false;
+  printf("AudioStream::process_raw: length %zu bytes from audio chunk\n", audio_data.size());
+  auto next_time = std::chrono::steady_clock::now();
+
+  size_t offset = 0;
+  while (!(shutdown_flag_.load()) && !done) {
+    size_t remaining_bytes = audio_data.size() - offset;
+    if (remaining_bytes == 0) {
+      done = true;
+      break;
+    }
+
+    int bytes_to_read = std::min(static_cast<size_t>(chunk_bytes), remaining_bytes);
+    int samples_read = bytes_to_read / r_sample_size;
+
+    if (samples_read <= 0) {
+      done = true;
+      break;       // End of data
+    }
+    printf("AudioStream::process_raw: read %d samples from audio chunk at offset %zu at %s\n",
+      samples_read, offset, format_timestamp().c_str());
+
+    // Convert from the current position in audio_data
+    int samples_converted = convert_types(r_format, w_format,
+      audio_data.data() + offset, w_buffer.data(), samples_read);
+
+    if (samples_converted < 0) {
+      RCLCPP_ERROR(rcl_logger, "Error converting audio data for streaming: %d", samples_converted);
+      done = true;
+      break;
+    } else if (samples_converted != samples_read) {
+      RCLCPP_ERROR(rcl_logger, "Mismatch in converted samples count: expected %d, got %d",
+        samples_read, samples_converted);
+      done = true;
+      break;
+    }
+
+        // Resize buffer to actual converted sample count to avoid pushing garbage data
+    w_buffer.resize(samples_converted * sample_size_from_sfg_format(w_format));
+
+        // Try to push to the queue without blocking.
+    if (!queue_.push(w_buffer)) {
+      RCLCPP_WARN(rcl_logger,
+        "Audio queue is full, dropping audio chunk to avoid blocking executor!");
+            // TODO: move this to another thread to avoid blocking the callback?
+            // Still notify in case the consumer is waiting
+      data_available_.store(true);
+      data_available_.notify_one();
+      offset += bytes_to_read;
+      continue;
+    }
+    printf("AudioStream::process_raw: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+      samples_converted, queue_.read_available(),
+      queue_.write_available(), format_timestamp().c_str());
+    data_available_.store(true);
+    data_available_.notify_one();
+
+    // Advance offset for next chunk
+    offset += bytes_to_read;
+
+    next_time += duration;
+    std::this_thread::sleep_until(next_time);
+  }
+}
+
 // Callback function for CURL to write response data
 static size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
 {
@@ -598,8 +681,16 @@ std::optional<std::string> TtsSource::initialize()
 
   if (name_ == "espeak") {
     printf("TtsSource::initialize using espeak TTS at %s\n", format_timestamp().c_str());
-    tts_method_ = TtsMethod::TTS_PROGRAM;
+    tts_method_ = TtsMethod::TTS_PROGRAM_WAV;
     samplerate_ = 22050;
+  } else if (name_ == "piper") {
+    printf("TtsSource::initialize using Piper TTS at %s\n", format_timestamp().c_str());
+    tts_method_ = TtsMethod::TTS_PROGRAM_RAW;
+    // ToDo: should this depend on the voice?
+    samplerate_ = 22050;
+    if (voice_.empty()) {
+      voice_ = "en_US-amy-medium";
+    }
   } else if (name_ == "openai") {
     printf("TtsSource::initialize using OpenAI TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_CURL;
@@ -679,6 +770,11 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
     } else {
       return std::string("Neither espeak nor espeak-ng is installed");
     }
+  } else if (name_ == "piper") {
+    if (!isProgramInstalled("piper")) {
+      return std::string("Piper TTS program is not installed");
+    }
+    command = "piper --output-raw -m " + voice_ + " --data-dir " + PIPER_DATA_DIR + " -- " + "\"" + text_ + "\"";
   } else {
     return std::string("Unsupported TTS provider: ") + name_;
   }
@@ -758,7 +854,7 @@ void TtsSource::run(AudioStream * audio_stream)
   std::vector<uint8_t> audio_data;
       // Reserve some data. CURL will expand as needed.
   audio_data.reserve(CURL_MAX_WRITE_SIZE);
-  if (tts_method_ == TtsMethod::TTS_PROGRAM) {
+  if (tts_method_ == TtsMethod::TTS_PROGRAM_WAV || tts_method_ == TtsMethod::TTS_PROGRAM_RAW) {
     auto fetch_result = fetch_tts_program(audio_data);
   
     if (fetch_result.has_value()) {
@@ -783,15 +879,19 @@ void TtsSource::run(AudioStream * audio_stream)
 
   printf("TtsSource: Received %zu bytes of audio data\n", audio_data.size());
 
+  if (tts_method_ == TtsMethod::TTS_PROGRAM_RAW) {
+      // If the data is raw, we can process it directly without the virtual file.
+      // TODO: we need to know the format of the raw data. For now we assume it's PCM_16.
+    audio_stream->process_raw(audio_data, samplerate_, 1, SFG_SHORT);
+  } else {
       // Convert the audio data (which is a file content) to the stream format
-  VIO_SOUNDFILE_HANDLE vio_handle;
-  if (auto err = ropen_vio_from_vector(audio_data, vio_handle)) {
-    printf("TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());
-    return;
+    VIO_SOUNDFILE_HANDLE vio_handle;
+    if (auto err = ropen_vio_from_vector(audio_data, vio_handle)) {
+      printf("TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());
+      return;
+    }
+    audio_stream->process_fileh(vio_handle.fileh, samplerate_);
   }
-
-  audio_stream->process_fileh(vio_handle.fileh, samplerate_);
-
   printf("TtsSource::run completed at %s\n", format_timestamp().c_str());
   audio_stream->shutdown();
 }

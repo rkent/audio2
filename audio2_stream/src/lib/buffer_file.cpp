@@ -433,6 +433,7 @@ void create_convert_vectors(
   auto w_sample_size = sample_size_from_sfg_format(w_format);
   auto r_buffer_size = samples * r_sample_size;
   auto w_buffer_size = samples * w_sample_size;
+  // TODO: I think this should be reserve, not resize
   r_buffer.resize(r_buffer_size);
   w_buffer.resize(w_buffer_size);
 }

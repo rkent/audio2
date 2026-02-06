@@ -80,6 +80,7 @@ public:
   void shutdown();
   void start();
   void process_fileh(SndfileHandle & fileh, int samplerate);
+  void process_raw(std::vector<uint8_t> & audio_data, int samplerate, int channels, SfgRwFormat r_format);
 };
 
 class AudioTerminal
@@ -216,7 +217,8 @@ protected:
 enum class TtsMethod
 {
   TTS_CURL,
-  TTS_PROGRAM
+  TTS_PROGRAM_WAV,
+  TTS_PROGRAM_RAW
 };
 
 class TtsSource : public AudioTerminal

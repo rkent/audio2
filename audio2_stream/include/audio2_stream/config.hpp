@@ -51,4 +51,6 @@ const int SF_FORMAT_DEFAULT = (SF_FORMAT_WAV | SF_FORMAT_FLOAT);
 // QOS settings for audio chunk message publishers and subscribers
 const int AUDIO_CHUNK_QOS = 100;
 
+#define PIPER_DATA_DIR "piper"
+
 #endif // AUDIO2_STREAM_CONFIG_HPP
