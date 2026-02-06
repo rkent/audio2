@@ -25,8 +25,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'piper_server = piper_tts_server.piper_server:main',
-            'piper_server_node = piper_tts_server.piper_server:ros_main',
+            'piper_tts_server = piper_tts_server.piper_tts_server:ros_main',
         ],
     },
 )
