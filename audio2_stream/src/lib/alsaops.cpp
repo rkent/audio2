@@ -159,7 +159,6 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev)
       hw_vals = requested_hw_vals;       // Reset to requested values
     }
     hw_vals.format = format;
-        // TODO: pre-open alsa device to reduce latency.
     if (!alsa_dev) {
       ECALL(snd_pcm_open, _S("cannot open audio device ") + _S(device), &alsa_dev, device,
         hw_vals.direction, 0);
@@ -403,4 +402,33 @@ int alsa_read(
   } else {
     return -1;
   }
+}
+
+std::optional<std::string>
+alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev)
+{
+  int err;
+  std::string error_str;
+
+  snd_pcm_hw_params_t *hw_params;
+  snd_pcm_hw_params_alloca(&hw_params);
+  unsigned int current_rate;
+  int dir;
+  do {
+    ECALL(snd_pcm_hw_params_current, "cannot get current hw params", alsa_dev, hw_params);
+    ECALL(snd_pcm_hw_params_get_rate, "cannot get current rate", hw_params, &current_rate, &dir);
+    printf("alsa_fix_rate: current ALSA rate is %u, requested rate is %u\n", current_rate, rate);
+    if (current_rate != rate) {
+      printf("alsa_fix_rate: attempting to set ALSA rate to %u\n", rate);
+      ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &rate, 0);
+      ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
+      printf("alsa_fix_rate: ALSA rate set to %u\n", rate);
+    } else {
+      printf("alsa_fix_rate: ALSA rate is already correct, no change needed\n");
+    }
+  } while (false);
+  if (error_str.empty()) {
+    return std::nullopt;
+  }
+  return error_str;
 }

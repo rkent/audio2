@@ -90,6 +90,7 @@ public:
   virtual ~AudioTerminal() = default;
 
   virtual void run(AudioStream * audio_stream) = 0;
+  unsigned int samplerate_;
 };
 
 class SndFileSource : public AudioTerminal
@@ -112,22 +113,22 @@ public:
   AlsaTerminal(
     std::string alsa_device_name,
     int channels,
-    int samplerate,
+    unsigned int samplerate,
     snd_pcm_format_t format,
     std::unique_ptr<IAlsaDevice> alsa_device = nullptr
   )
   : alsa_device_name_(alsa_device_name),
     channels_(channels),
-    samplerate_(samplerate),
     format_(format),
     alsa_device_(std::move(alsa_device))
-  {}
+  {
+    samplerate_ = samplerate;
+  }
 
   std::optional<std::string> open(snd_pcm_stream_t direction);
 
   std::string alsa_device_name_;
   int channels_;
-  int samplerate_;
   snd_pcm_format_t format_;
   std::unique_ptr<IAlsaDevice> alsa_device_;
 
@@ -178,7 +179,7 @@ public:
   MessageSink(
     std::string topic,
     int channels,
-    int samplerate,
+    unsigned int samplerate,
     int sfFormat,
     rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
     std::string description
@@ -194,7 +195,6 @@ public:
 protected:
   std::string topic_;
   int channels_;
-  int samplerate_;
   int sfFormat_;
   rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
   std::string description_;
@@ -246,8 +246,6 @@ public:
   std::optional<std::string> fetch_tts_program(std::vector<uint8_t> & audio_data);
   std::optional<std::string> initialize();
 
-  int samplerate_;
-
 protected:
   std::string name_;
   std::string text_;
@@ -258,7 +256,7 @@ protected:
   std::string json_str_;
   std::string url_;
   TtsMethod tts_method_;
-  
+
 };
 
 #endif // AUDIO2_STREAM_AUDIOSTREAM_HPP

@@ -59,7 +59,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
   }
     // alsa_device_->open may change the format if original is not supported.
   format_ = alsa_device_->get_format();
-  if (samplerate_ != static_cast<int>(hw_params.samplerate)) {
+  if (samplerate_ != hw_params.samplerate) {
     char buffer[256];
     snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n",
       samplerate_, hw_params.samplerate);
@@ -228,7 +228,7 @@ void SndFileSource::run(AudioStream * audio_stream)
 MessageSink::MessageSink(
   std::string topic,
   int channels,
-  int samplerate,
+  unsigned int samplerate,
   int sfFormat,
   rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
   std::string description
@@ -236,11 +236,12 @@ MessageSink::MessageSink(
 : AudioTerminal(),
   topic_(topic),
   channels_(channels),
-  samplerate_(samplerate),
   sfFormat_(sfFormat),
   publisher_(publisher),
   description_(description)
-{}
+{
+  samplerate_ = samplerate;
+}
 
 void MessageSink::run(AudioStream * audio_stream)
 {
@@ -673,7 +674,7 @@ std::optional<std::string> TtsSource::initialize()
   // We initialize here since we may need to know the samplerate for timing.
   nlohmann::json json_payload;
   if (name_.empty()) {
-    name_ = "openai";
+    name_ = "espeak";
   }
   if (text_.empty()) {
     return std::string("TTS text cannot be empty");
@@ -686,8 +687,6 @@ std::optional<std::string> TtsSource::initialize()
   } else if (name_ == "piper") {
     printf("TtsSource::initialize using Piper TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_PROGRAM_RAW;
-    // ToDo: should this depend on the voice?
-
     if (voice_.empty()) {
       voice_ = "en_US-amy-medium";
     }
@@ -872,7 +871,7 @@ void TtsSource::run(AudioStream * audio_stream)
   audio_data.reserve(CURL_MAX_WRITE_SIZE);
   if (tts_method_ == TtsMethod::TTS_PROGRAM_WAV || tts_method_ == TtsMethod::TTS_PROGRAM_RAW) {
     auto fetch_result = fetch_tts_program(audio_data);
-  
+
     if (fetch_result.has_value()) {
       printf("TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
       return;
