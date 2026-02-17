@@ -1,27 +1,31 @@
 # file_play
 
-## Node Name
-`file_play`
-
 ## Description
-The file_play node is a test utility that plays audio files directly to an ALSA device. It reads audio data from a file and streams it through the ALSA audio subsystem. This node is primarily used for testing and debugging audio playback functionality.
+
+Simple test/utility node for playing an audio file once through an ALSA device. This node opens an audio file, configures the ALSA device based on the file's properties, and plays the audio to completion. It is primarily used for testing basic audio playback functionality.
 
 ## Parameters
-None (uses command-line arguments)
+
+None (file path is provided as command line argument)
 
 ## Example Usage
 
 ```bash
-# Run with ROS2 (requires passing file path as argument)
-ros2 run audio2_stream file_play /path/to/audio/file.wav
+# Play an audio file
+ros2 run audio2_stream file_play /path/to/audio.wav
 
-# Direct execution
-./file_play /path/to/audio/file.wav
+# Play an OGG file
+ros2 run audio2_stream file_play /path/to/audio.ogg
+
+# Play an OPUS file
+ros2 run audio2_stream file_play /path/to/audio.opus
 ```
 
 ## Notes
-- This is a test/utility node, not intended for production use
-- Takes a single audio file path as a command-line argument
-- Plays the audio file once and exits
-- Directly opens and configures the ALSA device based on the audio file properties
-- Supports various audio file formats readable by libsndfile
+
+- The audio file path must be provided as the first command line argument
+- The file is played once and the node exits when playback completes
+- Supports various audio formats through libsndfile (WAV, OGG, OPUS, MP3, etc.)
+- Uses a default ALSA device and format defined at compile time
+- The ALSA device is automatically configured to match the file's sample rate and channels
+- This is primarily a test utility, not intended for production use

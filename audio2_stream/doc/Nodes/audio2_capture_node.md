@@ -1,48 +1,50 @@
 # audio2_capture_node
 
-## Node Name
-`audio2_capture_node`
-
 ## Description
-The audio2_capture_node captures audio from ALSA devices and publishes it as audio chunks to a ROS2 topic. It can be configured to automatically start capturing on initialization or wait for explicit start commands.
+
+ROS2 node for capturing audio from an ALSA device and publishing it as audio chunks on a ROS2 topic. The node supports configurable audio format, sample rate, and channels. Audio capture can be started automatically on initialization or triggered programmatically.
 
 ## Publishers
 
 | Topic | Message Type | Description |
-|-------|-------------|-------------|
-| `audio_stream_chunks` (configurable) | `audio2_stream_msgs/msg/AudioChunk` | Publishes captured audio data chunks. The topic name is configurable via the `audio_topic` parameter. |
+|-------|--------------|-------------|
+| `audio_stream_chunks` (configurable) | `audio2_stream_msgs/msg/AudioChunk` | Publishes captured audio data as chunks |
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `alsa_device_name` | string | `"default"` | ALSA device name for audio capture. Must be a valid ALSA device name. |
-| `alsa_format` | int | `SND_PCM_FORMAT_FLOAT` | ALSA audio format for capture. Must be a valid `snd_pcm_format_t` integer value. |
-| `channels` | int | `2` | Number of audio channels for capture. Typically 1 (mono) or 2 (stereo). |
-| `samplerate` | int | `48000` | Sample rate for audio capture in Hz (e.g., 44100, 48000). |
-| `stream_queue_frames` | int | `480` | Number of frames per audio chunk in the stream. Must be a positive integer. |
-| `audio_topic` | string | `"audio_stream_chunks"` | Topic name for publishing captured audio chunks. Must be a valid ROS topic name. |
-| `auto_start` | bool | `true` | Auto-start capturing on node initialization. Set to false to manually trigger capture start. |
+| `alsa_device_name` | string | `"default"` | ALSA device name for audio capture |
+| `alsa_format` | integer | `14` (SND_PCM_FORMAT_FLOAT) | ALSA audio format for capture (snd_pcm_format_t value) |
+| `channels` | integer | `2` | Number of audio channels for capture |
+| `samplerate` | integer | `48000` | Sample rate for audio capture (Hz) |
+| `stream_queue_frames` | integer | `480` | Number of frames per audio chunk in the stream |
+| `audio_topic` | string | `"audio_stream_chunks"` | Topic name for publishing captured audio chunks |
+| `auto_start` | bool | `true` | Auto-start capturing on node initialization |
 
 ## Example Usage
 
 ```bash
-# Run with default parameters (auto-starts capture)
+# Run with default parameters (auto-start capture on default device)
 ros2 run audio2_stream audio2_capture_node
 
-# Run with custom ALSA device and sample rate
+# Run with custom device and mono audio
 ros2 run audio2_stream audio2_capture_node --ros-args \
   -p alsa_device_name:="hw:1,0" \
-  -p samplerate:=44100 \
   -p channels:=1
+
+# Run with custom sample rate and topic
+ros2 run audio2_stream audio2_capture_node --ros-args \
+  -p samplerate:=44100 \
+  -p audio_topic:="microphone_audio"
 
 # Run without auto-start
 ros2 run audio2_stream audio2_capture_node --ros-args \
-  -p auto_start:=false \
-  -p audio_topic:="my_audio_stream"
+  -p auto_start:=false
 ```
 
 ## Notes
-- When `auto_start` is true, the node begins capturing immediately upon initialization
-- The node automatically manages stream lifecycle and cleanup
-- Captured audio is published in chunks as `AudioChunk` messages
+
+- The `alsa_format` parameter corresponds to ALSA's `snd_pcm_format_t` enum values (14 = SND_PCM_FORMAT_FLOAT)
+- Audio chunks are published with a UUID that identifies the audio stream
+- The node automatically cleans up finished audio streams

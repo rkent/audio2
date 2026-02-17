@@ -27,6 +27,57 @@ static bool hasEspeakNG() {
     return installed;
 }
 
+std::set<int> AudioStream::combine_samplerates() {
+  std::set<int> intersection;
+  std::set_intersection(
+    sink_->config_ranges_->samplerate_values.begin(), sink_->config_ranges_->samplerate_values.end(),
+    source_->config_ranges_->samplerate_values.begin(), source_->config_ranges_->samplerate_values.end(),
+    std::inserter(intersection, intersection.begin())
+  );
+  return intersection;
+}
+
+std::set<int> AudioStream::combine_channels() {
+  std::set<int> intersection;
+  std::set_intersection(
+    sink_->config_ranges_->channel_values.begin(), sink_->config_ranges_->channel_values.end(),
+    source_->config_ranges_->channel_values.begin(), source_->config_ranges_->channel_values.end(),
+    std::inserter(intersection, intersection.begin())
+  );
+  return intersection;
+}
+
+std::set<SfgRwFormat> AudioStream::combine_formats() {
+  std::set<SfgRwFormat> intersection;
+  std::set_intersection(
+    sink_->config_ranges_->format_values.begin(), sink_->config_ranges_->format_values.end(),
+    source_->config_ranges_->format_values.begin(), source_->config_ranges_->format_values.end(),
+    std::inserter(intersection, intersection.begin())
+  );
+  return intersection;
+}
+
+std::optional<std::string> AudioStream::set_parms() {
+  auto samplerates = combine_samplerates();
+  auto channels = combine_channels();
+  auto formats = combine_formats();
+  if (samplerates.empty()) {
+    return std::string("No compatible samplerate found between source and sink");
+  }
+  if (channels.empty()) {
+    return std::string("No compatible channel count found between source and sink");
+  }
+  if (formats.empty()) {
+    return std::string("No compatible format found between source and sink");
+  }
+
+    // TODO: if there are multiple compatible formats, we should choose the best one rather than just the first one.
+  samplerate_ = *samplerates.begin();
+  channels_ = *channels.begin();
+  format_ = *formats.begin();
+  return std::nullopt;
+}
+
 std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
 {
     // Create default device implementation if none provided
@@ -38,7 +89,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
   hw_params.device = alsa_device_name_.c_str();
   hw_params.channels = channels_;
   hw_params.samplerate = samplerate_;
-  hw_params.format = format_;
+  hw_params.format = alsa_format_;
   hw_params.direction = direction;
 
   printf("AlsaTerminal::open called at %s\n", format_timestamp().c_str());
@@ -58,7 +109,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
     return result.value();
   }
     // alsa_device_->open may change the format if original is not supported.
-  format_ = alsa_device_->get_format();
+  alsa_format_ = alsa_device_->get_format();
   if (samplerate_ != hw_params.samplerate) {
     char buffer[256];
     snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n",
@@ -75,6 +126,23 @@ void AlsaTerminal::close()
     alsa_device_->close();
   }
   return;
+}
+
+std::optional<std::string> AlsaSink::fix_rate(unsigned int rate)
+{
+  if (rate == samplerate_) {
+    printf("AlsaSink::fix_rate: no sample rate change needed: %u Hz\n", rate);
+    return std::nullopt; // No change needed
+  }
+  snd_pcm_t* handle = alsa_device_->get_handle();
+  auto result = alsa_fix_rate(rate, handle);
+  if (result.has_value()) {
+    printf("AlsaSink::fix_rate: error fixing sample rate: %s\n", result->c_str());
+  } else {
+    printf("AlsaSink::fix_rate: sample rate fixed to %u Hz\n", rate);
+    samplerate_ = rate;
+  }
+  return result;
 }
 
 void AlsaSink::run(AudioStream * audio_stream)
@@ -106,7 +174,7 @@ void AlsaSink::run(AudioStream * audio_stream)
       if (!pop_result) {
         break;
       }
-      int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+      int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
       if (true) {
                 // Output ALSA status for debugging
         snd_pcm_t * alsa_dev = alsa_device_->get_handle();
@@ -123,7 +191,7 @@ void AlsaSink::run(AudioStream * audio_stream)
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 audio_data.data(),
                 channels_, // channels
-                format_,
+                alsa_format_,
                 nullptr  // shutdown flag
       );
       if (write_result < 0) {
@@ -133,7 +201,7 @@ void AlsaSink::run(AudioStream * audio_stream)
   }
   printf("AlsaSink::run exiting, pushing silence.\n");
     // Push silence to fill the buffer before closing
-  const int bytes_per_sample = snd_pcm_format_width(format_) / 8;
+  const int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
   int silence_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
   const int silence_size = silence_frames * channels_ * bytes_per_sample;
   std::vector<uint8_t> silence_buffer(silence_size, 0);
@@ -142,7 +210,7 @@ void AlsaSink::run(AudioStream * audio_stream)
             silence_frames * channels_,
             silence_buffer.data(),
             channels_,
-            format_,
+            alsa_format_,
             nullptr  // no shutdown flag so we can finish writing silence
     );
     if (written < 0) {
@@ -183,7 +251,7 @@ void AlsaSource::run(AudioStream * audio_stream)
             audio_stream->queue_frames_ * channels_,
             audio_data.data(),
             channels_,
-            format_,
+            alsa_format_,
             &audio_stream->shutdown_flag_);
     if (read_result < 0) {
       printf("Error reading from ALSA device: %s\n", snd_strerror(read_result));
@@ -213,6 +281,17 @@ std::optional<std::string> SndFileSource::open()
   if (sndfileh_.error()) {
     return sndfileh_.strError();
   }
+
+  int sf_channels = sndfileh_.channels();
+  int sf_samplerate = sndfileh_.samplerate();
+  int sndfile_format = sndfileh_.format();
+  config_ranges_->samplerate_values = {sf_samplerate};
+  config_ranges_->channel_values = {sf_channels};
+      // TODO: no need to limit the format here.
+  config_ranges_->format_values = {sfg_format_from_sndfile_format(sndfile_format)};
+  printf("Opened file %s: channels=%d, samplerate=%d, format=0x%X\n",
+    file_path_.c_str(), sf_channels, sf_samplerate, sndfile_format);
+
   return std::nullopt;
 }
 
@@ -220,27 +299,9 @@ void SndFileSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
   printf("SndFileSource::run started\n");
-  audio_stream->process_fileh(sndfileh_, sndfileh_.samplerate());
+  audio_stream->process_fileh(sndfileh_);
   printf("SndFileSource::run exiting\n");
   audio_stream->shutdown();
-}
-
-MessageSink::MessageSink(
-  std::string topic,
-  int channels,
-  unsigned int samplerate,
-  int sfFormat,
-  rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
-  std::string description
-)
-: AudioTerminal(),
-  topic_(topic),
-  channels_(channels),
-  sfFormat_(sfFormat),
-  publisher_(publisher),
-  description_(description)
-{
-  samplerate_ = samplerate;
 }
 
 void MessageSink::run(AudioStream * audio_stream)
@@ -355,13 +416,6 @@ void MessageSink::run(AudioStream * audio_stream)
 
   printf("MessageSink::run exiting\n");
 }
-
-MessageSource::MessageSource(
-  std::string topic
-)
-: AudioTerminal(),
-  topic_(topic)
-{}
 
 void MessageSource::run([[maybe_unused]] AudioStream * audio_stream)
 {
@@ -488,11 +542,22 @@ void AudioStream::shutdown()
   shutdown_complete_.store(true);
 }
 
-void AudioStream::process_fileh(SndfileHandle & fileh, int samplerate)
+void AudioStream::process_fileh(SndfileHandle & fileh)
 {
+  int samplerate = fileh.samplerate();
+  if (samplerate != static_cast<int>(sink_->samplerate_)) {
+    RCLCPP_ERROR(rcl_logger, "Sample rate mismatch: file is %d Hz, sink expects %d Hz", samplerate, sink_->samplerate_);
+  }
     // Messages will be sent at a constant rate based on samplerate and buffer size.
   auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
         queue_frames_ / (samplerate)));
+
+  // Check the file rate
+  auto fix_result = sink_->fix_rate(samplerate);
+  if (fix_result.has_value()) {
+    RCLCPP_ERROR(rcl_logger, fix_result->c_str());
+    return;
+  }
 
   auto r_format = sfg_format_from_sndfile_format(fileh.format());
   auto w_format = rw_format_;
@@ -683,7 +748,7 @@ std::optional<std::string> TtsSource::initialize()
   if (name_ == "espeak") {
     printf("TtsSource::initialize using espeak TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_PROGRAM_WAV;
-    samplerate_ = 22050;
+    samplerate_ = 48000;
   } else if (name_ == "piper") {
     printf("TtsSource::initialize using Piper TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_PROGRAM_RAW;
@@ -905,7 +970,7 @@ void TtsSource::run(AudioStream * audio_stream)
       printf("TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());
       return;
     }
-    audio_stream->process_fileh(vio_handle.fileh, samplerate_);
+    audio_stream->process_fileh(vio_handle.fileh);
   }
   printf("TtsSource::run completed at %s\n", format_timestamp().c_str());
   audio_stream->shutdown();

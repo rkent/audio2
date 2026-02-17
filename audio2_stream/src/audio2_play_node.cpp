@@ -107,7 +107,6 @@ public:
     }
     RCLCPP_INFO(rcl_logger, "TTS source initialized with sample rate %d", tts_source->samplerate_);
         // Audio playback parameters
-    int channels = 1;
     int samplerate = tts_source->samplerate_;
     if (samplerate <= 0) {
       RCLCPP_ERROR(rcl_logger, "Invalid samplerate from TTS source: %d", samplerate);
@@ -126,9 +125,6 @@ public:
 
     std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
             get_parameter("alsa_device_name").as_string(),
-            channels,
-            samplerate,
-            static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int()),
             std::move(p_alsa_device)
     );
     auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
@@ -138,7 +134,7 @@ public:
     }
 
         // during open, alsa may change the format if the original is unsupported.
-    SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->format_);
+    SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->alsa_format_);
     auto audio_stream = std::make_unique<AudioStream>(
       rw_format,
       std::move(tts_source),
@@ -224,9 +220,6 @@ public:
             // Open the playback device
       std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
                 get_parameter("alsa_device_name").as_string(),
-                vio_handle.fileh.channels(),
-                vio_handle.fileh.samplerate(),
-                static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int()),
                 std::move(p_alsa_device)
       );
       auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
@@ -236,7 +229,7 @@ public:
         return;
       }
       auto audio_stream = std::make_unique<AudioStream>(
-                sfg_format_from_alsa_format(alsa_sink->format_),
+                sfg_format_from_alsa_format(alsa_sink->alsa_format_),
                 nullptr,
                 std::move(alsa_sink),
                 std::string("Stream for topic callback"),
@@ -248,6 +241,7 @@ public:
       audio_streams_.push_back(std::move(audio_stream));
       RCLCPP_INFO_STREAM(rcl_logger, "\n\nCreated new audio stream for UUID");
     }
+    // todo: why isn't this owned by the audio stream?
     message_source_->callback(msg, audio_stream_raw);
   }
 
@@ -266,12 +260,6 @@ public:
       return;
     }
 
-    int channels = snd_file_source->sndfileh_.channels();
-    int samplerate = snd_file_source->sndfileh_.samplerate();
-    int sndfile_format = snd_file_source->sndfileh_.format();
-    RCLCPP_INFO(rcl_logger, "Opened file %s: channels=%d, samplerate=%d, format=0x%X",
-            file_path.c_str(), channels, samplerate, sndfile_format);
-
         // Use pre-opened ALSA device if possible
     auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
     if (alsa_dev_preplay_) {
@@ -284,21 +272,18 @@ public:
 
     std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
             get_parameter("alsa_device_name").as_string(),
-            channels,
-            samplerate,
-            static_cast<snd_pcm_format_t>(get_parameter("alsa_format").as_int()),
             std::move(p_alsa_device)
     );
-    auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
-    if (alsa_open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device: %s", alsa_open_result->c_str());
-      return;
-    }
+
+    //auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
+    //if (alsa_open_result.has_value()) {
+    //  RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device: %s", alsa_open_result->c_str());
+    //  return;
+    //}
 
         // during open, alsa may change the format if the original is unsupported.
-    SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->format_);
+    //SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->alsa_format_);
     auto audio_stream = std::make_unique<AudioStream>(
-            rw_format,
             std::move(snd_file_source),
             std::move(alsa_sink),
             std::string("Local playback of ") + file_path,

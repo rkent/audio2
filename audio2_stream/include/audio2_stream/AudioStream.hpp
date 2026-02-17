@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <random>
 #include <curl/curl.h>
-
+#include <set>
 
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -30,6 +30,44 @@ inline unique_identifier_msgs::msg::UUID generate_uuid()
   return uuid;
 }
 
+typedef enum
+{
+  TTS_CURL,
+  TTS_PROGRAM_WAV,
+  TTS_PROGRAM_RAW
+} TtsMethod;
+
+class AudioConfigRanges
+{
+public:
+  AudioConfigRanges() {
+    // Sample rate values
+    samplerate_values.insert(8000);
+    samplerate_values.insert(16000);
+    samplerate_values.insert(22050);
+    samplerate_values.insert(44100);
+    samplerate_values.insert(48000);
+    samplerate_values.insert(96000);
+    samplerate_values.insert(192000);
+
+    // Channel values
+    channel_values.insert(1);  // Mono
+    channel_values.insert(2);  // Stereo
+
+    // Format values
+    format_values.insert(SfgRwFormat::SFG_BYTE);
+    format_values.insert(SfgRwFormat::SFG_SHORT);
+    format_values.insert(SfgRwFormat::SFG_INT);
+    format_values.insert(SfgRwFormat::SFG_FLOAT);
+    format_values.insert(SfgRwFormat::SFG_DOUBLE);
+  }
+
+  std::set<int> samplerate_values;
+  std::set<int> channel_values;
+  std::set<SfgRwFormat> format_values;
+};
+
+// Forward declaration
 class AudioTerminal;
 
 class AudioStream
@@ -57,6 +95,29 @@ public:
     printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(),
       queue_frames_);
   }
+
+  AudioStream(
+    std::unique_ptr<AudioTerminal> source,
+    std::unique_ptr<AudioTerminal> sink,
+    std::string description = "",
+    std::size_t queue_frames = STREAM_QUEUE_FRAMES
+  )
+  : shutdown_flag_(false),
+    data_available_(false),
+    queue_(AUDIO_QUEUE_SIZE),
+    rw_format_(SFG_NONE),
+    sink_(std::move(sink)),
+    source_(std::move(source)),
+    sink_thread_(nullptr),
+    source_thread_(nullptr),
+    stream_uuid_(generate_uuid()),
+    description_(description),
+    queue_frames_(queue_frames)
+  {
+    printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(),
+      queue_frames_);
+  }
+
   ~AudioStream()
   {
     printf("AudioStream::~AudioStream thread %zu called for %s\n",
@@ -79,25 +140,51 @@ public:
 
   void shutdown();
   void start();
-  void process_fileh(SndfileHandle & fileh, int samplerate);
+  void process_fileh(SndfileHandle & fileh);
   void process_raw(std::vector<uint8_t> & audio_data, int samplerate, int channels, SfgRwFormat r_format);
+  std::set<int> combine_samplerates();
+  std::set<int> combine_channels();
+  std::set<SfgRwFormat> combine_formats();
+  std::optional<std::string> set_parms();
+  int samplerate_;
+  int channels_;
+  SfgRwFormat format_;
+
 };
 
 class AudioTerminal
 {
 public:
-  AudioTerminal() = default;
+  AudioTerminal() :
+  channels_(0),
+  format_(SfgRwFormat::SFG_NONE),
+  samplerate_(0),
+  config_ranges_(std::make_unique<AudioConfigRanges>())
+  {}
+
   virtual ~AudioTerminal() = default;
+  unsigned int channels_;
+  SfgRwFormat format_;
+  unsigned int samplerate_;
+  std::unique_ptr<AudioConfigRanges> config_ranges_;
 
   virtual void run(AudioStream * audio_stream) = 0;
-  unsigned int samplerate_;
+  virtual std::optional<std::string> fix_rate(unsigned int rate)
+  {
+    if (rate == samplerate_) {
+      return std::nullopt; // No change needed
+    } else {
+      return "Sample rate mismatch: expected " + std::to_string(samplerate_) +
+          ", got " + std::to_string(rate);
+    }
+  }
 };
 
 class SndFileSource : public AudioTerminal
 {
 public:
   SndFileSource(const std::string & file_path)
-  : file_path_(file_path) {}
+  : AudioTerminal(), file_path_(file_path) {}
   virtual ~SndFileSource() = default;
   std::optional<std::string> open();
   void run(AudioStream * audio_stream) override;
@@ -112,24 +199,18 @@ class AlsaTerminal : public AudioTerminal
 public:
   AlsaTerminal(
     std::string alsa_device_name,
-    int channels,
-    unsigned int samplerate,
-    snd_pcm_format_t format,
     std::unique_ptr<IAlsaDevice> alsa_device = nullptr
   )
-  : alsa_device_name_(alsa_device_name),
-    channels_(channels),
-    format_(format),
+  : AudioTerminal(),
+    alsa_device_name_(alsa_device_name),
+    alsa_format_(SND_PCM_FORMAT_UNKNOWN),
     alsa_device_(std::move(alsa_device))
-  {
-    samplerate_ = samplerate;
-  }
+  {}
 
   std::optional<std::string> open(snd_pcm_stream_t direction);
 
   std::string alsa_device_name_;
-  int channels_;
-  snd_pcm_format_t format_;
+  snd_pcm_format_t alsa_format_;
   std::unique_ptr<IAlsaDevice> alsa_device_;
 
   void close();
@@ -140,15 +221,13 @@ class AlsaSink : public AlsaTerminal
 public:
   AlsaSink(
     std::string alsa_device_name,
-    int channels,
-    int samplerate,
-    snd_pcm_format_t format,
     std::unique_ptr<IAlsaDevice> alsa_device = nullptr
   )
-  :AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
+  :AlsaTerminal(alsa_device_name, std::move(alsa_device))
   {}
 
   void run(AudioStream * audio_stream) override;
+  std::optional<std::string> fix_rate(unsigned int rate) override;
 
 };
 
@@ -157,13 +236,11 @@ class AlsaSource : public AlsaTerminal
 public:
   AlsaSource(
     std::string alsa_device_name,
-    int channels,
-    int samplerate,
-    snd_pcm_format_t format,
     std::unique_ptr<IAlsaDevice> alsa_device = nullptr
   )
-  :AlsaTerminal(alsa_device_name, channels, samplerate, format, std::move(alsa_device))
+  :AlsaTerminal(alsa_device_name, std::move(alsa_device))
   {}
+
   ~AlsaSource()
   {
     printf("AlsaSource::~AlsaSource called\n");
@@ -183,7 +260,15 @@ public:
     int sfFormat,
     rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
     std::string description
-  );
+  ) : AudioTerminal(),
+    topic_(topic),
+    channels_(channels),
+    sfFormat_(sfFormat),
+    publisher_(publisher),
+    description_(description)
+  {
+    samplerate_ = samplerate;
+  }
 
   ~MessageSink()
   {
@@ -203,7 +288,14 @@ protected:
 class MessageSource : public AudioTerminal
 {
 public:
-  MessageSource(std::string topic);
+  MessageSource(std::string topic) :
+    AudioTerminal(), topic_(topic)
+  {}
+
+  ~MessageSource()
+  {
+    printf("MessageSource::~MessageSource called\n");
+  }
 
   void run(AudioStream * audio_stream) override;
   void callback(
@@ -212,13 +304,6 @@ public:
 
 protected:
   std::string topic_;
-};
-
-enum class TtsMethod
-{
-  TTS_CURL,
-  TTS_PROGRAM_WAV,
-  TTS_PROGRAM_RAW
 };
 
 class TtsSource : public AudioTerminal
@@ -230,7 +315,8 @@ public:
     const std::string & voice,
     const std::string & model,
     const std::string & format
-  ) : name_(name),
+  ) : AudioTerminal(),
+      name_(name),
       text_(text),
       voice_(voice),
       model_(model),

@@ -85,7 +85,7 @@ typedef struct AlsaSwParams
 // Function declarations
 
 std::optional<std::string>
-alsa_fix_rate(int rate, snd_pcm_t *& alsa_dev);
+alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev);
 /**
  * Open an ALSA PCM device with specified hardware and software parameters.
  * \param hw_vals  Hardware parameters for the ALSA device.

@@ -417,10 +417,16 @@ alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev)
   do {
     ECALL(snd_pcm_hw_params_current, "cannot get current hw params", alsa_dev, hw_params);
     ECALL(snd_pcm_hw_params_get_rate, "cannot get current rate", hw_params, &current_rate, &dir);
+
+    snd_output_t *output_handle;
+    snd_output_stdio_attach(&output_handle, stdout, 0);
+    snd_pcm_hw_params_dump(hw_params, output_handle);
+    snd_output_close(output_handle);
+
     printf("alsa_fix_rate: current ALSA rate is %u, requested rate is %u\n", current_rate, rate);
     if (current_rate != rate) {
       printf("alsa_fix_rate: attempting to set ALSA rate to %u\n", rate);
-      ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &rate, 0);
+      // ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &rate, 0);
       ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
       printf("alsa_fix_rate: ALSA rate set to %u\n", rate);
     } else {

@@ -8,6 +8,7 @@
 typedef enum
 {
   SFG_INVALID = -1,
+  SFG_NONE = 0,
   SFG_BYTE,
   SFG_SHORT,
   SFG_INT,

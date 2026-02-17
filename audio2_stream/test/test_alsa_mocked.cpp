@@ -37,8 +37,8 @@ protected:
 TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
 {
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
-
-    AlsaSink sink(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16, std::move(alsa_device));
+      // TODO: need to set sink channel, samplerate, and format.
+    AlsaSink sink(ALSA_NULL_DEVICE, std::move(alsa_device));
 
     auto result = sink.open(SND_PCM_STREAM_PLAYBACK);
 
@@ -54,8 +54,7 @@ TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
 
     // Use a non-existent device name
-    AlsaSink sink("nonexistent_alsa_device_12345", 2, 48000, SND_PCM_FORMAT_S16,
-    std::move(alsa_device));
+    AlsaSink sink("nonexistent_alsa_device_12345", std::move(alsa_device));
 
     auto result = sink.open(SND_PCM_STREAM_PLAYBACK);
 
@@ -69,8 +68,7 @@ TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
 TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 {
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
-    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16,
-    std::move(alsa_device));
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_device));
 
     auto result = sink->open(SND_PCM_STREAM_PLAYBACK);
     ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
@@ -110,8 +108,7 @@ TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 {
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
-    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16,
-    std::move(alsa_device));
+    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(alsa_device));
 
     auto result = source->open(SND_PCM_STREAM_CAPTURE);
     ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
@@ -147,15 +144,13 @@ TEST_F(AlsaNullTest, SourceToSinkComplete)
 {
     // Create source (capture from 'null')
     auto source_device = std::make_unique<AlsaDeviceImpl>();
-    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16,
-    std::move(source_device));
+    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(source_device));
     auto source_result = source->open(SND_PCM_STREAM_CAPTURE);
     ASSERT_FALSE(source_result.has_value()) << "Source open should succeed";
 
     // Create sink (playback to 'null')
     auto sink_device = std::make_unique<AlsaDeviceImpl>();
-    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, 2, 48000, SND_PCM_FORMAT_S16,
-    std::move(sink_device));
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(sink_device));
     auto sink_result = sink->open(SND_PCM_STREAM_PLAYBACK);
     ASSERT_FALSE(sink_result.has_value()) << "Sink open should succeed";
 

@@ -1,32 +1,30 @@
 # file_looper
 
-## Node Name
-`file_looper`
-
 ## Description
-The file_looper node is a test utility that loops through audio file data, converting it between different formats and playing it through ALSA. It demonstrates audio format conversion and streaming capabilities by reading chunks from a file, converting them to a different format (configurable in code), and playing them back.
+
+Test/utility node for looping audio file playback through an ALSA device. This node reads an audio file, converts it to a specified format, and plays it back continuously until interrupted. It is primarily used for testing audio streaming and format conversion functionality.
 
 ## Parameters
-None (uses command-line arguments)
+
+None (file path is provided as command line argument)
 
 ## Example Usage
 
 ```bash
-# Run with ROS2 (requires passing file path as argument)
-ros2 run audio2_stream file_looper /path/to/audio/file.wav
+# Play an audio file in a loop
+ros2 run audio2_stream file_looper /path/to/audio.wav
 
-# Direct execution
-./file_looper /path/to/audio/file.wav
+# Play an OGG file
+ros2 run audio2_stream file_looper /path/to/audio.ogg
+
+# Play an OPUS file
+ros2 run audio2_stream file_looper /path/to/audio.opus
 ```
 
 ## Notes
-- This is a test/utility node, not intended for production use
-- Takes a single audio file path as a command-line argument
-- Loops through the audio file, converting between formats
-- The target format (TOPIC_FORMAT) is defined at compile time and can be:
-  - WAV with PCM_32
-  - OGG with Vorbis
-  - OGG with Opus
-  - MPEG Layer III
-- Useful for testing audio format conversion and streaming pipelines
-- Directly interfaces with ALSA for playback
+
+- The audio file path must be provided as the first command line argument
+- The node loops the file continuously until stopped with Ctrl+C
+- Supports various audio formats through libsndfile (WAV, OGG, OPUS, MP3, etc.)
+- Uses a default ALSA device and format defined at compile time
+- This is primarily a test utility, not intended for production use
