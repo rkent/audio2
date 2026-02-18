@@ -29,11 +29,15 @@ static bool hasEspeakNG() {
 }
 
 std::set<int> AudioStream::combine_samplerates() {
-  if (!sink_) {
+  if (source_ && !sink_) {
     return source_->config_ranges_->samplerate_values;
   }
-  if (!source_) {
+  if (sink_ && !source_) {
     return sink_->config_ranges_->samplerate_values;
+  }
+  if (!source_ && !sink_) {
+    printf("AudioStream::combine_samplerates returning empty set because source and sink is missing\n");
+    return {};
   }
   std::set<int> intersection;
   std::set_intersection(
@@ -45,11 +49,15 @@ std::set<int> AudioStream::combine_samplerates() {
 }
 
 std::set<int> AudioStream::combine_channels() {
-  if (!sink_) {
+  if (!sink_ && source_) {
     return source_->config_ranges_->channel_values;
   }
-  if (!source_) {
+  if (!source_ && sink_) {
     return sink_->config_ranges_->channel_values;
+  }
+  if (!sink_ && !source_) {
+    printf("AudioStream::combine_channels returning empty set because source and sink is missing\n");
+    return {};
   }
   std::set<int> intersection;
   std::set_intersection(
@@ -61,11 +69,15 @@ std::set<int> AudioStream::combine_channels() {
 }
 
 std::set<SfgRwFormat> AudioStream::combine_formats() {
-  if (!sink_) {
+  if (!sink_ && source_) {
     return source_->config_ranges_->format_values;
   }
-  if (!source_) {
+  if (!source_ && sink_) {
     return sink_->config_ranges_->format_values;
+  }
+  if (!sink_ && !source_) {
+    printf("AudioStream::combine_formats returning empty set because source and sink is missing\n");
+    return {};
   }
   std::set<SfgRwFormat> intersection;
   std::set_intersection(
@@ -144,7 +156,7 @@ std::optional<std::string> AudioStream::fix_parms() {
       samplerate_ = *std::next(samplerates.begin(), samplerates.size() / 2);
     }
   }
-  printf("AudioStream::fix_parms selected samplerate %u, channels %u, format %d\n",
+  printf("AudioStream::fix_parms selected samplerate %u, channels %u, rw_format %d\n",
     samplerate_, channels_, rw_format_);
   return std::nullopt;
 }
@@ -187,7 +199,7 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction)
       samplerate_, hw_params.samplerate);
     return std::string(buffer);
   }
-  is_open_ = true;
+  are_parms_fixed_ = true;
   return std::nullopt;
 }
 
@@ -232,10 +244,6 @@ void AlsaSink::run(AudioStream * audio_stream)
       printf("AlsaSink::run exiting due to ALSA error: %s\n", error_str.c_str());
       break;
     }
-    //if (!alsa_device_->get_handle()) {
-    //  printf("AlsaSink::run exiting because ALSA device is not open\n");
-    //  break;
-    //}
     std::vector<uint8_t> audio_data;
 
         // Wait to pop from queue
@@ -244,12 +252,8 @@ void AlsaSink::run(AudioStream * audio_stream)
     printf("\nAlsaSink::run thread %zu woke up to process audio data at %s\n", hash_id,
       format_timestamp().c_str());
     audio_stream->data_available_.store(false);
-    if (!is_open_) {
-      //auto result = audio_stream->fix_parms();
-      //if (result.has_value()) {
-      //  RCLCPP_ERROR(rcl_logger, "Failed to fix parameters in AlsaSink: %s", result->c_str());
-      //  return;
-      //}
+
+    if (!are_parms_fixed_) {
       if (audio_stream->rw_format_ == SFG_NONE) {
         RCLCPP_ERROR(rcl_logger, "Audio format not set in AlsaSink");
         return;
@@ -274,7 +278,6 @@ void AlsaSink::run(AudioStream * audio_stream)
         return;
       }
       printf("AlsaSink::run ALSA device opened successfully\n");
-      is_open_ = true;
     }
 
         // empty the queue
@@ -286,7 +289,7 @@ void AlsaSink::run(AudioStream * audio_stream)
         break;
       }
       int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
-      if (true) {
+      if (false) {
                 // Output ALSA status for debugging
         snd_pcm_t * alsa_dev = alsa_device_->get_handle();
         if (alsa_dev) {

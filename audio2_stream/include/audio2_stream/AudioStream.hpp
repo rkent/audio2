@@ -209,7 +209,7 @@ public:
     alsa_device_name_(alsa_device_name),
     alsa_format_(SND_PCM_FORMAT_UNKNOWN),
     alsa_device_(std::move(alsa_device)),
-    is_open_(false)
+    are_parms_fixed_(false)
   {}
 
   std::optional<std::string> open(snd_pcm_stream_t direction);
@@ -217,7 +217,7 @@ public:
   std::string alsa_device_name_;
   snd_pcm_format_t alsa_format_;
   std::unique_ptr<IAlsaDevice> alsa_device_;
-  bool is_open_;
+  bool are_parms_fixed_;
 
   void close();
 };
