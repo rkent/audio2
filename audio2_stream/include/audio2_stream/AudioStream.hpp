@@ -45,6 +45,8 @@ public:
     samplerate_values.insert(8000);
     samplerate_values.insert(16000);
     samplerate_values.insert(22050);
+    samplerate_values.insert(24000);
+    samplerate_values.insert(32000);
     samplerate_values.insert(44100);
     samplerate_values.insert(48000);
     samplerate_values.insert(96000);
@@ -83,14 +85,14 @@ public:
   : shutdown_flag_(false),
     data_available_(false),
     queue_(AUDIO_QUEUE_SIZE),
-    rw_format_(rw_format),
     sink_(std::move(sink)),
     source_(std::move(source)),
     sink_thread_(nullptr),
     source_thread_(nullptr),
     stream_uuid_(generate_uuid()),
     description_(description),
-    queue_frames_(queue_frames)
+    queue_frames_(queue_frames),
+    rw_format_(rw_format)
   {
     printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(),
       queue_frames_);
@@ -105,14 +107,16 @@ public:
   : shutdown_flag_(false),
     data_available_(false),
     queue_(AUDIO_QUEUE_SIZE),
-    rw_format_(SFG_NONE),
     sink_(std::move(sink)),
     source_(std::move(source)),
     sink_thread_(nullptr),
     source_thread_(nullptr),
     stream_uuid_(generate_uuid()),
     description_(description),
-    queue_frames_(queue_frames)
+    queue_frames_(queue_frames),
+    samplerate_(0),
+    channels_(0),
+    rw_format_(SFG_NONE)
   {
     printf("AudioStream::AudioStream created for %s with queue frames %i\n", description_.c_str(),
       queue_frames_);
@@ -129,7 +133,6 @@ public:
   std::atomic<bool> shutdown_complete_{false};
     // TODO: consider making this a unique pointer to reduce copies
   boost::lockfree::spsc_queue<std::vector<uint8_t>> queue_;
-  SfgRwFormat rw_format_;
   std::unique_ptr<AudioTerminal> sink_;
   std::unique_ptr<AudioTerminal> source_;
   std::unique_ptr<std::jthread> sink_thread_;
@@ -137,18 +140,19 @@ public:
   unique_identifier_msgs::msg::UUID stream_uuid_;
   std::string description_;
   int queue_frames_;
+  int samplerate_;
+  int channels_;
+  SfgRwFormat rw_format_;
 
   void shutdown();
-  void start();
+  std::optional<std::string> start();
   void process_fileh(SndfileHandle & fileh);
   void process_raw(std::vector<uint8_t> & audio_data, int samplerate, int channels, SfgRwFormat r_format);
   std::set<int> combine_samplerates();
   std::set<int> combine_channels();
   std::set<SfgRwFormat> combine_formats();
-  std::optional<std::string> set_parms();
-  int samplerate_;
-  int channels_;
-  SfgRwFormat format_;
+  std::optional<std::string> merge_parms();
+  std::optional<std::string> fix_parms();
 
 };
 
@@ -157,15 +161,15 @@ class AudioTerminal
 public:
   AudioTerminal() :
   channels_(0),
-  format_(SfgRwFormat::SFG_NONE),
   samplerate_(0),
+  format_(SfgRwFormat::SFG_NONE),
   config_ranges_(std::make_unique<AudioConfigRanges>())
   {}
 
   virtual ~AudioTerminal() = default;
   unsigned int channels_;
-  SfgRwFormat format_;
   unsigned int samplerate_;
+  SfgRwFormat format_;
   std::unique_ptr<AudioConfigRanges> config_ranges_;
 
   virtual void run(AudioStream * audio_stream) = 0;
@@ -204,7 +208,8 @@ public:
   : AudioTerminal(),
     alsa_device_name_(alsa_device_name),
     alsa_format_(SND_PCM_FORMAT_UNKNOWN),
-    alsa_device_(std::move(alsa_device))
+    alsa_device_(std::move(alsa_device)),
+    is_open_(false)
   {}
 
   std::optional<std::string> open(snd_pcm_stream_t direction);
@@ -212,6 +217,7 @@ public:
   std::string alsa_device_name_;
   snd_pcm_format_t alsa_format_;
   std::unique_ptr<IAlsaDevice> alsa_device_;
+  bool is_open_;
 
   void close();
 };

@@ -5,20 +5,23 @@
 #include <alsa/asoundlib.h>
 #include <sndfile.hh>
 
+// These are set in order of preference so sorting gives the lowest as preferable.
 typedef enum
 {
-  SFG_INVALID = -1,
-  SFG_NONE = 0,
-  SFG_BYTE,
+  SFG_FLOAT,
   SFG_SHORT,
   SFG_INT,
-  SFG_FLOAT,
-  SFG_DOUBLE
+  SFG_BYTE,
+  SFG_DOUBLE,
+  SFG_NONE,
+  SFG_INVALID
 } SfgRwFormat;
 
 // Default read/write format for audio streams
 const SfgRwFormat SFG_RW_FORMAT = SFG_FLOAT;
 
+// Preferred rate if multiple compatible rates are found between source and sink
+const int PREFERRED_RATE = 24000;
 // Extra buffer size (on bytes) to allocate for sound file wrapper headers
 const int MAX_HEADER = 128;
 

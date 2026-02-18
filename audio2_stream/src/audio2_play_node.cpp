@@ -143,7 +143,11 @@ public:
       get_parameter("stream_queue_frames").as_int()
     );
 
-    audio_stream->start();
+    auto start_result = audio_stream->start();
+    if (start_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot start audio stream: %s", start_result->c_str());
+      return;
+    }
     audio_streams_.push_back(std::move(audio_stream));
   }
 
@@ -236,7 +240,11 @@ public:
                 get_parameter("stream_queue_frames").as_int()
       );
       audio_stream->stream_uuid_ = uuid;
-      audio_stream->start();
+      auto start_result = audio_stream->start();
+      if (start_result.has_value()) {
+        RCLCPP_ERROR(rcl_logger, "Cannot start audio stream: %s", start_result->c_str());
+        return;
+      }
       audio_stream_raw = audio_stream.get();
       audio_streams_.push_back(std::move(audio_stream));
       RCLCPP_INFO_STREAM(rcl_logger, "\n\nCreated new audio stream for UUID");
@@ -290,11 +298,13 @@ public:
             get_parameter("stream_queue_frames").as_int()
     );
 
-    audio_stream->start();
+    auto start_result = audio_stream->start();
+    if (start_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot start audio stream: %s", start_result->c_str());
+      return;
+    }
     audio_streams_.push_back(std::move(audio_stream));
-
     RCLCPP_INFO(rcl_logger, "Enqueued file %s", file_path.c_str());
-
   }
 
 private:

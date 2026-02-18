@@ -151,7 +151,11 @@ public:
             get_parameter("stream_queue_frames").as_int()
     );
 
-    audio_stream->start();
+    auto start_result = audio_stream->start();
+    if (start_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot start audio stream: %s", start_result->c_str());
+      return;
+    }
     audio_streams_.push_back(std::move(audio_stream));
 
     RCLCPP_INFO(rcl_logger, "Audio capture started on topic '%s'", audio_topic.c_str());
