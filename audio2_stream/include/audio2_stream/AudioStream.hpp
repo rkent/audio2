@@ -162,14 +162,12 @@ public:
   AudioTerminal() :
   channels_(0),
   samplerate_(0),
-  format_(SfgRwFormat::SFG_NONE),
   config_ranges_(std::make_unique<AudioConfigRanges>())
   {}
 
   virtual ~AudioTerminal() = default;
   unsigned int channels_;
   unsigned int samplerate_;
-  SfgRwFormat format_;
   std::unique_ptr<AudioConfigRanges> config_ranges_;
 
   virtual void run(AudioStream * audio_stream) = 0;
@@ -326,7 +324,7 @@ public:
       text_(text),
       voice_(voice),
       model_(model),
-      format_(format)
+      tts_format_(format)
   {}
 
   virtual ~TtsSource() {
@@ -343,7 +341,7 @@ protected:
   std::string text_;
   std::string voice_;
   std::string model_;
-  std::string format_;
+  std::string tts_format_;
   struct curl_slist * headers_ = nullptr;
   std::string json_str_;
   std::string url_;

@@ -113,14 +113,12 @@ public:
       return;
     }
     RCLCPP_INFO(rcl_logger, "Opening alsa");
-        // Use pre-opened ALSA device if possible
-    auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
-    if (alsa_dev_preplay_) {
-      const char * name = snd_pcm_name(alsa_dev_preplay_);
-      if (name == get_parameter("alsa_device_name").as_string()) {
-        p_alsa_device = std::make_unique<AlsaDeviceImpl>(alsa_dev_preplay_);
-        alsa_dev_preplay_ = nullptr;  // transfer ownership
-      }
+
+        // Use pre-created ALSA device if possible
+    auto p_alsa_device = get_alsa_device(get_parameter("alsa_device_name").as_string());
+    if (!p_alsa_device) {
+      RCLCPP_ERROR(rcl_logger, "Failed to get ALSA device for playback");
+      return;
     }
 
     std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
@@ -270,16 +268,8 @@ public:
   {
     RCLCPP_INFO(rcl_logger, "Received PlayFile message for local: path=%s, play_type=%d",
             msg->path.c_str(), msg->play_type);
-    auto file_path = msg->path;
 
-        // Open the local file
-    std::unique_ptr<SndFileSource> snd_file_source = std::make_unique<SndFileSource>(file_path);
-    auto open_result = snd_file_source->open();
-    if (open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path.c_str(),
-        open_result.value().c_str());
-      return;
-    }
+    std::unique_ptr<SndFileSource> snd_file_source = std::make_unique<SndFileSource>(msg->path);
 
         // Use pre-created ALSA device if possible
     auto p_alsa_device = get_alsa_device(get_parameter("alsa_device_name").as_string());
@@ -296,7 +286,7 @@ public:
     auto audio_stream = std::make_unique<AudioStream>(
             std::move(snd_file_source),
             std::move(alsa_sink),
-            std::string("Local playback of ") + file_path,
+            std::string("Local playback of ") + msg->path,
             get_parameter("stream_queue_frames").as_int()
     );
 
@@ -306,7 +296,7 @@ public:
       return;
     }
     audio_streams_.push_back(std::move(audio_stream));
-    RCLCPP_INFO(rcl_logger, "Enqueued file %s", file_path.c_str());
+    RCLCPP_INFO(rcl_logger, "Enqueued file %s", msg->path.c_str());
   }
 
   std::unique_ptr<AlsaDeviceImpl> get_alsa_device(std::string device_name) {

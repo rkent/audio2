@@ -413,7 +413,15 @@ void SndFileSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
   printf("SndFileSource::run started\n");
-  audio_stream->process_fileh(sndfileh_);
+  auto open_result = open();
+  if (!open_result.has_value()) {
+    audio_stream->process_fileh(sndfileh_);
+  } else {
+    RCLCPP_ERROR(rcl_logger, "Cannot open file <%s>: %s", file_path_.c_str(),
+      open_result.value().c_str());
+    return;
+  }
+
   printf("SndFileSource::run exiting\n");
   audio_stream->shutdown();
 }
@@ -899,8 +907,8 @@ std::optional<std::string> TtsSource::initialize()
     if (voice_.empty()) {
       voice_ = "coral";
     }
-    if (format_.empty()) {
-      format_ = "wav";
+    if (tts_format_.empty()) {
+      tts_format_ = "wav";
     }
     // Headers
     std::string auth_header = "Authorization: Bearer " + std::string(api_key_cstr);
@@ -909,7 +917,7 @@ std::optional<std::string> TtsSource::initialize()
     json_payload["model"] = model_;
     json_payload["input"] = text_;
     json_payload["voice"] = voice_;
-    json_payload["format"] = format_;
+    json_payload["format"] = tts_format_;
   }
   else if (name_ == "elevenlabs") {
     printf("TtsSource::initialize using ElevenLabs TTS at %s\n", format_timestamp().c_str());
@@ -925,13 +933,13 @@ std::optional<std::string> TtsSource::initialize()
     if (voice_.empty()) {
       voice_ = "JBFqnCBsd6RMkjVDRZzb";
     }
-    if (format_.empty()) {
-      format_ = "mp3_44100_128";
+    if (tts_format_.empty()) {
+      tts_format_ = "mp3_44100_128";
     }
-    url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" + format_;
-    auto rate_split = split_string(format_, '_');
+    url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" + tts_format_;
+    auto rate_split = split_string(tts_format_, '_');
     if (rate_split.size() < 2) {
-      return std::string("Invalid format string for ElevenLabs TTS: ") + format_;
+      return std::string("Invalid format string for ElevenLabs TTS: ") + tts_format_;
     }
     samplerate_ = std::stoi(rate_split[1]);
       // Headers
@@ -941,7 +949,7 @@ std::optional<std::string> TtsSource::initialize()
     json_payload["model_id"] = model_;
     json_payload["text"] = text_;
     json_payload["voice_id"] = voice_;
-    json_payload["output_format"] = format_;
+    json_payload["output_format"] = tts_format_;
   } else if (name_ == "piper-http") {
       printf("TtsSource::initialize using Piper HTTP TTS at %s\n", format_timestamp().c_str());
       tts_method_ = TtsMethod::TTS_CURL;
@@ -1084,7 +1092,7 @@ void TtsSource::run(AudioStream * audio_stream)
 
   if (tts_method_ == TtsMethod::TTS_PROGRAM_RAW) {
       // If the data is raw, we can process it directly without the virtual file.
-      // TODO: we need to know the format of the raw data. For now we assume it's PCM_16.
+      // TODO: we need to know the format of the raw data. For now we assume it's PCM_16, 1 channel.
     audio_stream->process_raw(audio_data, samplerate_, 1, SFG_SHORT);
   } else {
       // Convert the audio data (which is a file content) to the stream format
