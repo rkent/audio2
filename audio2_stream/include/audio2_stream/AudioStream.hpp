@@ -40,7 +40,8 @@ typedef enum
 class AudioConfigRanges
 {
 public:
-  AudioConfigRanges() {
+  AudioConfigRanges()
+  {
     // Sample rate values
     samplerate_values.insert(8000);
     samplerate_values.insert(16000);
@@ -135,8 +136,8 @@ public:
 class AudioTerminal
 {
 public:
-  AudioTerminal() :
-    rw_format_(SFG_NONE),
+  AudioTerminal()
+  :rw_format_(SFG_NONE),
     config_ranges_(std::make_unique<AudioConfigRanges>())
   {}
 
@@ -171,12 +172,12 @@ public:
   )
   : AudioTerminal(),
     alsa_device_name_(alsa_device_name),
-    alsa_format_(SND_PCM_FORMAT_UNKNOWN),
+    alsa_format_(ALSA_FORMAT),
     alsa_device_(std::move(alsa_device)),
     are_parms_fixed_(false)
   {}
 
-  std::optional<std::string> open(snd_pcm_stream_t direction, int samplerate, int channels);
+  std::optional<std::string> open(snd_pcm_stream_t direction, AudioStream * audio_stream);
 
   std::string alsa_device_name_;
   snd_pcm_format_t alsa_format_;
@@ -225,7 +226,8 @@ public:
     int sfFormat,
     rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
     std::string description
-  ) : AudioTerminal(),
+  )
+  : AudioTerminal(),
     topic_(topic),
     sfFormat_(sfFormat),
     publisher_(publisher),
@@ -249,8 +251,8 @@ protected:
 class MessageSource : public AudioTerminal
 {
 public:
-  MessageSource(std::string topic) :
-    AudioTerminal(), topic_(topic)
+  MessageSource(std::string topic)
+  :AudioTerminal(), topic_(topic)
   {}
 
   ~MessageSource()
@@ -276,17 +278,19 @@ public:
     const std::string & voice,
     const std::string & model,
     const std::string & format
-  ) : AudioTerminal(),
-      name_(name),
-      text_(text),
-      voice_(voice),
-      model_(model),
-      tts_format_(format)
+  )
+  : AudioTerminal(),
+    name_(name),
+    text_(text),
+    voice_(voice),
+    model_(model),
+    tts_format_(format)
   {}
 
-  virtual ~TtsSource() {
+  virtual ~TtsSource()
+  {
     curl_slist_free_all(headers_);
-  };
+  }
 
   void run(AudioStream * audio_stream) override;
   std::optional<std::string> fetch_tts_curl(std::vector<uint8_t> & audio_data);

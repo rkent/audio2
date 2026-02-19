@@ -121,13 +121,6 @@ public:
             nullptr
     );
 
-    auto alsa_open_result = alsa_source->open(SND_PCM_STREAM_CAPTURE, samplerate, channels);
-    if (alsa_open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for capture: %s",
-        alsa_open_result->c_str());
-      return;
-    }
-
         // Create the message publisher
     auto publisher = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>(audio_topic,
       AUDIO_CHUNK_QOS);
@@ -147,6 +140,13 @@ public:
             std::string("Audio capture stream on ") + audio_topic,
             get_parameter("stream_queue_frames").as_int()
     );
+
+    auto alsa_open_result = alsa_source->open(SND_PCM_STREAM_CAPTURE, audio_stream.get());
+    if (alsa_open_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for capture: %s",
+        alsa_open_result->c_str());
+      return;
+    }
 
     auto start_result = audio_stream->start();
     if (start_result.has_value()) {

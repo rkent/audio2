@@ -11,24 +11,28 @@
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
-static bool isProgramInstalled(const std::string& program) {
-    std::string command = "which " + program + " > /dev/null 2>&1";
-    return system(command.c_str()) == 0;
+static bool isProgramInstalled(const std::string & program)
+{
+  std::string command = "which " + program + " > /dev/null 2>&1";
+  return system(command.c_str()) == 0;
 }
 
-static bool hasEspeak() {
+static bool hasEspeak()
+{
     // Initialized only the first time this function is called
-    static bool installed = isProgramInstalled("espeak");
-    return installed;
+  static bool installed = isProgramInstalled("espeak");
+  return installed;
 }
 
-static bool hasEspeakNG() {
+static bool hasEspeakNG()
+{
     // Initialized only the first time this function is called
-    static bool installed = isProgramInstalled("espeak-ng");
-    return installed;
+  static bool installed = isProgramInstalled("espeak-ng");
+  return installed;
 }
 
-std::set<int> AudioStream::combine_samplerates() {
+std::set<int> AudioStream::combine_samplerates()
+{
   if (source_ && !sink_) {
     return source_->config_ranges_->samplerate_values;
   }
@@ -36,19 +40,23 @@ std::set<int> AudioStream::combine_samplerates() {
     return sink_->config_ranges_->samplerate_values;
   }
   if (!source_ && !sink_) {
-    printf("AudioStream::combine_samplerates returning empty set because source and sink is missing\n");
+    printf(
+      "AudioStream::combine_samplerates returning empty set because source and sink is missing\n");
     return {};
   }
   std::set<int> intersection;
   std::set_intersection(
-    sink_->config_ranges_->samplerate_values.begin(), sink_->config_ranges_->samplerate_values.end(),
-    source_->config_ranges_->samplerate_values.begin(), source_->config_ranges_->samplerate_values.end(),
+    sink_->config_ranges_->samplerate_values.begin(),
+    sink_->config_ranges_->samplerate_values.end(),
+    source_->config_ranges_->samplerate_values.begin(),
+    source_->config_ranges_->samplerate_values.end(),
     std::inserter(intersection, intersection.begin())
   );
   return intersection;
 }
 
-std::set<int> AudioStream::combine_channels() {
+std::set<int> AudioStream::combine_channels()
+{
   if (!sink_ && source_) {
     return source_->config_ranges_->channel_values;
   }
@@ -56,7 +64,8 @@ std::set<int> AudioStream::combine_channels() {
     return sink_->config_ranges_->channel_values;
   }
   if (!sink_ && !source_) {
-    printf("AudioStream::combine_channels returning empty set because source and sink is missing\n");
+    printf(
+      "AudioStream::combine_channels returning empty set because source and sink is missing\n");
     return {};
   }
   std::set<int> intersection;
@@ -68,7 +77,8 @@ std::set<int> AudioStream::combine_channels() {
   return intersection;
 }
 
-std::set<SfgRwFormat> AudioStream::combine_formats() {
+std::set<SfgRwFormat> AudioStream::combine_formats()
+{
   if (!sink_ && source_) {
     return source_->config_ranges_->format_values;
   }
@@ -88,7 +98,8 @@ std::set<SfgRwFormat> AudioStream::combine_formats() {
   return intersection;
 }
 
-std::optional<std::string> AudioStream::merge_parms() {
+std::optional<std::string> AudioStream::merge_parms()
+{
   auto samplerates = combine_samplerates();
   auto channels = combine_channels();
   auto formats = combine_formats();
@@ -104,11 +115,13 @@ std::optional<std::string> AudioStream::merge_parms() {
   return std::nullopt;
 }
 
-bool AudioStream::parms_fixed() {
+bool AudioStream::parms_fixed()
+{
   return samplerate_ > 0 && channels_ > 0;
 }
 
-std::optional<std::string> AudioStream::fix_parms() {
+std::optional<std::string> AudioStream::fix_parms()
+{
   auto samplerates = combine_samplerates();
   if (samplerates.empty()) {
     return std::string("No compatible samplerate found between source and sink");
@@ -136,21 +149,32 @@ std::optional<std::string> AudioStream::fix_parms() {
   return std::nullopt;
 }
 
-std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction, int samplerate, int channels)
+std::optional<std::string> AlsaTerminal::open(
+  snd_pcm_stream_t direction,
+  AudioStream * audio_stream)
 {
     // Create default device implementation if none provided
+  printf("AlsaTerminal::open called\n");
   if (!alsa_device_) {
     alsa_device_ = std::make_unique<AlsaDeviceImpl>();
   }
 
+  if (!audio_stream->parms_fixed()) {
+    auto fix_result = audio_stream->fix_parms();
+    if (fix_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for AlsaTerminal: %s",
+        fix_result->c_str());
+      return fix_result;
+    }
+  }
+
   AlsaHwParams hw_params;
   hw_params.device = alsa_device_name_.c_str();
-  hw_params.channels = channels;
-  hw_params.samplerate = samplerate;
+  hw_params.channels = audio_stream->channels_;
+  hw_params.samplerate = audio_stream->samplerate_;
   hw_params.format = alsa_format_;
   hw_params.direction = direction;
 
-  printf("AlsaTerminal::open called at %s\n", format_timestamp().c_str());
   printf(
     "AlsaTerminal::open called with hw_params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
            hw_params.device,
@@ -162,16 +186,15 @@ std::optional<std::string> AlsaTerminal::open(snd_pcm_stream_t direction, int sa
   AlsaSwParams sw_params;
 
   auto result = alsa_device_->open(hw_params, sw_params, direction);
-  printf("AlsaTerminal::open completed at %s\n", format_timestamp().c_str());
   if (result.has_value()) {
     return result.value();
   }
     // alsa_device_->open may change the format if original is not supported.
   alsa_format_ = alsa_device_->get_format();
-  if (samplerate != static_cast<int>(hw_params.samplerate)) {
+  if (audio_stream->samplerate_ != static_cast<int>(hw_params.samplerate)) {
     char buffer[256];
     snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n",
-      samplerate, hw_params.samplerate);
+      audio_stream->samplerate_, hw_params.samplerate);
     return std::string(buffer);
   }
   are_parms_fixed_ = true;
@@ -205,6 +228,7 @@ void AlsaSink::run(AudioStream * audio_stream)
     std::vector<uint8_t> audio_data;
 
         // Wait to pop from queue
+    printf("Waiting to pop from queue in AlsaSink::run at %s\n", format_timestamp().c_str());
     audio_stream->data_available_.wait(false);     // Wait until there's something to process
     std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
     printf("\nAlsaSink::run thread %zu woke up to process audio data at %s\n", hash_id,
@@ -216,7 +240,8 @@ void AlsaSink::run(AudioStream * audio_stream)
       if (!audio_stream->parms_fixed()) {
         auto fix_result = audio_stream->fix_parms();
         if (fix_result.has_value()) {
-          RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for AlsaSink: %s", fix_result->c_str());
+          RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for AlsaSink: %s",
+            fix_result->c_str());
           break;
         }
       }
@@ -228,9 +253,10 @@ void AlsaSink::run(AudioStream * audio_stream)
       alsa_format_ = ALSA_FORMAT;
 
       printf("AlsaSink::run opening ALSA device\n");
-      auto open_result = open(SND_PCM_STREAM_PLAYBACK, audio_stream->samplerate_, audio_stream->channels_);
+      auto open_result = open(SND_PCM_STREAM_PLAYBACK, audio_stream);
       if (open_result.has_value()) {
-        RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device in AlsaSink: %s", open_result->c_str());
+        RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device in AlsaSink: %s",
+          open_result->c_str());
         return;
       }
       printf("AlsaSink::run ALSA device opened successfully\n");
@@ -287,7 +313,8 @@ void AlsaSink::run(AudioStream * audio_stream)
       printf("Error writing silence to ALSA device: %s\n", snd_strerror(written));
       break;
     }
-    printf("Wrote %d silence frames to ALSA device of %d\n", written / audio_stream->channels_, silence_frames);
+    printf("Wrote %d silence frames to ALSA device of %d\n", written / audio_stream->channels_,
+      silence_frames);
     silence_frames -= written / audio_stream->channels_;
   }
 
@@ -378,7 +405,8 @@ void SndFileSource::run(AudioStream * audio_stream)
     }
     auto fix_result = audio_stream->fix_parms();
     if (fix_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for file <%s>: %s", file_path_.c_str(),
+      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for file <%s>: %s",
+        file_path_.c_str(),
           fix_result.value().c_str());
       break;
     }
@@ -644,16 +672,20 @@ void AudioStream::process_fileh(SndfileHandle & fileh)
   int samplerate = fileh.samplerate();
     // Messages will be sent at a constant rate based on samplerate and buffer size.
   auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
-        queue_frames_ / (samplerate)));
+      queue_frames_ / (samplerate)));
 
         // These were probably set during the open, but reset here to be sure.
+  printf(
+    "AudioStream::process_fileh setting samplerate %d and channels %d for source config ranges\n",
+    samplerate, fileh.channels());
   if (source_) {
     source_->config_ranges_->samplerate_values = {fileh.samplerate()};
     source_->config_ranges_->channel_values = {fileh.channels()};
   }
-
   auto r_format = sfg_format_from_sndfile_format(fileh.format());
-  auto w_format = sink_->rw_format_;
+  auto w_format = (sink_) ? sink_->rw_format_ : SFG_FLOAT;
+  printf("AudioStream::process_fileh: file format %d, r_format %d, w_format %d\n",
+    fileh.format(), r_format, w_format);
   std::vector<uint8_t> r_buffer;
   std::vector<uint8_t> w_buffer;
   auto result = create_convert_vectors(r_format, w_format,
@@ -717,7 +749,7 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
 {
     // Messages will be sent at a constant rate based on samplerate and buffer size.
   auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
-        queue_frames_ / (samplerate_)));
+      queue_frames_ / (samplerate_)));
 
   auto w_format = sink_->rw_format_;
   std::vector<uint8_t> w_buffer;
@@ -864,7 +896,7 @@ std::optional<std::string> TtsSource::open()
   } else if (name_ == "openai") {
     printf("TtsSource::open using OpenAI TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_CURL;
-    const char* api_key_cstr = std::getenv("OPENAI_API_KEY");
+    const char * api_key_cstr = std::getenv("OPENAI_API_KEY");
     if (!api_key_cstr || strlen(api_key_cstr) == 0) {
       return std::string("OPENAI_API_KEY environment variable is not set");
     }
@@ -888,11 +920,10 @@ std::optional<std::string> TtsSource::open()
     json_payload["input"] = text_;
     json_payload["voice"] = voice_;
     json_payload["format"] = tts_format_;
-  }
-  else if (name_ == "elevenlabs") {
+  } else if (name_ == "elevenlabs") {
     printf("TtsSource::open using ElevenLabs TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_CURL;
-    const char* api_key_cstr = std::getenv("ELEVENLABS_API_KEY");
+    const char * api_key_cstr = std::getenv("ELEVENLABS_API_KEY");
     if (!api_key_cstr || strlen(api_key_cstr) == 0) {
       return std::string("ELEVENLABS_API_KEY environment variable is not set");
     }
@@ -906,7 +937,8 @@ std::optional<std::string> TtsSource::open()
     if (tts_format_.empty()) {
       tts_format_ = "mp3_44100_128";
     }
-    url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" + tts_format_;
+    url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" +
+      tts_format_;
     auto rate_split = split_string(tts_format_, '_');
     if (rate_split.size() < 2) {
       return std::string("Invalid format string for ElevenLabs TTS: ") + tts_format_;
@@ -921,16 +953,16 @@ std::optional<std::string> TtsSource::open()
     json_payload["voice_id"] = voice_;
     json_payload["output_format"] = tts_format_;
   } else if (name_ == "piper-http") {
-      printf("TtsSource::open using Piper HTTP TTS at %s\n", format_timestamp().c_str());
-      tts_method_ = TtsMethod::TTS_CURL;
-      url_ = "http://localhost:5000";
-      if (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") {
-        samplerate = 16000;
-      } else {
-        samplerate = 22050;
-      }
-      json_payload["text"] = text_;
-      json_payload["voice"] = voice_;
+    printf("TtsSource::open using Piper HTTP TTS at %s\n", format_timestamp().c_str());
+    tts_method_ = TtsMethod::TTS_CURL;
+    url_ = "http://localhost:5000";
+    if (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") {
+      samplerate = 16000;
+    } else {
+      samplerate = 22050;
+    }
+    json_payload["text"] = text_;
+    json_payload["voice"] = voice_;
   } else {
     return std::string("Unsupported TTS provider: ") + name_;
   }
@@ -958,7 +990,8 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
     if (!isProgramInstalled("piper")) {
       return std::string("Piper TTS program is not installed");
     }
-    command = "piper --output-raw -m " + voice_ + " --data-dir " + PIPER_DATA_DIR + " -- " + "\"" + text_ + "\"";
+    command = "piper --output-raw -m " + voice_ + " --data-dir " + PIPER_DATA_DIR + " -- " + "\"" +
+      text_ + "\"";
   } else {
     return std::string("Unsupported TTS provider: ") + name_;
   }
@@ -968,7 +1001,8 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
   if (!pipe) {
     return std::string("Failed to execute TTS command");
   }
-  printf("TtsSource::fetch_tts_program started reading audio data at %s\n", format_timestamp().c_str());
+  printf("TtsSource::fetch_tts_program started reading audio data at %s\n",
+    format_timestamp().c_str());
   // ToDo: the buffer size should match the audio chunk size.
   char buffer[4096];
   size_t bytes_read;
@@ -988,7 +1022,8 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
 
 std::optional<std::string> TtsSource::fetch_tts_curl(std::vector<uint8_t> & audio_data)
 {
-  printf("TtsSource::fetch_tts_curl called to url %s at %s\n", url_.c_str(), format_timestamp().c_str());
+  printf("TtsSource::fetch_tts_curl called to url %s at %s\n", url_.c_str(),
+    format_timestamp().c_str());
   nlohmann::json json_payload;
 
   CURL * curl = curl_easy_init();
@@ -1010,7 +1045,8 @@ std::optional<std::string> TtsSource::fetch_tts_curl(std::vector<uint8_t> & audi
   // Perform request
   printf("TtsSource: Sending TTS request to %s at %s\n", name_.c_str(), format_timestamp().c_str());
   CURLcode res = curl_easy_perform(curl);
-  printf("TtsSource: Received TTS response from %s at %s\n", name_.c_str(), format_timestamp().c_str());
+  printf("TtsSource: Received TTS response from %s at %s\n", name_.c_str(),
+    format_timestamp().c_str());
 
   if (res != CURLE_OK) {
     std::string error_msg = std::string("CURL error: ") + curl_easy_strerror(res);
@@ -1040,8 +1076,9 @@ void TtsSource::run(AudioStream * audio_stream)
   do {
     auto open_result = open();
     if (open_result.has_value()) {
-       RCLCPP_ERROR(rcl_logger, "TtsSource: Failed to open TTS source: %s\n", open_result.value().c_str());
-       break;
+      RCLCPP_ERROR(rcl_logger, "TtsSource: Failed to open TTS source: %s\n",
+        open_result.value().c_str());
+      break;
     }
     std::vector<uint8_t> audio_data;
         // Reserve some data. CURL will expand as needed.
@@ -1049,15 +1086,17 @@ void TtsSource::run(AudioStream * audio_stream)
     if (tts_method_ == TtsMethod::TTS_PROGRAM_WAV || tts_method_ == TtsMethod::TTS_PROGRAM_RAW) {
       auto fetch_result = fetch_tts_program(audio_data);
       if (fetch_result.has_value()) {
-        RCLCPP_ERROR(rcl_logger, "TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
+        RCLCPP_ERROR(rcl_logger, "TtsSource: Error fetching TTS audio: %s\n",
+          fetch_result.value().c_str());
         break;
       }
     } else if (tts_method_ == TtsMethod::TTS_CURL) {
-        auto fetch_result = fetch_tts_curl(audio_data);
-        if (fetch_result.has_value()) {
-          RCLCPP_ERROR(rcl_logger, "TtsSource: Error fetching TTS audio: %s\n", fetch_result.value().c_str());
-          break;
-        }
+      auto fetch_result = fetch_tts_curl(audio_data);
+      if (fetch_result.has_value()) {
+        RCLCPP_ERROR(rcl_logger, "TtsSource: Error fetching TTS audio: %s\n",
+          fetch_result.value().c_str());
+        break;
+      }
     } else {
       RCLCPP_ERROR(rcl_logger, "TtsSource: Unsupported TTS method\n");
       break;
@@ -1077,7 +1116,8 @@ void TtsSource::run(AudioStream * audio_stream)
         // Convert the audio data (which is a file content) to the stream format
       VIO_SOUNDFILE_HANDLE vio_handle;
       if (auto err = ropen_vio_from_vector(audio_data, vio_handle)) {
-        RCLCPP_ERROR(rcl_logger, "TtsSource: Failed to open sound file from TTS audio data: %s\n", err->c_str());
+        RCLCPP_ERROR(rcl_logger, "TtsSource: Failed to open sound file from TTS audio data: %s\n",
+          err->c_str());
         break;
       }
       printf("TtsSource: Opened virtual sound file from TTS audio data, length %zu bytes at %s\n",

@@ -37,13 +37,27 @@ protected:
 TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
 {
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
-      // TODO: need to set sink channel, samplerate, and format.
-    AlsaSink sink(ALSA_NULL_DEVICE, std::move(alsa_device));
+    // TODO: need to set sink channel, samplerate, and format.
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_device));
+    auto psink = sink.get();  // Store raw pointer for later use in test
 
-    auto result = sink.open(SND_PCM_STREAM_PLAYBACK, 48000, 2);
+    // Create a simple audio stream with test data
+    auto stream = std::make_unique<AudioStream>(
+        nullptr,  // No source
+        std::move(sink),
+        "test_stream",
+        100  // Small queue frames for testing
+    );
+
+    // Start the stream
+    printf("Starting stream for AlsaSinkOpenSuccess test\n");
+    stream->start();
+    printf("Stream started for AlsaSinkOpenSuccess test\n");
+    auto result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
 
     EXPECT_FALSE(result.has_value()) << "Open should succeed: " <<
     (result.has_value() ? *result : "");
+    stream->shutdown();
 }
 
 /**
@@ -54,12 +68,24 @@ TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
 
     // Use a non-existent device name
-    AlsaSink sink("nonexistent_alsa_device_12345", std::move(alsa_device));
+    auto sink = std::make_unique<AlsaSink>("nonexistent_alsa_device_12345", std::move(alsa_device));
+    auto psink = sink.get();  // Store raw pointer for later use in test
+        // Create a simple audio stream with test data
+    auto stream = std::make_unique<AudioStream>(
+        nullptr,  // No source
+        std::move(sink),
+        "test_stream",
+        100  // Small queue frames for testing
+    );
 
-    auto result = sink.open(SND_PCM_STREAM_PLAYBACK, 48000, 2);
+    // Start the stream
+    stream->start();
+
+    auto result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
 
     ASSERT_TRUE(result.has_value()) << "Open should fail with non-existent device";
     EXPECT_FALSE(result->empty()) << "Error message should not be empty";
+    stream->shutdown();
 }
 
 /**
@@ -69,10 +95,7 @@ TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 {
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
     auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_device));
-
-    auto result = sink->open(SND_PCM_STREAM_PLAYBACK, 48000, 2);
-    ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
-    (result.has_value() ? *result : "");
+    auto psink = sink.get();  // Store raw pointer for later use in test
 
     // Create a simple audio stream with test data
     auto stream = std::make_unique<AudioStream>(
@@ -82,14 +105,17 @@ TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
         100  // Small queue frames for testing
     );
 
+    // Start the stream
+    stream->start();
+    auto result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
+    ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
+    (result.has_value() ? *result : "");
+
     // Push some test audio data to the queue
     std::vector<uint8_t> test_data(100 * 2 * 2, 0x55);  // 100 frames, 2 channels, 2 bytes per sample
     stream->queue_.push(test_data);
     stream->data_available_.store(true);
     stream->data_available_.notify_one();
-
-    // Start the stream
-    stream->start();
 
     // Let it run briefly to allow writes to the 'null' device
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -108,10 +134,7 @@ TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 {
     auto alsa_device = std::make_unique<AlsaDeviceImpl>();
     auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(alsa_device));
-
-    auto result = source->open(SND_PCM_STREAM_CAPTURE, 48000, 2);
-    ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
-    (result.has_value() ? *result : "");
+    auto psource = source.get();  // Store raw pointer for later use in test
 
     // Create a simple audio stream
     auto stream = std::make_unique<AudioStream>(
@@ -123,6 +146,10 @@ TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 
     // Start the stream
     stream->start();
+
+    auto result = psource->open(SND_PCM_STREAM_CAPTURE, stream.get());
+    ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
+    (result.has_value() ? *result : "");
 
     // Let it run briefly - 'null' device returns silence
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -143,14 +170,12 @@ TEST_F(AlsaNullTest, SourceToSinkComplete)
     // Create source (capture from 'null')
     auto source_device = std::make_unique<AlsaDeviceImpl>();
     auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(source_device));
-    auto source_result = source->open(SND_PCM_STREAM_CAPTURE, 48000, 2);
-    ASSERT_FALSE(source_result.has_value()) << "Source open should succeed";
+    auto psource = source.get();  // Store raw pointer for later use in test
 
     // Create sink (playback to 'null')
     auto sink_device = std::make_unique<AlsaDeviceImpl>();
     auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(sink_device));
-    auto sink_result = sink->open(SND_PCM_STREAM_PLAYBACK, 48000, 2);
-    ASSERT_FALSE(sink_result.has_value()) << "Sink open should succeed";
+    auto psink = sink.get();  // Store raw pointer for later use in test
 
     // Create stream with both source and sink
     auto stream = std::make_unique<AudioStream>(
@@ -161,6 +186,10 @@ TEST_F(AlsaNullTest, SourceToSinkComplete)
     );
 
     stream->start();
+    auto source_result = psource->open(SND_PCM_STREAM_CAPTURE, stream.get());
+    ASSERT_FALSE(source_result.has_value()) << "Source open should succeed";
+    auto sink_result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
+    ASSERT_FALSE(sink_result.has_value()) << "Sink open should succeed";
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     stream->shutdown();
 

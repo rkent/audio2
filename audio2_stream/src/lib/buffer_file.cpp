@@ -442,8 +442,10 @@ std::optional<std::string> create_convert_vectors(
   if (r_sample_size < 0 || w_sample_size < 0) {
     return "Unsupported format for convert vectors";
   }
-  printf("Creating convert vectors: r_format=%s, w_format=%s, samples=%d, r_sample_size=%d, w_sample_size=%d, r_buffer_size=%d, w_buffer_size=%d\n",
-    sfg_format_to_string(r_format), sfg_format_to_string(w_format), samples, r_sample_size, w_sample_size, r_buffer_size, w_buffer_size);
+  printf(
+    "Creating convert vectors: r_format=%s, w_format=%s, samples=%d, r_sample_size=%d, w_sample_size=%d, r_buffer_size=%d, w_buffer_size=%d\n",
+    sfg_format_to_string(r_format), sfg_format_to_string(w_format), samples, r_sample_size,
+    w_sample_size, r_buffer_size, w_buffer_size);
   // TODO: I think this should be reserve, not resize
   r_buffer.resize(r_buffer_size);
   w_buffer.resize(w_buffer_size);

@@ -200,15 +200,15 @@ public:
         }
       }
       if (!p_alsa_device) {
-              auto open_result = snd_pcm_open(
+        auto open_result = snd_pcm_open(
               &alsa_dev_preplay_,
               requested_device_name.c_str(),
               SND_PCM_STREAM_PLAYBACK,
               0);
-      if (open_result < 0) {
-        RCLCPP_WARN(rcl_logger, "Cannot pre-open ALSA device for playback: %s",
+        if (open_result < 0) {
+          RCLCPP_WARN(rcl_logger, "Cannot pre-open ALSA device for playback: %s",
           snd_strerror(open_result));
-      }
+        }
 
       }
 
@@ -278,7 +278,8 @@ public:
     RCLCPP_INFO(rcl_logger, "Enqueued file %s", msg->path.c_str());
   }
 
-  std::unique_ptr<AlsaDeviceImpl> get_alsa_device(std::string device_name) {
+  std::unique_ptr<AlsaDeviceImpl> get_alsa_device(std::string device_name)
+  {
     std::unique_ptr<AlsaDeviceImpl> alsa_device;
     if (alsa_dev_preplay_) {
       const char * name = snd_pcm_name(alsa_dev_preplay_);
