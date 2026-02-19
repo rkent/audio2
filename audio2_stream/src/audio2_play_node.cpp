@@ -100,18 +100,6 @@ public:
             msg->provider.format
     );
 
-    auto init_result = tts_source->initialize();
-    if (init_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "TTS source initialization failed: %s", init_result->c_str());
-      return;
-    }
-    RCLCPP_INFO(rcl_logger, "TTS source initialized with sample rate %d", tts_source->samplerate_);
-        // Audio playback parameters
-    int samplerate = tts_source->samplerate_;
-    if (samplerate <= 0) {
-      RCLCPP_ERROR(rcl_logger, "Invalid samplerate from TTS source: %d", samplerate);
-      return;
-    }
     RCLCPP_INFO(rcl_logger, "Opening alsa");
 
         // Use pre-created ALSA device if possible
@@ -125,16 +113,8 @@ public:
             get_parameter("alsa_device_name").as_string(),
             std::move(p_alsa_device)
     );
-    auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
-    if (alsa_open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device: %s", alsa_open_result->c_str());
-      return;
-    }
 
-        // during open, alsa may change the format if the original is unsupported.
-    SfgRwFormat rw_format = sfg_format_from_alsa_format(alsa_sink->alsa_format_);
     auto audio_stream = std::make_unique<AudioStream>(
-      rw_format,
       std::move(tts_source),
       std::move(alsa_sink),
       std::string("tts request with text ") + msg->text.substr(0, 20) + "...",
@@ -236,15 +216,14 @@ public:
       std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
                 get_parameter("alsa_device_name").as_string(),
                 std::move(p_alsa_device)
-      );
-      auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
-      if (alsa_open_result.has_value()) {
-        RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for new stream: %s",
-          alsa_open_result->c_str());
-        return;
-      }
+      );// TODO: move this open till later
+      //auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
+      //if (alsa_open_result.has_value()) {
+      //  RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for new stream: %s",
+      //    alsa_open_result->c_str());
+      //  return;
+      //}
       auto audio_stream = std::make_unique<AudioStream>(
-                sfg_format_from_alsa_format(alsa_sink->alsa_format_),
                 nullptr,
                 std::move(alsa_sink),
                 std::string("Stream for topic callback"),

@@ -149,7 +149,7 @@ alsa_play(
  * \param r_buffer    Reference to the read buffer vector.
  * \param w_buffer    Reference to the write buffer vector.
  */
-void create_convert_vectors(
+std::optional<std::string> create_convert_vectors(
   SfgRwFormat from_format, SfgRwFormat to_format, int samples,
   std::vector<uint8_t> & r_buffer, std::vector<uint8_t> & w_buffer);
 

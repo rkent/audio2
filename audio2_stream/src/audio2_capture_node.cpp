@@ -121,7 +121,7 @@ public:
             nullptr
     );
 
-    auto alsa_open_result = alsa_source->open(SND_PCM_STREAM_CAPTURE);
+    auto alsa_open_result = alsa_source->open(SND_PCM_STREAM_CAPTURE, samplerate, channels);
     if (alsa_open_result.has_value()) {
       RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for capture: %s",
         alsa_open_result->c_str());
@@ -135,8 +135,6 @@ public:
         // Create the MessageSink for publishing captured audio chunks
     std::unique_ptr<MessageSink> message_sink = std::make_unique<MessageSink>(
             audio_topic,
-            channels,
-            samplerate,
             SF_FORMAT_DEFAULT,
             publisher,
             std::string("Audio capture from ") + get_parameter("alsa_device_name").as_string()
@@ -144,7 +142,6 @@ public:
 
         // Create the AudioStream to connect source and sink
     auto audio_stream = std::make_unique<AudioStream>(
-            SFG_RW_FORMAT,
             std::move(alsa_source),
             std::move(message_sink),
             std::string("Audio capture stream on ") + audio_topic,

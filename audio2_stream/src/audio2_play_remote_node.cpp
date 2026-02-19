@@ -96,15 +96,12 @@ public:
         // Open the playback device
     std::unique_ptr<MessageSink> message_sink = std::make_unique<MessageSink>(
             msg->topic,
-            channels,
-            samplerate,
             SF_FORMAT_DEFAULT,
             publisher,
             file_path
     );
 
     auto audio_stream = std::make_unique<AudioStream>(
-            SFG_RW_FORMAT,
             std::move(snd_file_source),
             std::move(message_sink),
             std::string("Remote playback of ") + file_path,

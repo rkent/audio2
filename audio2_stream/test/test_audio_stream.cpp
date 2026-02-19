@@ -54,7 +54,6 @@ protected:
 TEST_F(AudioStreamTest, ConstructDestruct)
 {
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         nullptr,  // No source
         nullptr,  // No sink
         "test_stream"
@@ -71,7 +70,6 @@ TEST_F(AudioStreamTest, ConstructDestruct)
 TEST_F(AudioStreamTest, QueueOperations)
 {
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         nullptr,
         nullptr,
         "test_stream",
@@ -100,7 +98,6 @@ TEST_F(AudioStreamTest, QueueOperations)
 TEST_F(AudioStreamTest, QueueFull)
 {
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         nullptr,
         nullptr,
         "test_stream"
@@ -127,7 +124,6 @@ TEST_F(AudioStreamTest, QueueFull)
 TEST_F(AudioStreamTest, QueueEmpty)
 {
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         nullptr,
         nullptr,
         "test_stream"
@@ -146,7 +142,6 @@ TEST_F(AudioStreamTest, QueueEmpty)
 TEST_F(AudioStreamTest, Shutdown)
 {
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         nullptr,
         nullptr,
         "test_stream"
@@ -199,7 +194,6 @@ TEST_F(AudioStreamTest, SndFileSourceRead)
     ASSERT_FALSE(source->open().has_value());
 
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         std::move(source),
         nullptr,  // No sink
         "test_stream",
@@ -230,7 +224,6 @@ TEST_F(AudioStreamTest, SourceAndSink)
     // For this test, we'll just verify the stream can be created and started
     // without a real sink (since we need mocked ALSA for a real sink)
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         std::move(source),
         nullptr,
         "test_stream",
@@ -266,7 +259,8 @@ TEST_F(AudioStreamTest, ConvertBufferCreation)
     std::vector<uint8_t> write_buffer;
 
     int samples = 1000;
-    create_convert_vectors(SFG_SHORT, SFG_FLOAT, samples, read_buffer, write_buffer);
+    auto result = create_convert_vectors(SFG_SHORT, SFG_FLOAT, samples, read_buffer, write_buffer);
+    ASSERT_FALSE(result.has_value()) << "Failed to create convert vectors: " << result.value();
 
     EXPECT_EQ(read_buffer.size(), samples * sizeof(short));
     EXPECT_EQ(write_buffer.size(), samples * sizeof(float));
@@ -281,7 +275,8 @@ TEST_F(AudioStreamTest, TypeConversion)
     std::vector<uint8_t> write_buffer;
 
     int samples = 100;
-    create_convert_vectors(SFG_SHORT, SFG_FLOAT, samples, read_buffer, write_buffer);
+    auto result = create_convert_vectors(SFG_SHORT, SFG_FLOAT, samples, read_buffer, write_buffer);
+    ASSERT_FALSE(result.has_value()) << "Failed to create convert vectors: " << result.value();
 
     // Fill read buffer with test data (16-bit shorts)
     short * short_data = reinterpret_cast<short *>(read_buffer.data());
@@ -309,7 +304,6 @@ TEST_F(AudioStreamTest, TypeConversion)
 TEST_F(AudioStreamTest, ConcurrentQueueAccess)
 {
     auto stream = std::make_unique<AudioStream>(
-        SFG_RW_FORMAT,
         nullptr,
         nullptr,
         "test_stream"

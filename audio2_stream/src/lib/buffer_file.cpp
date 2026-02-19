@@ -425,17 +425,29 @@ scale_data(
   return 0;
 }
 
-void create_convert_vectors(
+std::optional<std::string> create_convert_vectors(
   SfgRwFormat r_format, SfgRwFormat w_format, int samples,
   std::vector<uint8_t> & r_buffer, std::vector<uint8_t> & w_buffer)
 {
+  if (r_format == SFG_NONE || r_format == SFG_INVALID) {
+    return "Invalid read format for convert vectors";
+  }
+  if (w_format == SFG_NONE || w_format == SFG_INVALID) {
+    return "Invalid write format for convert vectors";
+  }
   auto r_sample_size = sample_size_from_sfg_format(r_format);
   auto w_sample_size = sample_size_from_sfg_format(w_format);
   auto r_buffer_size = samples * r_sample_size;
   auto w_buffer_size = samples * w_sample_size;
+  if (r_sample_size < 0 || w_sample_size < 0) {
+    return "Unsupported format for convert vectors";
+  }
+  printf("Creating convert vectors: r_format=%s, w_format=%s, samples=%d, r_sample_size=%d, w_sample_size=%d, r_buffer_size=%d, w_buffer_size=%d\n",
+    sfg_format_to_string(r_format), sfg_format_to_string(w_format), samples, r_sample_size, w_sample_size, r_buffer_size, w_buffer_size);
   // TODO: I think this should be reserve, not resize
   r_buffer.resize(r_buffer_size);
   w_buffer.resize(w_buffer_size);
+  return std::nullopt;
 }
 
 
