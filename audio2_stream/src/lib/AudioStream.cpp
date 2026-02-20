@@ -859,6 +859,7 @@ static size_t write_callback(void * contents, size_t size, size_t nmemb, void * 
 }
 
 // Helper function to split a string by a delimiter
+/*
 static std::vector<std::string> split_string(const std::string & str, char delimiter)
 {
   std::vector<std::string> result;
@@ -878,12 +879,11 @@ static std::vector<std::string> split_string(const std::string & str, char delim
   }
   return result;
 }
+*/
 
 // ToDo: Do not limit speed if writing to a file.
 std::optional<std::string> TtsSource::open()
 {
-  int channels = 1;  // Currently the same for all TTS providers, but could be made configurable if needed
-  int samplerate = 0;  // Needs to be set based on TTS provider
   RCLCPP_INFO(rcl_logger, "TTS source opening");
 
   nlohmann::json json_payload;
@@ -897,18 +897,18 @@ std::optional<std::string> TtsSource::open()
   if (name_ == "espeak") {
     printf("TtsSource::open using espeak TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_PROGRAM_WAV;
-    samplerate = 48000;
+    // samplerate = 48000;
   } else if (name_ == "piper") {
     printf("TtsSource::open using Piper TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_PROGRAM_RAW;
     if (voice_.empty()) {
       voice_ = "en_US-amy-medium";
     }
-    if (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") {
-      samplerate = 16000;
-    } else {
-      samplerate = 22050;
-    }
+    int samplerate = (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") ? 16000 : 22050;
+    config_ranges_->samplerate_values = {samplerate};
+    config_ranges_->channel_values = {1};
+    are_parms_bound_ = true;
+
   } else if (name_ == "openai") {
     printf("TtsSource::open using OpenAI TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_CURL;
@@ -916,7 +916,7 @@ std::optional<std::string> TtsSource::open()
     if (!api_key_cstr || strlen(api_key_cstr) == 0) {
       return std::string("OPENAI_API_KEY environment variable is not set");
     }
-    samplerate = 24000;
+    // samplerate = 24000;
     url_ = "https://api.openai.com/v1/audio/speech";
       // Defaults
     if (model_.empty()) {
@@ -955,11 +955,11 @@ std::optional<std::string> TtsSource::open()
     }
     url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" +
       tts_format_;
-    auto rate_split = split_string(tts_format_, '_');
-    if (rate_split.size() < 2) {
-      return std::string("Invalid format string for ElevenLabs TTS: ") + tts_format_;
-    }
-    samplerate = std::stoi(rate_split[1]);
+    //auto rate_split = split_string(tts_format_, '_');
+    //if (rate_split.size() < 2) {
+    //  return std::string("Invalid format string for ElevenLabs TTS: ") + tts_format_;
+    //}
+    //samplerate = std::stoi(rate_split[1]);
       // Headers
     std::string auth_header = "xi-api-key: " + std::string(api_key_cstr);
     headers_ = curl_slist_append(headers_, auth_header.c_str());
@@ -973,9 +973,9 @@ std::optional<std::string> TtsSource::open()
     tts_method_ = TtsMethod::TTS_CURL;
     url_ = "http://localhost:5000";
     if (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") {
-      samplerate = 16000;
+      // samplerate = 16000;
     } else {
-      samplerate = 22050;
+      // samplerate = 22050;
     }
     json_payload["text"] = text_;
     json_payload["voice"] = voice_;
@@ -986,9 +986,6 @@ std::optional<std::string> TtsSource::open()
 
   printf("TtsSource::open JSON payload: %s\n", json_str_.c_str());
   headers_ = curl_slist_append(headers_, "Content-Type: application/json");
-  config_ranges_->samplerate_values = {samplerate};
-  config_ranges_->channel_values = {channels};
-  are_parms_bound_ = true;
   return std::nullopt;
 }
 
