@@ -129,6 +129,7 @@ public:
   std::optional<std::string> merge_parms();
   std::optional<std::string> fix_parms();
   bool parms_fixed();
+  void push_empty_to_queue();
 
 };
 

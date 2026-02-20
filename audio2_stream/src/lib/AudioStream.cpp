@@ -201,7 +201,7 @@ void AlsaSink::run(AudioStream * audio_stream)
     return;
   }
   bool done = false;
-  while (!done &&!audio_stream->shutdown_flag_.load()) {
+  while (!done && !audio_stream->shutdown_flag_.load()) {
     std::string error_str = alsa_proxy_->get_error();
     if (error_str.length() > 0) {
       printf("AlsaSink::run exiting due to ALSA error: %s\n", error_str.c_str());
@@ -408,7 +408,8 @@ void SndFileSource::run(AudioStream * audio_stream)
   } while (false);
 
   printf("SndFileSource::run exiting\n");
-  audio_stream->shutdown();
+      // push to queue one last time to signal end of stream
+  audio_stream->push_empty_to_queue();
 }
 
 void MessageSink::run(AudioStream * audio_stream)
@@ -839,9 +840,16 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
     std::this_thread::sleep_until(next_time);
   }
   // push to queue one last time to signal end of stream
+  push_empty_to_queue();
+}
+
+void AudioStream::push_empty_to_queue()
+{
   std::vector<uint8_t> empty_buffer;
-  // todo: what if the queue is full?
+      // todo: what if queue is full?
   queue_.push(empty_buffer);
+  data_available_.store(true);
+  data_available_.notify_one();
 }
 
 // Callback function for CURL to write response data
@@ -904,7 +912,8 @@ std::optional<std::string> TtsSource::open()
     if (voice_.empty()) {
       voice_ = "en_US-amy-medium";
     }
-    int samplerate = (voice_.size() >= 3 && voice_.substr(voice_.size() - 3) == "low") ? 16000 : 22050;
+    int samplerate = (voice_.size() >= 3 &&
+      voice_.substr(voice_.size() - 3) == "low") ? 16000 : 22050;
     config_ranges_->samplerate_values = {samplerate};
     config_ranges_->channel_values = {1};
     are_parms_bound_ = true;
@@ -960,7 +969,7 @@ std::optional<std::string> TtsSource::open()
     //  return std::string("Invalid format string for ElevenLabs TTS: ") + tts_format_;
     //}
     //samplerate = std::stoi(rate_split[1]);
-      // Headers
+    // Headers
     std::string auth_header = "xi-api-key: " + std::string(api_key_cstr);
     headers_ = curl_slist_append(headers_, auth_header.c_str());
       // Payload
@@ -1140,11 +1149,6 @@ void TtsSource::run(AudioStream * audio_stream)
     }
   } while (false);
       // push to queue one last time to signal end of stream
-  std::vector<uint8_t> empty_buffer;
-      // todo: what if the queue is full?
-  audio_stream->queue_.push(empty_buffer);
-  audio_stream->data_available_.store(true);
-  audio_stream->data_available_.notify_one();
-
+  audio_stream->push_empty_to_queue();
   RCLCPP_INFO(rcl_logger, "TtsSource::run completed at %s\n", format_timestamp().c_str());
 }
