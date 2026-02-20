@@ -682,6 +682,14 @@ void AudioStream::process_fileh(SndfileHandle & fileh)
     source_->config_ranges_->samplerate_values = {fileh.samplerate()};
     source_->config_ranges_->channel_values = {fileh.channels()};
   }
+  if (!parms_fixed()) {
+    auto fix_result = fix_parms();
+    if (fix_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for file source: %s",
+        fix_result->c_str());
+      return;
+    }
+  }
   auto r_format = sfg_format_from_sndfile_format(fileh.format());
   auto w_format = (sink_) ? sink_->rw_format_ : SFG_FLOAT;
   printf("AudioStream::process_fileh: file format %d, r_format %d, w_format %d\n",

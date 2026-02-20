@@ -137,7 +137,7 @@ class AudioTerminal
 {
 public:
   AudioTerminal()
-  :rw_format_(SFG_NONE),
+  :rw_format_(SFG_FLOAT),
     config_ranges_(std::make_unique<AudioConfigRanges>())
   {}
 
