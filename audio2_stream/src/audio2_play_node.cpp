@@ -17,7 +17,7 @@
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 
-#include "audio2_stream/AlsaDeviceImpl.hpp"
+#include "audio2_stream/AlsaProxyImpl.hpp"
 #include "audio2_stream_msgs/msg/play_file.hpp"
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
 #include "audio2_stream_msgs/msg/tts_provider.hpp"
@@ -102,16 +102,16 @@ public:
 
     RCLCPP_INFO(rcl_logger, "Opening alsa");
 
-        // Use pre-created ALSA device if possible
-    auto p_alsa_device = get_alsa_device(get_parameter("alsa_device_name").as_string());
-    if (!p_alsa_device) {
-      RCLCPP_ERROR(rcl_logger, "Failed to get ALSA device for playback");
+        // Use pre-created ALSA proxy if possible
+    auto p_alsa_proxy = get_alsa_proxy(get_parameter("alsa_device_name").as_string());
+    if (!p_alsa_proxy) {
+      RCLCPP_ERROR(rcl_logger, "Failed to get ALSA proxy for playback");
       return;
     }
 
     std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
             get_parameter("alsa_device_name").as_string(),
-            std::move(p_alsa_device)
+            std::move(p_alsa_proxy)
     );
 
     auto audio_stream = std::make_unique<AudioStream>(
@@ -188,18 +188,18 @@ public:
         return;
       }
 
-            // Use pre-created ALSA device if possible
-      auto p_alsa_device = std::make_unique<AlsaDeviceImpl>();
+            // Use pre-created ALSA proxy if possible
+      auto p_alsa_proxy = std::make_unique<AlsaProxyImpl>();
       auto requested_device_name = get_parameter("alsa_device_name").as_string();
       if (alsa_dev_preplay_) {
         const char * name = snd_pcm_name(alsa_dev_preplay_);
         if (name == requested_device_name) {
-          p_alsa_device = std::make_unique<AlsaDeviceImpl>(alsa_dev_preplay_);
+          p_alsa_proxy = std::make_unique<AlsaProxyImpl>(alsa_dev_preplay_);
           alsa_dev_preplay_ = nullptr;  // transfer ownership
           printf("audio_chunk_callback: Using pre-opened ALSA device\n");
         }
       }
-      if (!p_alsa_device) {
+      if (!p_alsa_proxy) {
         auto open_result = snd_pcm_open(
               &alsa_dev_preplay_,
               requested_device_name.c_str(),
@@ -215,7 +215,7 @@ public:
             // Open the playback device
       std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
                 get_parameter("alsa_device_name").as_string(),
-                std::move(p_alsa_device)
+                std::move(p_alsa_proxy)
       );// TODO: move this open till later
       //auto alsa_open_result = alsa_sink->open(SND_PCM_STREAM_PLAYBACK);
       //if (alsa_open_result.has_value()) {
@@ -250,16 +250,16 @@ public:
 
     std::unique_ptr<SndFileSource> snd_file_source = std::make_unique<SndFileSource>(msg->path);
 
-        // Use pre-created ALSA device if possible
-    auto p_alsa_device = get_alsa_device(get_parameter("alsa_device_name").as_string());
-    if (!p_alsa_device) {
-      RCLCPP_ERROR(rcl_logger, "Failed to get ALSA device for playback");
+        // Use pre-created ALSA proxy if possible
+    auto p_alsa_proxy = get_alsa_proxy(get_parameter("alsa_device_name").as_string());
+    if (!p_alsa_proxy) {
+      RCLCPP_ERROR(rcl_logger, "Failed to get ALSA proxy for playback");
       return;
     }
 
     std::unique_ptr<AlsaSink> alsa_sink = std::make_unique<AlsaSink>(
             get_parameter("alsa_device_name").as_string(),
-            std::move(p_alsa_device)
+            std::move(p_alsa_proxy)
     );
 
     auto audio_stream = std::make_unique<AudioStream>(
@@ -278,18 +278,18 @@ public:
     RCLCPP_INFO(rcl_logger, "Enqueued file %s", msg->path.c_str());
   }
 
-  std::unique_ptr<AlsaDeviceImpl> get_alsa_device(std::string device_name)
+  std::unique_ptr<AlsaProxyImpl> get_alsa_proxy(std::string device_name)
   {
-    std::unique_ptr<AlsaDeviceImpl> alsa_device;
+    std::unique_ptr<AlsaProxyImpl> alsa_proxy;
     if (alsa_dev_preplay_) {
       const char * name = snd_pcm_name(alsa_dev_preplay_);
       if (name == device_name) {
-        alsa_device = std::make_unique<AlsaDeviceImpl>(alsa_dev_preplay_);
+        alsa_proxy = std::make_unique<AlsaProxyImpl>(alsa_dev_preplay_);
         alsa_dev_preplay_ = nullptr;  // transfer ownership
         printf("audio_chunk_callback: Using pre-opened ALSA device\n");
       }
     }
-    if (!alsa_device) {
+    if (!alsa_proxy) {
       snd_pcm_t * snd_alsa_device = nullptr;
       auto open_result = snd_pcm_open(
         &snd_alsa_device,
@@ -299,12 +299,12 @@ public:
       if (open_result < 0) {
         RCLCPP_WARN(rcl_logger, "Cannot pre-open ALSA device for playback: %s",
         snd_strerror(open_result));
-        alsa_device = std::make_unique<AlsaDeviceImpl>();
+        alsa_proxy = std::make_unique<AlsaProxyImpl>();
       } else {
-        alsa_device = std::make_unique<AlsaDeviceImpl>(snd_alsa_device);
+        alsa_proxy = std::make_unique<AlsaProxyImpl>(snd_alsa_device);
       }
     }
-    return alsa_device;
+    return alsa_proxy;
   }
 
 private:

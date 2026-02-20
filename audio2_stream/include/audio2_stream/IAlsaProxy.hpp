@@ -1,5 +1,5 @@
-#ifndef AUDIO2_STREAM_IALSADEVICE_HPP
-#define AUDIO2_STREAM_IALSADEVICE_HPP
+#ifndef AUDIO2_STREAM_IALSAPROXY_HPP
+#define AUDIO2_STREAM_IALSAPROXY_HPP
 
 #include <alsa/asoundlib.h>
 #include <optional>
@@ -8,14 +8,14 @@
 #include "audio2_stream/alsaops.hpp"
 
 /**
- * Interface for ALSA device operations.
+ * Interface for ALSA proxy operations.
  * This abstraction allows for mocking and testing of ALSA-dependent code
  * without requiring actual hardware devices.
  */
-class IAlsaDevice
+class IAlsaProxy
 {
 public:
-  virtual ~IAlsaDevice() = default;
+  virtual ~IAlsaProxy() = default;
 
     /**
      * Open an ALSA PCM device with specified parameters.
@@ -87,4 +87,4 @@ public:
   virtual snd_pcm_format_t get_format() const = 0;
 };
 
-#endif // AUDIO2_STREAM_IALSADEVICE_HPP
+#endif // AUDIO2_STREAM_IALSAPROXY_HPP

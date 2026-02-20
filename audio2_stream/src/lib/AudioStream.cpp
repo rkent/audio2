@@ -6,7 +6,7 @@
 #include <fstream>
 #include <cstdio>
 #include <audio2_stream/AudioStream.hpp>
-#include <audio2_stream/AlsaDeviceImpl.hpp>
+#include <audio2_stream/AlsaProxyImpl.hpp>
 #include "nlohmann/json.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
@@ -153,10 +153,10 @@ std::optional<std::string> AlsaTerminal::open(
   snd_pcm_stream_t direction,
   AudioStream * audio_stream)
 {
-    // Create default device implementation if none provided
+    // Create default proxy implementation if none provided
   printf("AlsaTerminal::open called\n");
-  if (!alsa_device_) {
-    alsa_device_ = std::make_unique<AlsaDeviceImpl>();
+  if (!alsa_proxy_) {
+    alsa_proxy_ = std::make_unique<AlsaProxyImpl>();
   }
 
   if (!audio_stream->parms_fixed()) {
@@ -185,12 +185,12 @@ std::optional<std::string> AlsaTerminal::open(
 
   AlsaSwParams sw_params;
 
-  auto result = alsa_device_->open(hw_params, sw_params, direction);
+  auto result = alsa_proxy_->open(hw_params, sw_params, direction);
   if (result.has_value()) {
     return result.value();
   }
-    // alsa_device_->open may change the format if original is not supported.
-  alsa_format_ = alsa_device_->get_format();
+    // alsa_proxy_->open may change the format if original is not supported.
+  alsa_format_ = alsa_proxy_->get_format();
   if (audio_stream->samplerate_ != static_cast<int>(hw_params.samplerate)) {
     char buffer[256];
     snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n",
@@ -204,8 +204,8 @@ std::optional<std::string> AlsaTerminal::open(
 void AlsaTerminal::close()
 {
   printf("AlsaTerminal::close called\n");
-  if (alsa_device_) {
-    alsa_device_->close();
+  if (alsa_proxy_) {
+    alsa_proxy_->close();
   }
   return;
 }
@@ -213,14 +213,14 @@ void AlsaTerminal::close()
 void AlsaSink::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
-  assert(alsa_device_);
+  assert(alsa_proxy_);
   printf("AlsaSink::run started\n");
   if (audio_stream->shutdown_flag_.load()) {
     printf("AlsaSink::run exiting immediately due to shutdown flag\n");
     return;
   }
   while (!audio_stream->shutdown_flag_.load()) {
-    std::string error_str = alsa_device_->get_error();
+    std::string error_str = alsa_proxy_->get_error();
     if (error_str.length() > 0) {
       printf("AlsaSink::run exiting due to ALSA error: %s\n", error_str.c_str());
       break;
@@ -273,7 +273,7 @@ void AlsaSink::run(AudioStream * audio_stream)
       int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
       if (false) {
                 // Output ALSA status for debugging
-        snd_pcm_t * alsa_dev = alsa_device_->get_handle();
+        snd_pcm_t * alsa_dev = alsa_proxy_->get_handle();
         if (alsa_dev) {
           snd_pcm_status_t * stat;
           snd_pcm_status_alloca(&stat);
@@ -283,7 +283,7 @@ void AlsaSink::run(AudioStream * audio_stream)
           snd_pcm_status_dump(stat, output);
         }
       }
-      int write_result = alsa_device_->write(
+      int write_result = alsa_proxy_->write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 audio_data.data(),
                 audio_stream->channels_, // channels
@@ -302,7 +302,7 @@ void AlsaSink::run(AudioStream * audio_stream)
   const int silence_size = silence_frames * audio_stream->channels_ * bytes_per_sample;
   std::vector<uint8_t> silence_buffer(silence_size, 0);
   while (silence_frames > 0) {
-    int written = alsa_device_->write(
+    int written = alsa_proxy_->write(
             silence_frames * audio_stream->channels_,
             silence_buffer.data(),
             audio_stream->channels_,
@@ -336,8 +336,8 @@ void AlsaSource::run(AudioStream * audio_stream)
   while (!audio_stream->shutdown_flag_.load()) {
     printf("AlsaSource::run loop started\n");
     audio_data.resize(bytes_per_chunk);
-    if (!alsa_device_->get_handle()) {
-      printf("AlsaSource::run no ALSA device handle\n");
+    if (!alsa_proxy_->get_handle()) {
+      printf("AlsaSource::run no ALSA proxy handle\n");
       break;
     }
     if (audio_stream->queue_.write_available() == 0) {
@@ -348,7 +348,7 @@ void AlsaSource::run(AudioStream * audio_stream)
       continue;
     }
     printf("AlsaSource: Attempting to read from ALSA device\n");
-    auto read_result = alsa_device_->read(
+    auto read_result = alsa_proxy_->read(
             audio_stream->queue_frames_ * audio_stream->channels_,
             audio_data.data(),
             audio_stream->channels_,

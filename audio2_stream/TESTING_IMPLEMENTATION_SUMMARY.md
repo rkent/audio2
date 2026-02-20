@@ -6,20 +6,20 @@ Successfully implemented a comprehensive testing framework for AudioStream.cpp w
 
 ### 1. Interface Abstraction Layer ✓
 
-Created ALSA device abstraction to enable testing without hardware:
+Created ALSA proxy abstraction to enable testing without hardware:
 
-- **IAlsaDevice.hpp**: Interface defining ALSA operations (open, close, read, write, get_handle, get_error, get_format)
-- **AlsaDeviceImpl.hpp/.cpp**: Real implementation wrapping actual ALSA hardware calls
+- **IAlsaProxy.hpp**: Interface defining ALSA operations (open, close, read, write, get_handle, get_error, get_format)
+- **AlsaProxyImpl.hpp/.cpp**: Real implementation wrapping actual ALSA hardware calls
 - Both files located in: `repos/audio2/audio2_stream/include/audio2_stream/` and `src/lib/`
 
 ### 2. Dependency Injection Refactoring ✓
 
 Modified AudioStream components to accept injected dependencies:
 
-- **AlsaTerminal**: Constructor now accepts `std::unique_ptr<IAlsaDevice>`
-- **AlsaSink**: Updated to use IAlsaDevice interface; defaults to AlsaDeviceImpl
-- **AlsaSource**: Updated to use IAlsaDevice interface; defaults to AlsaDeviceImpl
-- **AudioStream.hpp**: Added IAlsaDevice include
+- **AlsaTerminal**: Constructor now accepts `std::unique_ptr<IAlsaProxy>`
+- **AlsaSink**: Updated to use IAlsaProxy interface; defaults to AlsaProxyImpl
+- **AlsaSource**: Updated to use IAlsaProxy interface; defaults to AlsaProxyImpl
+- **AudioStream.hpp**: Added IAlsaProxy include
 - **AudioStream.cpp**: Updated to use injected device interface
 
 ### 3. Build System Configuration ✓
@@ -29,9 +29,9 @@ Updated build files for GTest/GMock support:
 - **package.xml**: Added test dependencies:
   - `ament_cmake_gtest`
   - `ament_cmake_gmock`
-  
-- **CMakeLists.txt**: 
-  - Added AlsaDeviceImpl.cpp to library sources
+
+- **CMakeLists.txt**:
+  - Added AlsaProxyImpl.cpp to library sources
   - Configured GTest and GMock
   - Added thread sanitizer flags for debug builds
   - Created two test targets:
@@ -42,8 +42,8 @@ Updated build files for GTest/GMock support:
 
 Created comprehensive unit tests:
 
-#### MockAlsaDevice.hpp
-- GMock-based mock implementation of IAlsaDevice
+#### MockAlsaProxy.hpp
+- GMock-based mock implementation of IAlsaProxy
 - Enables setting expectations on ALSA operations
 - Located in: `repos/audio2/audio2_stream/test/`
 
@@ -57,7 +57,7 @@ Tests for hardware-independent components:
 - Format conversion utilities
 - Concurrent queue access (thread safety)
 
-#### test_alsa_mocked.cpp  
+#### test_alsa_mocked.cpp
 Tests for ALSA operations using mocks:
 - AlsaSink open success/failure scenarios
 - AlsaSink audio data writing
@@ -112,7 +112,7 @@ class AlsaTerminal {
 ### After
 ```cpp
 class AlsaTerminal {
-    std::unique_ptr<IAlsaDevice> alsa_device_;  // Injected interface
+    std::unique_ptr<IAlsaProxy> alsa_proxy_;  // Injected interface
     // Operations through interface
 };
 ```
@@ -131,13 +131,13 @@ This enables:
 - **Mocked ALSA tests**: 4 (test_alsa_mocked.cpp)
 
 ### Coverage Areas
-✓ Queue operations and thread safety  
-✓ Format conversions  
-✓ File I/O (SndFileSource)  
-✓ ALSA device operations (mocked)  
-✓ Error handling  
-✓ Shutdown synchronization  
-✓ Multi-threaded producer/consumer patterns  
+✓ Queue operations and thread safety
+✓ Format conversions
+✓ File I/O (SndFileSource)
+✓ ALSA device operations (mocked)
+✓ Error handling
+✓ Shutdown synchronization
+✓ Multi-threaded producer/consumer patterns
 
 ## Next Steps (Optional Future Work)
 
@@ -173,10 +173,10 @@ See TEST_README.md for detailed instructions on:
 ## Files Created/Modified
 
 ### New Files
-- `include/audio2_stream/IAlsaDevice.hpp`
-- `include/audio2_stream/AlsaDeviceImpl.hpp`
-- `src/lib/AlsaDeviceImpl.cpp`
-- `test/MockAlsaDevice.hpp`
+- `include/audio2_stream/IAlsaProxy.hpp`
+- `include/audio2_stream/AlsaProxyImpl.hpp`
+- `src/lib/AlsaProxyImpl.cpp`
+- `test/MockAlsaProxy.hpp`
 - `test/test_audio_stream.cpp`
 - `test/test_alsa_mocked.cpp`
 - `TEST_README.md`

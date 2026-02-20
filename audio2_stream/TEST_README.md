@@ -10,17 +10,17 @@ The audio2_stream package now includes comprehensive unit tests using GTest and 
 
 ### Dependency Injection for ALSA Operations
 
-The ALSA hardware operations have been abstracted behind the `IAlsaDevice` interface:
+The ALSA hardware operations have been abstracted behind the `IAlsaProxy` interface:
 
-- **IAlsaDevice**: Interface defining ALSA device operations (open, close, read, write)
-- **AlsaDeviceImpl**: Real implementation that wraps actual ALSA hardware
-- **MockAlsaDevice**: GMock-based mock for unit testing
+- **IAlsaProxy**: Interface defining ALSA proxy operations (open, close, read, write)
+- **AlsaProxyImpl**: Real implementation that wraps actual ALSA hardware
+- **MockAlsaProxy**: GMock-based mock for unit testing
 
 ### Refactored Classes
 
-- **AlsaTerminal**: Now accepts `std::unique_ptr<IAlsaDevice>` in constructor
-- **AlsaSink**: Accepts optional IAlsaDevice; creates AlsaDeviceImpl if none provided
-- **AlsaSource**: Accepts optional IAlsaDevice; creates AlsaDeviceImpl if none provided
+- **AlsaTerminal**: Now accepts `std::unique_ptr<IAlsaProxy>` in constructor
+- **AlsaSink**: Accepts optional IAlsaProxy; creates AlsaProxyImpl if none provided
+- **AlsaSource**: Accepts optional IAlsaProxy; creates AlsaProxyImpl if none provided
 
 ## Test Structure
 
@@ -28,7 +28,7 @@ The ALSA hardware operations have been abstracted behind the `IAlsaDevice` inter
 
 ```
 repos/audio2/audio2_stream/test/
-├── MockAlsaDevice.hpp           # GMock implementation of IAlsaDevice
+├── MockAlsaProxy.hpp           # GMock implementation of IAlsaProxy
 ├── test_audio_stream.cpp        # Unit tests for AudioStream queue and format conversion
 └── test_alsa_mocked.cpp         # Unit tests for ALSA operations with mocking
 ```
@@ -38,7 +38,7 @@ repos/audio2/audio2_stream/test/
 #### test_audio_stream.cpp
 - AudioStream construction and destruction
 - Queue push/pop operations
-- Queue full/empty behavior  
+- Queue full/empty behavior
 - Shutdown mechanism
 - SndFileSource file opening and reading
 - Format conversion functions
@@ -100,7 +100,7 @@ colcon test --packages-select audio2_stream
 
 Thread sanitizer will detect:
 - Data races
-- Deadlocks  
+- Deadlocks
 - Use of uninitialized memory in threaded contexts
 - Improper synchronization
 
@@ -115,10 +115,10 @@ TEST_F(AudioStreamTest, YourTestName)
 {
     // Arrange
     auto stream = std::make_unique<AudioStream>(...);
-    
+
     // Act
     // ... perform operations
-    
+
     // Assert
     EXPECT_EQ(expected, actual);
 }
@@ -135,10 +135,10 @@ TEST_F(AlsaMockedTest, YourMockedTest)
     auto mock_device = std::make_unique<MockAlsaDevice>();
     EXPECT_CALL(*mock_device, write(_, _, _, _, _))
         .WillOnce(Return(samples));
-    
+
     // Create AlsaSink/AlsaSource with mock
     auto sink = std::make_unique<AlsaSink>(..., std::move(mock_device));
-    
+
     // Test behavior
     // ...
 }

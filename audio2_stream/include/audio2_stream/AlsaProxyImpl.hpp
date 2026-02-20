@@ -1,20 +1,20 @@
-#ifndef AUDIO2_STREAM_ALSADEVICEIMPL_HPP
-#define AUDIO2_STREAM_ALSADEVICEIMPL_HPP
+#ifndef AUDIO2_STREAM_ALSAPROXYIMPL_HPP
+#define AUDIO2_STREAM_ALSAPROXYIMPL_HPP
 
-#include "audio2_stream/IAlsaDevice.hpp"
+#include "audio2_stream/IAlsaProxy.hpp"
 #include <memory>
 
 /**
- * Real implementation of IAlsaDevice that wraps actual ALSA hardware operations.
+ * Real implementation of IAlsaProxy that wraps actual ALSA hardware operations.
  * This is used in production code for actual audio I/O.
  */
-class AlsaDeviceImpl : public IAlsaDevice
+class AlsaProxyImpl : public IAlsaProxy
 {
 public:
-  AlsaDeviceImpl(snd_pcm_t * alsa_dev = nullptr)
+  AlsaProxyImpl(snd_pcm_t * alsa_dev = nullptr)
   : alsa_dev_(alsa_dev), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
 
-  virtual ~AlsaDeviceImpl()
+  virtual ~AlsaProxyImpl()
   {
     close();
   }
@@ -64,4 +64,4 @@ private:
   snd_pcm_format_t format_;
 };
 
-#endif // AUDIO2_STREAM_ALSADEVICEIMPL_HPP
+#endif // AUDIO2_STREAM_ALSAPROXYIMPL_HPP

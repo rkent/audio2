@@ -3,7 +3,7 @@
 
 #include "audio2_stream/config.hpp"
 #include "audio2_stream/alsaops.hpp"
-#include "audio2_stream/IAlsaDevice.hpp"
+#include "audio2_stream/IAlsaProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
@@ -168,12 +168,12 @@ class AlsaTerminal : public AudioTerminal
 public:
   AlsaTerminal(
     std::string alsa_device_name,
-    std::unique_ptr<IAlsaDevice> alsa_device = nullptr
+    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
   )
   : AudioTerminal(),
     alsa_device_name_(alsa_device_name),
     alsa_format_(ALSA_FORMAT),
-    alsa_device_(std::move(alsa_device)),
+    alsa_proxy_(std::move(alsa_proxy)),
     are_parms_fixed_(false)
   {}
 
@@ -181,7 +181,7 @@ public:
 
   std::string alsa_device_name_;
   snd_pcm_format_t alsa_format_;
-  std::unique_ptr<IAlsaDevice> alsa_device_;
+  std::unique_ptr<IAlsaProxy> alsa_proxy_;
   bool are_parms_fixed_;
 
   void close();
@@ -192,9 +192,9 @@ class AlsaSink : public AlsaTerminal
 public:
   AlsaSink(
     std::string alsa_device_name,
-    std::unique_ptr<IAlsaDevice> alsa_device = nullptr
+    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
   )
-  :AlsaTerminal(alsa_device_name, std::move(alsa_device))
+  :AlsaTerminal(alsa_device_name, std::move(alsa_proxy))
   {}
 
   void run(AudioStream * audio_stream) override;
@@ -205,9 +205,9 @@ class AlsaSource : public AlsaTerminal
 public:
   AlsaSource(
     std::string alsa_device_name,
-    std::unique_ptr<IAlsaDevice> alsa_device = nullptr
+    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
   )
-  :AlsaTerminal(alsa_device_name, std::move(alsa_device))
+  :AlsaTerminal(alsa_device_name, std::move(alsa_proxy))
   {}
 
   ~AlsaSource()

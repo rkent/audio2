@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "audio2_stream/AudioStream.hpp"
-#include "audio2_stream/IAlsaDevice.hpp"
-#include "audio2_stream/AlsaDeviceImpl.hpp"
+#include "audio2_stream/IAlsaProxy.hpp"
+#include "audio2_stream/AlsaProxyImpl.hpp"
 #include <memory>
 #include <vector>
 #include <thread>
@@ -36,9 +36,9 @@ protected:
  */
 TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
 {
-    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
+    auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
     // TODO: need to set sink channel, samplerate, and format.
-    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_device));
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_proxy));
     auto psink = sink.get();  // Store raw pointer for later use in test
 
     // Create a simple audio stream with test data
@@ -65,10 +65,10 @@ TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
  */
 TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
 {
-    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
+    auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
 
     // Use a non-existent device name
-    auto sink = std::make_unique<AlsaSink>("nonexistent_alsa_device_12345", std::move(alsa_device));
+    auto sink = std::make_unique<AlsaSink>("nonexistent_alsa_device_12345", std::move(alsa_proxy));
     auto psink = sink.get();  // Store raw pointer for later use in test
         // Create a simple audio stream with test data
     auto stream = std::make_unique<AudioStream>(
@@ -93,8 +93,8 @@ TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
  */
 TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 {
-    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
-    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_device));
+    auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_proxy));
     auto psink = sink.get();  // Store raw pointer for later use in test
 
     // Create a simple audio stream with test data
@@ -132,8 +132,8 @@ TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
  */
 TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 {
-    auto alsa_device = std::make_unique<AlsaDeviceImpl>();
-    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(alsa_device));
+    auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
+    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(alsa_proxy));
     auto psource = source.get();  // Store raw pointer for later use in test
 
     // Create a simple audio stream
@@ -168,13 +168,13 @@ TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 TEST_F(AlsaNullTest, SourceToSinkComplete)
 {
     // Create source (capture from 'null')
-    auto source_device = std::make_unique<AlsaDeviceImpl>();
-    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(source_device));
+    auto source_proxy = std::make_unique<AlsaProxyImpl>();
+    auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(source_proxy));
     auto psource = source.get();  // Store raw pointer for later use in test
 
     // Create sink (playback to 'null')
-    auto sink_device = std::make_unique<AlsaDeviceImpl>();
-    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(sink_device));
+    auto sink_proxy = std::make_unique<AlsaProxyImpl>();
+    auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(sink_proxy));
     auto psink = sink.get();  // Store raw pointer for later use in test
 
     // Create stream with both source and sink

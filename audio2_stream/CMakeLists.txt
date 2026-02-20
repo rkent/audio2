@@ -33,7 +33,7 @@ add_library(
     src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
-    src/lib/AlsaDeviceImpl.cpp
+    src/lib/AlsaProxyImpl.cpp
 )
 
 #set(SOURCE_FILES

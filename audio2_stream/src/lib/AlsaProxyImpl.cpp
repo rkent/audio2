@@ -1,15 +1,15 @@
-#include "audio2_stream/AlsaDeviceImpl.hpp"
+#include "audio2_stream/AlsaProxyImpl.hpp"
 #include "audio2_stream/alsaops.hpp"
 #include <cstdio>
 
-std::optional<std::string> AlsaDeviceImpl::open(
+std::optional<std::string> AlsaProxyImpl::open(
   AlsaHwParams & hw_vals,
   AlsaSwParams & sw_vals,
   snd_pcm_stream_t direction)
 {
-  printf("AlsaDeviceImpl::open called at %s\n", format_timestamp().c_str());
+  printf("AlsaProxyImpl::open called at %s\n", format_timestamp().c_str());
   printf(
-    "AlsaDeviceImpl::open called with hw_params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
+    "AlsaProxyImpl::open called with hw_params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
            hw_vals.device,
            hw_vals.channels,
            hw_vals.samplerate,
@@ -21,7 +21,7 @@ std::optional<std::string> AlsaDeviceImpl::open(
 
     // Open the ALSA device
   auto result = alsa_open(hw_vals, sw_vals, alsa_dev_);
-  printf("AlsaDeviceImpl::open completed at %s\n", format_timestamp().c_str());
+  printf("AlsaProxyImpl::open completed at %s\n", format_timestamp().c_str());
 
   if (result.has_value()) {
     error_str_ = result.value();
@@ -34,9 +34,9 @@ std::optional<std::string> AlsaDeviceImpl::open(
   return std::nullopt;
 }
 
-void AlsaDeviceImpl::close()
+void AlsaProxyImpl::close()
 {
-  printf("AlsaDeviceImpl::close called\n");
+  printf("AlsaProxyImpl::close called\n");
   if (alsa_dev_) {
     snd_pcm_drain(alsa_dev_);
     snd_pcm_close(alsa_dev_);
@@ -44,7 +44,7 @@ void AlsaDeviceImpl::close()
   }
 }
 
-int AlsaDeviceImpl::write(
+int AlsaProxyImpl::write(
   int samples,
   void * data,
   int channels,
@@ -64,7 +64,7 @@ int AlsaDeviceImpl::write(
   return result;
 }
 
-int AlsaDeviceImpl::read(
+int AlsaProxyImpl::read(
   int samples,
   void * data,
   int channels,
@@ -81,6 +81,6 @@ int AlsaDeviceImpl::read(
   if (result < 0) {
     error_str_ = "ALSA read failed";
   }
-  printf("AlsaDeviceImpl::read requested %d samples, got %d samples\n", samples, result);
+  printf("AlsaProxyImpl::read requested %d samples, got %d samples\n", samples, result);
   return result;
 }

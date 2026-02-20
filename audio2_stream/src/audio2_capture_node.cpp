@@ -115,7 +115,7 @@ public:
             channels, samplerate, audio_topic.c_str());
 
         // Create the AlsaSource for capturing audio
-        // FIXME: need actual IAlsaDevice implementation for capture to set format and handle capture-specific operations
+        // FIXME: need actual IAlsaProxy implementation for capture to set format and handle capture-specific operations
     std::unique_ptr<AlsaSource> alsa_source = std::make_unique<AlsaSource>(
             get_parameter("alsa_device_name").as_string(),
             nullptr
