@@ -144,22 +144,22 @@ TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
         100  // Small queue frames for testing
     );
 
-    // Start the stream
-    stream->start();
-
     auto result = psource->open(SND_PCM_STREAM_CAPTURE, stream.get());
     ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
     (result.has_value() ? *result : "");
 
+    // Start the stream
+    stream->start();
+
     // Let it run briefly - 'null' device returns silence
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Shutdown
-    stream->shutdown();
 
     // Verify that data was pushed to the queue from the 'null' device
     EXPECT_GT(stream->queue_.read_available(),
     0u) << "Queue should have data from 'null' device reads";
+
+    // Shutdown
+    stream->shutdown();
 }
 
 /**

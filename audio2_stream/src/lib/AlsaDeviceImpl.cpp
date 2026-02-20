@@ -81,5 +81,6 @@ int AlsaDeviceImpl::read(
   if (result < 0) {
     error_str_ = "ALSA read failed";
   }
+  printf("AlsaDeviceImpl::read requested %d samples, got %d samples\n", samples, result);
   return result;
 }

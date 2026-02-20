@@ -320,6 +320,7 @@ void AlsaSink::run(AudioStream * audio_stream)
 
   close();
   printf("AlsaSink::run final exiting\n");
+  audio_stream->shutdown();
   return;
 }
 
@@ -333,8 +334,10 @@ void AlsaSource::run(AudioStream * audio_stream)
     sample_size_from_sfg_format(SFG_RW_FORMAT);
 
   while (!audio_stream->shutdown_flag_.load()) {
+    printf("AlsaSource::run loop started\n");
     audio_data.resize(bytes_per_chunk);
     if (!alsa_device_->get_handle()) {
+      printf("AlsaSource::run no ALSA device handle\n");
       break;
     }
     if (audio_stream->queue_.write_available() == 0) {
@@ -344,6 +347,7 @@ void AlsaSource::run(AudioStream * audio_stream)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
+    printf("AlsaSource: Attempting to read from ALSA device\n");
     auto read_result = alsa_device_->read(
             audio_stream->queue_frames_ * audio_stream->channels_,
             audio_data.data(),
@@ -354,6 +358,8 @@ void AlsaSource::run(AudioStream * audio_stream)
       printf("Error reading from ALSA device: %s\n", snd_strerror(read_result));
             // TODO: handle error
     }
+    printf("AlsaSource: Read %d samples from ALSA device at %s\n", read_result,
+      format_timestamp().c_str());
     audio_data.resize(read_result * sample_size_from_sfg_format(SFG_RW_FORMAT));
     if (!audio_stream->queue_.push(audio_data)) {
             // We should not reach here since we checked write_available above
@@ -1134,5 +1140,4 @@ void TtsSource::run(AudioStream * audio_stream)
     }
   } while (false);
   RCLCPP_INFO(rcl_logger, "TtsSource::run completed at %s\n", format_timestamp().c_str());
-  audio_stream->shutdown();
 }
