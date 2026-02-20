@@ -77,40 +77,15 @@ std::set<int> AudioStream::combine_channels()
   return intersection;
 }
 
-std::set<SfgRwFormat> AudioStream::combine_formats()
-{
-  if (!sink_ && source_) {
-    return source_->config_ranges_->format_values;
-  }
-  if (!source_ && sink_) {
-    return sink_->config_ranges_->format_values;
-  }
-  if (!sink_ && !source_) {
-    printf("AudioStream::combine_formats returning empty set because source and sink is missing\n");
-    return {};
-  }
-  std::set<SfgRwFormat> intersection;
-  std::set_intersection(
-    sink_->config_ranges_->format_values.begin(), sink_->config_ranges_->format_values.end(),
-    source_->config_ranges_->format_values.begin(), source_->config_ranges_->format_values.end(),
-    std::inserter(intersection, intersection.begin())
-  );
-  return intersection;
-}
-
 std::optional<std::string> AudioStream::merge_parms()
 {
   auto samplerates = combine_samplerates();
   auto channels = combine_channels();
-  auto formats = combine_formats();
   if (samplerates.empty()) {
     return std::string("No compatible samplerate found between source and sink");
   }
   if (channels.empty()) {
     return std::string("No compatible channel count found between source and sink");
-  }
-  if (formats.empty()) {
-    return std::string("No compatible format found between source and sink");
   }
   return std::nullopt;
 }
@@ -122,11 +97,17 @@ bool AudioStream::parms_fixed()
 
 std::optional<std::string> AudioStream::fix_parms()
 {
+  if (source_ && !source_->are_parms_bound_) {
+    return std::string("Source parameters not bound");
+  }
+  if (sink_ && !sink_->are_parms_bound_) {
+    return std::string("Sink parameters not bound");
+  }
   auto samplerates = combine_samplerates();
+  auto channels = combine_channels();
   if (samplerates.empty()) {
     return std::string("No compatible samplerate found between source and sink");
   }
-  auto channels = combine_channels();
   if (channels.empty()) {
     return std::string("No compatible channel count found between source and sink");
   }
@@ -219,7 +200,8 @@ void AlsaSink::run(AudioStream * audio_stream)
     printf("AlsaSink::run exiting immediately due to shutdown flag\n");
     return;
   }
-  while (!audio_stream->shutdown_flag_.load()) {
+  bool done = false;
+  while (!done &&!audio_stream->shutdown_flag_.load()) {
     std::string error_str = alsa_proxy_->get_error();
     if (error_str.length() > 0) {
       printf("AlsaSink::run exiting due to ALSA error: %s\n", error_str.c_str());
@@ -263,11 +245,16 @@ void AlsaSink::run(AudioStream * audio_stream)
     }
 
         // empty the queue
-    do{
+    do {
       printf("AlsaSink: popping audio data from queue ra: %zu wa: %zu \n",
         audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
       auto pop_result = audio_stream->queue_.pop(audio_data);
       if (!pop_result) {
+        break;
+      }
+      if (audio_data.empty()) {
+          // This is the signal to close
+        done = true;
         break;
       }
       int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
@@ -390,6 +377,7 @@ std::optional<std::string> SndFileSource::open()
   int sndfile_format = sndfileh_.format();
   config_ranges_->samplerate_values = {sf_samplerate};
   config_ranges_->channel_values = {sf_channels};
+  are_parms_bound_ = true;
       // TODO: no need to limit the format here.
   //config_ranges_->format_values = {sfg_format_from_sndfile_format(sndfile_format)};
   printf("Opened file %s: channels=%d, samplerate=%d, sndfile_format=0x%X\n",
@@ -687,6 +675,7 @@ void AudioStream::process_fileh(SndfileHandle & fileh)
   if (source_) {
     source_->config_ranges_->samplerate_values = {fileh.samplerate()};
     source_->config_ranges_->channel_values = {fileh.channels()};
+    source_->are_parms_bound_ = true;
   }
   if (!parms_fixed()) {
     auto fix_result = fix_parms();
@@ -765,6 +754,15 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
   auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
       queue_frames_ / (samplerate_)));
 
+  if (!parms_fixed()) {
+    auto fix_result = fix_parms();
+    if (fix_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for file source: %s",
+        fix_result->c_str());
+      return;
+    }
+  }
+
   auto w_format = sink_->rw_format_;
   std::vector<uint8_t> w_buffer;
 
@@ -840,6 +838,10 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
     next_time += duration;
     std::this_thread::sleep_until(next_time);
   }
+  // push to queue one last time to signal end of stream
+  std::vector<uint8_t> empty_buffer;
+  // todo: what if the queue is full?
+  queue_.push(empty_buffer);
 }
 
 // Callback function for CURL to write response data
@@ -986,6 +988,7 @@ std::optional<std::string> TtsSource::open()
   headers_ = curl_slist_append(headers_, "Content-Type: application/json");
   config_ranges_->samplerate_values = {samplerate};
   config_ranges_->channel_values = {channels};
+  are_parms_bound_ = true;
   return std::nullopt;
 }
 
@@ -1139,5 +1142,12 @@ void TtsSource::run(AudioStream * audio_stream)
       audio_stream->process_fileh(vio_handle.fileh);
     }
   } while (false);
+      // push to queue one last time to signal end of stream
+  std::vector<uint8_t> empty_buffer;
+      // todo: what if the queue is full?
+  audio_stream->queue_.push(empty_buffer);
+  audio_stream->data_available_.store(true);
+  audio_stream->data_available_.notify_one();
+
   RCLCPP_INFO(rcl_logger, "TtsSource::run completed at %s\n", format_timestamp().c_str());
 }

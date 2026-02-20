@@ -126,7 +126,6 @@ public:
   void process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_format);
   std::set<int> combine_samplerates();
   std::set<int> combine_channels();
-  std::set<SfgRwFormat> combine_formats();
   std::optional<std::string> merge_parms();
   std::optional<std::string> fix_parms();
   bool parms_fixed();
@@ -138,13 +137,15 @@ class AudioTerminal
 public:
   AudioTerminal()
   :rw_format_(SFG_FLOAT),
-    config_ranges_(std::make_unique<AudioConfigRanges>())
+    config_ranges_(std::make_unique<AudioConfigRanges>()),
+    are_parms_bound_(false)
   {}
 
   virtual ~AudioTerminal() = default;
 
   SfgRwFormat rw_format_;
   std::unique_ptr<AudioConfigRanges> config_ranges_;
+  bool are_parms_bound_;  // Are the config_ranges_ set?
 
   virtual void run(AudioStream * audio_stream) = 0;
 };
@@ -175,7 +176,10 @@ public:
     alsa_format_(ALSA_FORMAT),
     alsa_proxy_(std::move(alsa_proxy)),
     are_parms_fixed_(false)
-  {}
+  {
+     // We assume that ALSA is configured to allow any samplerate or channel.
+    are_parms_bound_ = true;
+  }
 
   std::optional<std::string> open(snd_pcm_stream_t direction, AudioStream * audio_stream);
 
@@ -253,7 +257,9 @@ class MessageSource : public AudioTerminal
 public:
   MessageSource(std::string topic)
   :AudioTerminal(), topic_(topic)
-  {}
+  {
+    printf("MessageSource::MessageSource created for topic %s\n", topic.c_str());
+  }
 
   ~MessageSource()
   {
