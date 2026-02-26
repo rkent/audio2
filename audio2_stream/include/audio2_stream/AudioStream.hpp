@@ -15,6 +15,7 @@
 #include <set>
 
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
+#include "nlohmann/json.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "unique_identifier_msgs/msg/uuid.hpp"
 
@@ -33,6 +34,7 @@ inline unique_identifier_msgs::msg::UUID generate_uuid()
 typedef enum
 {
   TTS_CURL,
+  TTS_TEMPLATE,
   TTS_PROGRAM_WAV,
   TTS_PROGRAM_RAW
 } TtsMethod;
@@ -284,14 +286,14 @@ public:
     const std::string & text,
     const std::string & voice,
     const std::string & model,
-    const std::string & format
+    const std::string & tts_format
   )
   : AudioTerminal(),
     name_(name),
     text_(text),
     voice_(voice),
     model_(model),
-    tts_format_(format)
+    tts_format_(tts_format)
   {}
 
   virtual ~TtsSource()
@@ -301,6 +303,7 @@ public:
 
   void run(AudioStream * audio_stream) override;
   std::optional<std::string> fetch_tts_curl(std::vector<uint8_t> & audio_data);
+    std::optional<std::string> fetch_tts_template(std::vector<uint8_t> & audio_data);
   std::optional<std::string> fetch_tts_program(std::vector<uint8_t> & audio_data);
   std::optional<std::string> open();
 
@@ -314,6 +317,8 @@ protected:
   std::string json_str_;
   std::string url_;
   TtsMethod tts_method_;
+  nlohmann::json template_rendered_json_;
+
 
 };
 

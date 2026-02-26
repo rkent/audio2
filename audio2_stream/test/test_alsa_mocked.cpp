@@ -7,6 +7,9 @@
 #include <thread>
 #include <chrono>
 
+// TODO: SSometimes this test hangs - need to investigate why. Maybe related to thread sanitizer?
+// Occurs in  [ RUN      ] AlsaNullTest.SourceToSinkComplete with a timeout after 60 seconds.
+// Generates lots of output. See log/latest_test/audio2_stream/stdout_stderr.log for details.
 /**
  * Test fixture for ALSA-related tests using the real ALSA 'null' device.
  * The 'null' device is perfect for testing - it accepts all writes and returns silence on reads.

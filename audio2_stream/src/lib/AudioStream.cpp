@@ -5,9 +5,10 @@
 #include <iterator>
 #include <fstream>
 #include <cstdio>
-#include <audio2_stream/AudioStream.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <audio2_stream/AlsaProxyImpl.hpp>
-#include "nlohmann/json.hpp"
+#include <audio2_stream/AudioStream.hpp>
+#include <inja/inja.hpp>
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
@@ -893,8 +894,26 @@ static std::vector<std::string> split_string(const std::string & str, char delim
 std::optional<std::string> TtsSource::open()
 {
   RCLCPP_INFO(rcl_logger, "TTS source opening");
+  inja::Environment env;
+  env.add_callback("env", 1, [](inja::Arguments & args) {
+    const char * var_name = args.at(0)->get<std::string>().c_str();
+    const char * var_value = std::getenv(var_name);
+    return std::string(var_value ? var_value : "");
+  });
 
   nlohmann::json json_payload;
+  nlohmann::json vars_json;
+  if (!model_.empty()) {
+    vars_json["model"] = model_;
+  }
+  if (!tts_format_.empty()) {
+    vars_json["format"] = tts_format_;
+  }
+  if (!voice_.empty()) {
+    vars_json["voice"] = voice_;
+  }
+  vars_json["text"] = text_;
+
   if (name_.empty()) {
     name_ = "espeak";
   }
@@ -920,31 +939,25 @@ std::optional<std::string> TtsSource::open()
 
   } else if (name_ == "openai") {
     printf("TtsSource::open using OpenAI TTS at %s\n", format_timestamp().c_str());
-    tts_method_ = TtsMethod::TTS_CURL;
-    const char * api_key_cstr = std::getenv("OPENAI_API_KEY");
-    if (!api_key_cstr || strlen(api_key_cstr) == 0) {
-      return std::string("OPENAI_API_KEY environment variable is not set");
+    inja::Template temp = env.parse_template(
+      ament_index_cpp::get_package_share_directory("audio2_stream") +
+      "/templates/tts/openai.json");
+    printf("Rendering template with text: %s, voice: %s, model: %s, format: %s\n", text_.c_str(),
+      voice_.c_str(), model_.c_str(), tts_format_.c_str());
+    std::string rendered = env.render(temp, vars_json);
+
+    tts_method_ = TtsMethod::TTS_TEMPLATE;
+
+    template_rendered_json_ = nlohmann::json::parse(rendered);
+
+    // Tests
+    if (!template_rendered_json_["url"].is_string()) {
+      return std::string("Template rendering failed: url is not a string");
+    } else if (!template_rendered_json_["headers"].is_array()) {
+      return std::string("Template rendering failed: headers is not an array");
+    } else if (!template_rendered_json_["body"].is_object()) {
+      return std::string("Template rendering failed: body is not an object");
     }
-    // samplerate = 24000;
-    url_ = "https://api.openai.com/v1/audio/speech";
-      // Defaults
-    if (model_.empty()) {
-      model_ = "gpt-4o-mini-tts";
-    }
-    if (voice_.empty()) {
-      voice_ = "coral";
-    }
-    if (tts_format_.empty()) {
-      tts_format_ = "wav";
-    }
-    // Headers
-    std::string auth_header = "Authorization: Bearer " + std::string(api_key_cstr);
-    headers_ = curl_slist_append(headers_, auth_header.c_str());
-    // Payload
-    json_payload["model"] = model_;
-    json_payload["input"] = text_;
-    json_payload["voice"] = voice_;
-    json_payload["format"] = tts_format_;
   } else if (name_ == "elevenlabs") {
     printf("TtsSource::open using ElevenLabs TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_CURL;
@@ -1091,6 +1104,63 @@ std::optional<std::string> TtsSource::fetch_tts_curl(std::vector<uint8_t> & audi
   return std::nullopt;
 }
 
+std::optional<std::string> TtsSource::fetch_tts_template(std::vector<uint8_t> & audio_data)
+{
+  printf("TtsSource::fetch_tts_template called at %s\n", format_timestamp().c_str());
+
+  CURL * curl = curl_easy_init();
+  if (!curl) {
+    return std::string("Failed to initialize CURL");
+  }
+
+  // Set CURL options
+  std::string template_url = template_rendered_json_["url"].get<std::string>();
+  curl_easy_setopt(curl, CURLOPT_URL, template_url.c_str());
+
+  struct curl_slist * headers = nullptr;
+  for (const auto & header : template_rendered_json_["headers"]) {
+    std::string header_str = header.get<std::string>();
+    headers = curl_slist_append(headers, header_str.c_str());
+  }
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+  std::string template_body = template_rendered_json_["body"].dump();
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, template_body.c_str());
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+  // Set up response buffer
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, static_cast<void *>(&audio_data));
+
+  // Perform request
+  printf("TtsSource: Sending TTS request to %s at %s\n", name_.c_str(), format_timestamp().c_str());
+  CURLcode res = curl_easy_perform(curl);
+  printf("TtsSource: Received TTS response from %s at %s\n", name_.c_str(),
+    format_timestamp().c_str());
+  curl_slist_free_all(headers);
+
+  if (res != CURLE_OK) {
+    std::string error_msg = std::string("CURL error: ") + curl_easy_strerror(res);
+    curl_easy_cleanup(curl);
+    return error_msg;
+  }
+
+  // Check HTTP response code
+  long http_code = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+  if (http_code != 200) {
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "HTTP error code: %ld", http_code);
+    curl_easy_cleanup(curl);
+    return std::string(buffer);
+  }
+
+  curl_easy_cleanup(curl);
+  return std::nullopt;
+}
+
 void TtsSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
@@ -1120,7 +1190,14 @@ void TtsSource::run(AudioStream * audio_stream)
           fetch_result.value().c_str());
         break;
       }
-    } else {
+    } else if (tts_method_ == TtsMethod::TTS_TEMPLATE) {
+      auto fetch_result = fetch_tts_template(audio_data);
+      if (fetch_result.has_value()) {
+        RCLCPP_ERROR(rcl_logger, "TtsSource: Error fetching TTS audio: %s\n",
+          fetch_result.value().c_str());
+        break;
+      }
+    }  else {
       RCLCPP_ERROR(rcl_logger, "TtsSource: Unsupported TTS method\n");
       break;
     }

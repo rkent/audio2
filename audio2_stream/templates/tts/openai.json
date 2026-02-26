@@ -1,0 +1,11 @@
+{  "headers": [
+    "Authorization: Bearer {{ env("OPENAI_API_KEY") }}"
+    ],
+    "body": {
+        "model":  "{{ default(model, "gpt-4o-mini-tts") }}",
+        "input":  "{{ text }}",
+        "voice":  "{{ default(voice, "coral") }}",
+        "format": "{{ default(format, "wav") }}"
+    },
+    "url": "https://api.openai.com/v1/audio/speech"
+}

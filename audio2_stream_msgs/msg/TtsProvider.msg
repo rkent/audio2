@@ -2,5 +2,4 @@
 string name
 string model
 string voice
-string authorization
 string format
