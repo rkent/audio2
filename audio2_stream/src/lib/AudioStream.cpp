@@ -896,7 +896,8 @@ std::optional<std::string> TtsSource::open()
   RCLCPP_INFO(rcl_logger, "TTS source opening");
   inja::Environment env;
   env.add_callback("env", 1, [](inja::Arguments & args) {
-    const char * var_name = args.at(0)->get<std::string>().c_str();
+    std::string var_name_str = args.at(0)->get<std::string>();
+    const char * var_name = var_name_str.c_str();
     const char * var_value = std::getenv(var_name);
     return std::string(var_value ? var_value : "");
   });
@@ -960,36 +961,26 @@ std::optional<std::string> TtsSource::open()
     }
   } else if (name_ == "elevenlabs") {
     printf("TtsSource::open using ElevenLabs TTS at %s\n", format_timestamp().c_str());
-    tts_method_ = TtsMethod::TTS_CURL;
-    const char * api_key_cstr = std::getenv("ELEVENLABS_API_KEY");
-    if (!api_key_cstr || strlen(api_key_cstr) == 0) {
-      return std::string("ELEVENLABS_API_KEY environment variable is not set");
+    // template
+    tts_method_ = TtsMethod::TTS_TEMPLATE;
+    inja::Template temp = env.parse_template(
+      ament_index_cpp::get_package_share_directory("audio2_stream") +
+      "/templates/tts/elevenlabs.json");
+    printf("Rendering template with text: %s, voice: %s, model: %s, format: %s\n", text_.c_str(),
+      voice_.c_str(), model_.c_str(), tts_format_.c_str());
+    std::string rendered = env.render(temp, vars_json);
+    printf("Rendered template: %s\n", rendered.c_str());
+
+    template_rendered_json_ = nlohmann::json::parse(rendered);
+
+    // Tests
+    if (!template_rendered_json_["url"].is_string()) {
+      return std::string("Template rendering failed: url is not a string");
+    } else if (!template_rendered_json_["headers"].is_array()) {
+      return std::string("Template rendering failed: headers is not an array");
+    } else if (!template_rendered_json_["body"].is_object()) {
+      return std::string("Template rendering failed: body is not an object");
     }
-      // Defaults
-    if (model_.empty()) {
-      model_ = "eleven_flash_v2_5";
-    }
-    if (voice_.empty()) {
-      voice_ = "JBFqnCBsd6RMkjVDRZzb";
-    }
-    if (tts_format_.empty()) {
-      tts_format_ = "mp3_44100_128";
-    }
-    url_ = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_ + "?output_format=" +
-      tts_format_;
-    //auto rate_split = split_string(tts_format_, '_');
-    //if (rate_split.size() < 2) {
-    //  return std::string("Invalid format string for ElevenLabs TTS: ") + tts_format_;
-    //}
-    //samplerate = std::stoi(rate_split[1]);
-    // Headers
-    std::string auth_header = "xi-api-key: " + std::string(api_key_cstr);
-    headers_ = curl_slist_append(headers_, auth_header.c_str());
-      // Payload
-    json_payload["model_id"] = model_;
-    json_payload["text"] = text_;
-    json_payload["voice_id"] = voice_;
-    json_payload["output_format"] = tts_format_;
   } else if (name_ == "piper-http") {
     printf("TtsSource::open using Piper HTTP TTS at %s\n", format_timestamp().c_str());
     tts_method_ = TtsMethod::TTS_CURL;
@@ -1109,6 +1100,7 @@ std::optional<std::string> TtsSource::fetch_tts_template(std::vector<uint8_t> & 
   printf("TtsSource::fetch_tts_template called at %s\n", format_timestamp().c_str());
 
   CURL * curl = curl_easy_init();
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
   if (!curl) {
     return std::string("Failed to initialize CURL");
   }
@@ -1121,6 +1113,7 @@ std::optional<std::string> TtsSource::fetch_tts_template(std::vector<uint8_t> & 
   for (const auto & header : template_rendered_json_["headers"]) {
     std::string header_str = header.get<std::string>();
     headers = curl_slist_append(headers, header_str.c_str());
+    printf("TtsSource::fetch_tts_template added header: %s\n", header_str.c_str());
   }
   headers = curl_slist_append(headers, "Content-Type: application/json");
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
