@@ -302,8 +302,7 @@ public:
   }
 
   void run(AudioStream * audio_stream) override;
-  std::optional<std::string> fetch_tts_curl(std::vector<uint8_t> & audio_data);
-    std::optional<std::string> fetch_tts_template(std::vector<uint8_t> & audio_data);
+  std::optional<std::string> fetch_tts_template(std::vector<uint8_t> & audio_data);
   std::optional<std::string> fetch_tts_program(std::vector<uint8_t> & audio_data);
   std::optional<std::string> open();
 
