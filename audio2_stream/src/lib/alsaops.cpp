@@ -107,6 +107,11 @@ int alsa_write(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
   snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag)
 {
+  if (channels <= 0) {
+    return -2;
+  } else if (samples <= 0) {
+    return 0;
+  }
   std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
   printf("alsa_write: thread: %zu, samples=%d, channels=%d, format=%x at %s\n", hash_id, samples,
     channels, alsa_format, format_timestamp().c_str());
