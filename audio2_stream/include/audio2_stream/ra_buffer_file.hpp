@@ -14,12 +14,14 @@
 #include <string>
 #include "boost/lockfree/spsc_queue.hpp"
 
+#ifndef SNDPLAY_BUFFER_FILE_HPP
 /**
  * Convert sndfile format to human-readable string.
  * \param format The sndfile format integer.
  * \return       A string representing the format.
  */
 std::string format_to_string(int format);
+#endif
 
 /**
  * Convert RtAudio format to human-readable string.
@@ -28,6 +30,7 @@ std::string format_to_string(int format);
  */
 std::string format_to_string(RtAudioFormat format);
 
+#ifndef SNDPLAY_BUFFER_FILE_HPP
 // Virtual I/O context for reading/writing from/to memory
 typedef struct
 {
@@ -73,6 +76,7 @@ int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int sa
  * \param samples The number of samples to write
  */
 int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
+#endif
 
 /**
  * Get the sample size in bytes for a given RtAudio format.
@@ -81,6 +85,7 @@ int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
  */
 int sample_size_from_rtaudio_format(RtAudioFormat format);
 
+#ifndef SNDPLAY_BUFFER_FILE_HPP
 /**
  * Get sample size from our SfgRwFormat enum
  * \param format The SfgRwFormat enum value.
@@ -94,6 +99,7 @@ int sample_size_from_sfg_format(SfgRwFormat format);
  * \return          Corresponding SfgRwFormat enum value.
  */
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
+#endif
 
 /**
  * Read/write type to use for different RtAudio formats
@@ -109,6 +115,7 @@ SfgRwFormat sfg_format_from_rtaudio_format(RtAudioFormat ra_format);
  */
 RtAudioFormat rtaudio_format_from_sfg_format(SfgRwFormat sfg_format);
 
+#ifndef SNDPLAY_BUFFER_FILE_HPP
 /**
  * String representation of SfgRwFormat
  * \param format The SfgRwFormat enum value.
@@ -141,6 +148,7 @@ int convert_types(
 int sfg_write_convert(
   SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format,
   char * buffer, int samples);
+#endif
 
 /**
  * ra_play: Play audio from a SNDFILE using RtAudio

@@ -374,6 +374,14 @@ int RaWriteThread::audio_callback(
       bytes_written += to_copy;
     } else {
       if (self->queue_ && self->queue_->pop(self->current_chunk_)) {
+        if (self->current_chunk_.empty()) {
+          // Empty vector pushed as end-of-stream signal
+          if (self->shutdown_flag_) {
+            self->shutdown_flag_->store(true);
+          }
+          std::memset(out_bytes + bytes_written, 0, bytes_needed - bytes_written);
+          return 1; // Drain and stop
+        }
         self->current_chunk_offset_ = 0;
       } else {
         // Queue is empty: zero-fill remaining buffer to avoid stutter/noise

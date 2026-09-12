@@ -52,10 +52,11 @@ add_executable(audio2_capture_node src/audio2_capture_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
 
 target_link_libraries(audio2_stream
+  PUBLIC
+    RtAudio::rtaudio
   PRIVATE
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
-    RtAudio::rtaudio
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
     nlohmann_json::nlohmann_json

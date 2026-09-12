@@ -1,38 +1,15 @@
-#include <atomic>
-#include <chrono>
-#include <csignal>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <functional>
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
 
-#include <RtAudio.h>
-#include <sndfile.h>
-#include <sndfile.hh>
-
-#include "audio2_stream/ra_buffer_file.hpp"
-#include "audio2_stream_msgs/msg/play_file.hpp"
-#include "boost/lockfree/spsc_queue.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "audio2_stream/AudioStream.hpp"
+#include "audio2_stream_msgs/msg/play_file.hpp"
 
 static auto rcl_logger = rclcpp::get_logger("ra_audio2_play");
 
 class RaAudio2PlayNode : public rclcpp::Node
 {
-private:
-  struct ActivePlayback
-  {
-    std::string path;
-    bool loop{false};
-    std::atomic<bool> stop_requested{false};
-    std::atomic<bool> finished{false};
-    std::unique_ptr<std::thread> worker_thread;
-  };
-
 public:
   RaAudio2PlayNode()
   : Node("ra_audio2_play_node")
@@ -71,150 +48,53 @@ public:
       return;
     }
 
-    start_playback(msg->path, msg->play_type == audio2_stream_msgs::msg::PlayFile::PLAY_START);
+    auto snd_file_source = std::make_unique<SndFileSource>(msg->path);
+    auto ra_sink = std::make_unique<RaSink>(RTAUDIO_FLOAT32);
+
+    auto audio_stream = std::make_unique<AudioStream>(
+      std::move(snd_file_source),
+      std::move(ra_sink),
+      std::string("Local playback of ") + msg->path,
+      STREAM_QUEUE_FRAMES
+    );
+
+    auto start_result = audio_stream->start();
+    if (start_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot start audio stream: %s", start_result->c_str());
+      return;
+    }
+
+    audio_streams_.push_back(std::move(audio_stream));
+    RCLCPP_INFO(rcl_logger, "Enqueued file %s", msg->path.c_str());
   }
 
   void stop_playback(const std::string & path)
   {
-    for (auto & active : active_files_) {
-      if (path.empty() || active->path == path) {
-        active->stop_requested.store(true);
+    for (auto & stream : audio_streams_) {
+      if (path.empty() || stream->description_.find(path) != std::string::npos) {
+        stream->shutdown();
       }
     }
-  }
-
-  void start_playback(const std::string & path, bool loop)
-  {
-    auto active_stream = std::make_unique<ActivePlayback>();
-    active_stream->path = path;
-    active_stream->loop = loop;
-    active_stream->stop_requested.store(false);
-    active_stream->finished.store(false);
-
-    ActivePlayback * stream_ptr = active_stream.get();
-
-    active_stream->worker_thread = std::make_unique<std::thread>(
-      [this, stream_ptr]() {
-        this->playback_worker(stream_ptr);
-      });
-
-    active_files_.push_back(std::move(active_stream));
-    RCLCPP_INFO(rcl_logger, "Enqueued file %s (loop=%s)", path.c_str(), loop ? "true" : "false");
-  }
-
-  void playback_worker(ActivePlayback * stream_info)
-  {
-    SndfileHandle fileh(stream_info->path);
-    if (fileh.error()) {
-      RCLCPP_ERROR(
-        rcl_logger, "Cannot open file <%s>: %s",
-        stream_info->path.c_str(), fileh.strError());
-      stream_info->finished.store(true);
-      return;
-    }
-
-    // Explicitly disable libsndfile normalization to handle integer scaling manually
-    fileh.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE);
-    fileh.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE);
-
-    const int queue_capacity = 100;
-    boost::lockfree::spsc_queue<std::vector<uint8_t>> audio_queue(queue_capacity);
-    std::atomic<bool> data_available(false);
-
-    RaWriteThread writer(
-      static_cast<unsigned int>(fileh.channels()),
-      static_cast<unsigned int>(fileh.samplerate()),
-      RTAUDIO_FLOAT32,
-      &audio_queue,
-      &stream_info->stop_requested,
-      &data_available);
-
-    if (!writer.get_error().empty()) {
-      RCLCPP_ERROR(
-        rcl_logger, "Failed to start RtAudio writer for %s: %s",
-        stream_info->path.c_str(), writer.get_error().c_str());
-      stream_info->finished.store(true);
-      return;
-    }
-
-    const int frames_per_chunk = 1024;
-    int channels = fileh.channels();
-    int samples_per_chunk = frames_per_chunk * channels;
-    SfgRwFormat r_format = sfg_format_from_sndfile_format(fileh.format());
-    SfgRwFormat w_format = SFG_FLOAT;
-
-    std::vector<uint8_t> r_buffer;
-    std::vector<uint8_t> w_buffer;
-    auto create_res = create_convert_vectors(r_format, w_format, samples_per_chunk, r_buffer,
-      w_buffer);
-    if (create_res.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Failed to create convert buffers: %s", create_res.value().c_str());
-      stream_info->finished.store(true);
-      return;
-    }
-
-    do {
-      fileh.seek(0, SEEK_SET);
-
-      while (!stream_info->stop_requested.load() && rclcpp::ok()) {
-        int samples_read = sfg_read(fileh, r_format, r_buffer.data(), samples_per_chunk);
-        if (samples_read <= 0) {
-          break;
-        }
-
-        int samples_converted = convert_types(
-          r_format, w_format, r_buffer.data(), w_buffer.data(), samples_read);
-        if (samples_converted <= 0) {
-          RCLCPP_ERROR(rcl_logger, "Error converting samples from format %d to float", r_format);
-          break;
-        }
-
-        std::vector<uint8_t> byte_chunk(samples_converted * sizeof(float));
-        std::memcpy(byte_chunk.data(), w_buffer.data(), byte_chunk.size());
-
-        while (!audio_queue.push(byte_chunk) && !stream_info->stop_requested.load() &&
-          rclcpp::ok())
-        {
-          std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-        data_available.store(true);
-      }
-    } while (stream_info->loop && !stream_info->stop_requested.load() && rclcpp::ok());
-
-    writer.drain_and_close();
-    stream_info->finished.store(true);
   }
 
   void check_streams_callback()
   {
-    for (auto it = active_files_.begin(); it != active_files_.end(); ) {
-      if ((*it)->finished.load()) {
-        if ((*it)->worker_thread && (*it)->worker_thread->joinable()) {
-          (*it)->worker_thread->join();
-        }
-        it = active_files_.erase(it);
-      } else {
-        ++it;
-      }
-    }
+    std::erase_if(audio_streams_, [](const std::unique_ptr<AudioStream> & stream) {
+        return stream->shutdown_complete_.load();
+    });
   }
 
   void stop_streams_callback()
   {
-    for (auto & active : active_files_) {
-      active->stop_requested.store(true);
+    for (auto & stream : audio_streams_) {
+      stream->shutdown();
     }
-    for (auto & active : active_files_) {
-      if (active->worker_thread && active->worker_thread->joinable()) {
-        active->worker_thread->join();
-      }
-    }
-    active_files_.clear();
+    audio_streams_.clear();
   }
 
 private:
   rclcpp::Subscription<audio2_stream_msgs::msg::PlayFile>::SharedPtr play_file_local_subscriber_;
-  std::vector<std::unique_ptr<ActivePlayback>> active_files_;
+  std::vector<std::unique_ptr<AudioStream>> audio_streams_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

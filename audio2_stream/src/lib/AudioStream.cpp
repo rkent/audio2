@@ -312,6 +312,65 @@ void AlsaSink::run(AudioStream * audio_stream)
   return;
 }
 
+void RaSink::run(AudioStream * audio_stream)
+{
+  assert(audio_stream);
+  printf("RaSink::run started\n");
+  if (audio_stream->shutdown_flag_.load()) {
+    printf("RaSink::run exiting immediately due to shutdown flag\n");
+    return;
+  }
+
+  // Wait until source has opened and pushed initial data or signaled availability
+  printf("Waiting to pop from queue in RaSink::run at %s\n", format_timestamp().c_str());
+  audio_stream->data_available_.wait(false);
+  std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
+  printf("\nRaSink::run thread %zu woke up to process audio data at %s\n", hash_id,
+    format_timestamp().c_str());
+
+  if (audio_stream->shutdown_flag_.load()) {
+    return;
+  }
+
+  if (!audio_stream->parms_fixed()) {
+    auto fix_result = audio_stream->fix_parms();
+    if (fix_result.has_value()) {
+      RCLCPP_ERROR(
+        rcl_logger, "Error fixing audio parameters for RaSink: %s",
+        fix_result->c_str());
+      return;
+    }
+  }
+
+  RaWriteThread writer(
+    static_cast<unsigned int>(audio_stream->channels_),
+    static_cast<unsigned int>(audio_stream->samplerate_),
+    ra_format_,
+    &audio_stream->queue_,
+    &audio_stream->shutdown_flag_,
+    &audio_stream->data_available_);
+
+  if (!writer.get_error().empty()) {
+    RCLCPP_ERROR(
+      rcl_logger, "Failed to start RtAudio writer in RaSink: %s",
+      writer.get_error().c_str());
+    return;
+  }
+
+  printf(
+    "RaSink::run started RtAudio writer (channels=%d, samplerate=%d)\n",
+    audio_stream->channels_, audio_stream->samplerate_);
+
+  // Wait for the stream to finish or shutdown to be signaled
+  while (!audio_stream->shutdown_flag_.load()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  writer.drain_and_close();
+  printf("RaSink::run finished playback\n");
+  audio_stream->shutdown();
+}
+
 void AlsaSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);

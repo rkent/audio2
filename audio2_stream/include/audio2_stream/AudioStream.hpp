@@ -5,6 +5,7 @@
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/IAlsaProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
+#include "audio2_stream/ra_buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
 #include <vector>
@@ -223,6 +224,25 @@ public:
   }
 
   void run(AudioStream * audio_stream) override;
+};
+
+class RaSink : public AudioTerminal
+{
+public:
+  RaSink(RtAudioFormat ra_format = RTAUDIO_FLOAT32)
+  : AudioTerminal(),
+    ra_format_(ra_format)
+  {
+    rw_format_ = sfg_format_from_rtaudio_format(ra_format_);
+    are_parms_bound_ = true;
+  }
+
+  virtual ~RaSink() = default;
+
+  void run(AudioStream * audio_stream) override;
+
+protected:
+  RtAudioFormat ra_format_;
 };
 
 class MessageSink : public AudioTerminal
