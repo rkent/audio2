@@ -47,6 +47,7 @@ add_library(
 add_executable(file_play src/file_play.cpp)
 add_executable(audio2_play_remote_node src/audio2_play_remote_node.cpp)
 add_executable(audio2_play_node src/audio2_play_node.cpp)
+add_executable(ra_audio2_play_node src/ra_audio2_play_node.cpp)
 add_executable(audio2_capture_node src/audio2_capture_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
 
@@ -99,6 +100,15 @@ target_link_libraries(audio2_play_node
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
+    rclcpp::rclcpp
+    ${audio2_stream_msgs_TARGETS}
+)
+
+target_link_libraries(ra_audio2_play_node
+  PRIVATE
+    ${PROJECT_NAME}
+    ${SNDFILE_LIBRARIES}
+    RtAudio::rtaudio
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -205,6 +215,7 @@ install(TARGETS
   loop_file
   audio2_play_remote_node
   audio2_play_node
+  ra_audio2_play_node
   audio2_capture_node
   DESTINATION lib/${PROJECT_NAME})
 
