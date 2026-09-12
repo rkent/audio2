@@ -15,9 +15,9 @@
   <depend>rclcpp</depend>
   <depend>audio2_stream_msgs</depend>
   <!-- <depend>rtaudio</depend> -->
-  <!-- <depend>armadillo</depend> -->
-  <!-- <depend>curl</depend> -->
-  <!-- <depend>nlohmann-json-dev</depend> -->
+  <depend>armadillo</depend>
+  <depend>curl</depend>
+  <depend>nlohmann-json-dev</depend>
   <exec_depend>espeak</exec_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

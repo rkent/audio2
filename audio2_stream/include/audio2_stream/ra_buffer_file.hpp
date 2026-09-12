@@ -1,0 +1,260 @@
+#ifndef AUDIO2_STREAM_RA_BUFFER_FILE_HPP
+#define AUDIO2_STREAM_RA_BUFFER_FILE_HPP
+
+#include "audio2_stream/config.hpp"
+#include <RtAudio.h>
+#include <sndfile.hh>
+#include <chrono>
+#include <thread>
+#include <cstring>
+#include <vector>
+#include <memory>
+#include <atomic>
+#include <optional>
+#include <string>
+#include "boost/lockfree/spsc_queue.hpp"
+
+/**
+ * Convert sndfile format to human-readable string.
+ * \param format The sndfile format integer.
+ * \return       A string representing the format.
+ */
+std::string format_to_string(int format);
+
+/**
+ * Convert RtAudio format to human-readable string.
+ * \param format The RtAudioFormat integer.
+ * \return       A string representing the format.
+ */
+std::string format_to_string(RtAudioFormat format);
+
+// Virtual I/O context for reading/writing from/to memory
+typedef struct
+{
+  char *data = nullptr;
+  sf_count_t length = 0;
+  sf_count_t offset = 0;
+  sf_count_t capacity = 0;
+} VIO_DATA;
+
+typedef struct
+{
+  SndfileHandle fileh;
+  VIO_DATA vio_data;
+} VIO_SOUNDFILE_HANDLE;
+
+/**
+ * \param vio_sndfileh The VIO_SOUNDFILE_HANDLE to open.
+ * \param mode         The mode to open the file in (SFM_READ, SFM_WRITE).
+ * \param format       The sndfile format (only for write mode).
+ * \param channels     The number of channels (only for write mode).
+ * \param samplerate   The sample rate (only for write mode).
+ */
+std::optional<std::string>
+open_sndfile_from_buffer(
+  VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode = SFM_READ,
+  int format = 0, int channels = 0, int samplerate = 0);
+
+/**
+ * Read samples from a SNDFILE into a buffer.
+ * \param sndfileh The SndfileHandle to read from.
+ * \param format   The buffer format.
+ * \param buffer   The buffer to read samples into.
+ * \param samples  The number of samples to read.
+ * \return         The number of samples read, or a negative error code.
+ */
+int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int samples);
+
+/**
+ * Write samples from a buffer to a SNDFILE.
+ * \param sndfile The SNDFILE to write to
+ * \param format  The buffer format
+ * \param buffer  The buffer containing samples to write
+ * \param samples The number of samples to write
+ */
+int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
+
+/**
+ * Get the sample size in bytes for a given RtAudio format.
+ * \param format The RtAudio format.
+ * \return       The sample size in bytes, or -1 if unsupported.
+ */
+int sample_size_from_rtaudio_format(RtAudioFormat format);
+
+/**
+ * Get sample size from our SfgRwFormat enum
+ * \param format The SfgRwFormat enum value.
+ * \return       The sample size in bytes.
+ */
+int sample_size_from_sfg_format(SfgRwFormat format);
+
+/**
+ * Read/write type to use for different sndfile formats
+ * \param sf_format The sndfile format integer.
+ * \return          Corresponding SfgRwFormat enum value.
+ */
+SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
+
+/**
+ * Read/write type to use for different RtAudio formats
+ * \param ra_format The RtAudioFormat enum value.
+ * \return          Corresponding SfgRwFormat enum value.
+ */
+SfgRwFormat sfg_format_from_rtaudio_format(RtAudioFormat ra_format);
+
+/**
+ * Convert SfgRwFormat enum to RtAudioFormat
+ * \param sfg_format The SfgRwFormat enum value.
+ * \return           Corresponding RtAudioFormat value.
+ */
+RtAudioFormat rtaudio_format_from_sfg_format(SfgRwFormat sfg_format);
+
+/**
+ * String representation of SfgRwFormat
+ * \param format The SfgRwFormat enum value.
+ * \return       A string representing the format.
+ */
+const char * sfg_format_to_string(SfgRwFormat format);
+
+/**
+ * Convert between different sample formats.
+ * \param from_format The source format.
+ * \param to_format   The destination format.
+ * \param in_buffer   Pointer to the input buffer.
+ * \param out_buffer  Pointer to the output buffer.
+ * \param samples     Number of samples to convert.
+ * \return            Number of samples converted, or negative error code.
+ */
+int convert_types(
+  SfgRwFormat from_format, SfgRwFormat to_format, const void * in_buffer,
+  void * out_buffer, int samples);
+
+/**
+ * Write samples from a buffer to a SNDFILE with scaling and conversion.
+ * \param fileh       The SndfileHandle to write to.
+ * \param from_format The source format.
+ * \param to_format   The destination format.
+ * \param buffer      The buffer containing samples to write.
+ * \param samples     The number of samples to write.
+ * \return            The number of samples written, or a negative error code.
+ */
+int sfg_write_convert(
+  SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format,
+  char * buffer, int samples);
+
+/**
+ * ra_play: Play audio from a SNDFILE using RtAudio
+ * @param fileh         SndfileHandle to read audio data from
+ * @param dac           Reference to RtAudio instance
+ * @param ra_format     RtAudio format to use for playback
+ * @param shutdown_flag optional atomic boolean flag to signal shutdown
+ * @return Optional error message string if an error occurs, std::nullopt on success
+ */
+std::optional<std::string>
+ra_play(
+  SndfileHandle fileh, RtAudio & dac, RtAudioFormat ra_format = RTAUDIO_FLOAT32,
+  std::atomic<bool> * shutdown_flag = nullptr);
+
+/**
+ * ra_play: Play audio from a SNDFILE using RtAudio (creates a local RtAudio instance)
+ * @param fileh         SndfileHandle to read audio data from
+ * @param ra_format     RtAudio format to use for playback
+ * @param shutdown_flag optional atomic boolean flag to signal shutdown
+ * @return Optional error message string if an error occurs, std::nullopt on success
+ */
+std::optional<std::string>
+ra_play(
+  SndfileHandle fileh, RtAudioFormat ra_format = RTAUDIO_FLOAT32,
+  std::atomic<bool> * shutdown_flag = nullptr);
+
+/**
+ * Thread-safe RtAudio writer class that streams continuous audio from a lock-free queue.
+ */
+class RaWriteThread
+{
+public:
+  RaWriteThread(
+    unsigned int channels,
+    unsigned int sample_rate,
+    RtAudioFormat format,
+    boost::lockfree::spsc_queue<std::vector<uint8_t>> * queue,
+    std::atomic<bool> * shutdown_flag = nullptr,
+    std::atomic<bool> * data_available = nullptr,
+    unsigned int buffer_frames = 512);
+
+  ~RaWriteThread();
+
+  std::string get_error() const;
+  bool is_open() const;
+  void close();
+  void drain_and_close();
+
+private:
+  static int audio_callback(
+    void * output_buffer,
+    void * input_buffer,
+    unsigned int n_buffer_frames,
+    double stream_time,
+    RtAudioStreamStatus status,
+    void * user_data);
+
+  std::unique_ptr<RtAudio> dac_;
+  unsigned int channels_{2};
+  unsigned int sample_rate_{48000};
+  RtAudioFormat format_{RTAUDIO_FLOAT32};
+  int sample_bytes_{4};
+  boost::lockfree::spsc_queue<std::vector<uint8_t>> * queue_{nullptr};
+  std::atomic<bool> * shutdown_flag_{nullptr};
+  std::atomic<bool> * data_available_{nullptr};
+  std::vector<uint8_t> current_chunk_;
+  size_t current_chunk_offset_{0};
+  std::string error_str_;
+};
+
+/**
+ * Create read and write buffers for format conversion.
+ * \param from_format The source format.
+ * \param to_format   The destination format.
+ * \param samples     Number of samples to convert.
+ * \param r_buffer    Reference to the read buffer vector.
+ * \param w_buffer    Reference to the write buffer vector.
+ */
+std::optional<std::string> create_convert_vectors(
+  SfgRwFormat from_format, SfgRwFormat to_format, int samples,
+  std::vector<uint8_t> & r_buffer, std::vector<uint8_t> & w_buffer);
+
+/**
+ * Open a virtual sound file for reading from a vector buffer.
+ *
+ * \param vector       The vector containing the audio data.
+ * \param vio_sndfileh The VIO_SOUNDFILE_HANDLE to initialize.
+ * \return             Optional error string if an error occurs.
+ */
+std::optional<std::string>
+ropen_vio_from_vector(
+  const std::vector<unsigned char> & vector,
+  VIO_SOUNDFILE_HANDLE & vio_sndfileh);
+
+/**
+ * Open a virtual sound file for writing to a vector buffer.
+ *
+ * \param vector       The vector to contain the audio data.
+ * \param vio_sndfileh The VIO_SOUNDFILE_HANDLE to initialize.
+ * \param sfg_format   The SfgRwFormat to use (e.g. SFG_SHORT).
+ * \param sf_format    The sndfile format to use (e.g. SF_FORMAT_WAV | SF_FORMAT_PCM_16).
+ * \param channels     Number of audio channels.
+ * \param samplerate   Sample rate of the audio data in frames per second.
+ * \param frames       Number of frames to allocate space for.
+ * \return             Optional error string if an error occurs.
+ */
+std::optional<std::string>
+wopen_vio_to_vector(
+  std::vector<unsigned char> & vector,
+  VIO_SOUNDFILE_HANDLE & vio_sndfileh,
+  SfgRwFormat sfg_format,
+  int sf_format,
+  int channels,
+  int samplerate,
+  int frames);
+
+#endif // AUDIO2_STREAM_RA_BUFFER_FILE_HPP

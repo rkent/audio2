@@ -35,6 +35,7 @@ add_library(
     SHARED
     src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
+    src/lib/ra_buffer_file.cpp
     src/lib/AudioStream.cpp
     src/lib/AlsaProxyImpl.cpp
 )
@@ -53,6 +54,7 @@ target_link_libraries(audio2_stream
   PRIVATE
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
+    RtAudio::rtaudio
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
     nlohmann_json::nlohmann_json
@@ -69,7 +71,7 @@ target_link_libraries(loop_file
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
+    RtAudio::rtaudio
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
