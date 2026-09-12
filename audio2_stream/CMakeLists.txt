@@ -21,6 +21,7 @@ find_package(audio2_stream_msgs REQUIRED)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(RtAudio REQUIRED)
 
 # Add all exported headers to include/<package_name> otherwise other packages cannot see it
 # This makes headers available to other packages that depend on yours.
@@ -77,7 +78,7 @@ target_link_libraries(file_play
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
+    RtAudio::rtaudio
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
