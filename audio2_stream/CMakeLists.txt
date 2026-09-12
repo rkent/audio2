@@ -120,6 +120,7 @@ if(BUILD_TESTING)
   # comment the line when this package is in a git repo and when
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
+  list(APPEND AMENT_LINT_AUTO_FILE_EXCLUDE "include/inja/inja.hpp")
   ament_lint_auto_find_test_dependencies()
 
   # Add GTest and GMock for unit testing

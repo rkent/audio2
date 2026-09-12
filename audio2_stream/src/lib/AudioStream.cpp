@@ -896,10 +896,10 @@ std::optional<std::string> TtsSource::open()
   RCLCPP_INFO(rcl_logger, "TTS source opening");
   inja::Environment env;
   env.add_callback("env", 1, [](inja::Arguments & args) {
-    std::string var_name_str = args.at(0)->get<std::string>();
-    const char * var_name = var_name_str.c_str();
-    const char * var_value = std::getenv(var_name);
-    return std::string(var_value ? var_value : "");
+      std::string var_name_str = args.at(0)->get<std::string>();
+      const char * var_name = var_name_str.c_str();
+      const char * var_value = std::getenv(var_name);
+      return std::string(var_value ? var_value : "");
   });
 
   nlohmann::json json_payload;
@@ -943,7 +943,8 @@ std::optional<std::string> TtsSource::open()
     auto template_path = ament_index_cpp::get_package_share_directory("audio2_stream") +
       "/templates/tts/" + name_ + ".json";
     if (!std::filesystem::exists(template_path)) {
-      return std::string("Unsupported TTS provider ") + name_ + ", template file not found: " + template_path;
+      return std::string("Unsupported TTS provider ") + name_ + ", template file not found: " +
+             template_path;
     }
     tts_method_ = TtsMethod::TTS_TEMPLATE;
     printf("Loading template from path: %s\n", template_path.c_str());
@@ -1101,7 +1102,7 @@ void TtsSource::run(AudioStream * audio_stream)
           fetch_result.value().c_str());
         break;
       }
-    }  else {
+    } else {
       RCLCPP_ERROR(rcl_logger, "TtsSource: Unsupported TTS method\n");
       break;
     }

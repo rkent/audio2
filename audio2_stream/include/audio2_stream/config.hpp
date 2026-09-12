@@ -34,6 +34,9 @@ const int ALSA_BUFFER_PERIODS = 4;
 const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
 //#define ALSA_DEVICE_NAME "plughw:CARD=sofhdadsp,DEV=0"
 //#define ALSA_DEVICE_NAME "speaker_plug"
+// TODO: this is locking out pipewire, and vice versa when pipewire is active.
+//   The issue is that in Docker, I am not connecting to pipewire, but
+//   to a dmixer device. Apparently I can't do that.
 #define ALSA_DEVICE_NAME "default"
 const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
 const int ALSA_CHANNELS = 2;
