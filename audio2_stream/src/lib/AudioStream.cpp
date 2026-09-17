@@ -5,6 +5,7 @@
 #include <iterator>
 #include <fstream>
 #include <cstdio>
+#include <curl/curl.h>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <audio2_stream/AlsaProxyImpl.hpp>
 #include <audio2_stream/AudioStream.hpp>
@@ -1023,7 +1024,7 @@ std::optional<std::string> TtsSource::open()
     }
   }
   json_str_ = json_payload.dump();
-  headers_ = curl_slist_append(headers_, "Content-Type: application/json");
+  // headers_ = curl_slist_append(headers_, "Content-Type: application/json");
   return std::nullopt;
 }
 

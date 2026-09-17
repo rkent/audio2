@@ -5,14 +5,13 @@
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/IAlsaProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
-#include "audio2_stream/ra_buffer_file.hpp"
+#include "audio2_stream/ra_ops.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
 #include <vector>
 #include <string>
 #include <cstdint>
 #include <random>
-#include <curl/curl.h>
 #include <set>
 
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
@@ -318,7 +317,7 @@ public:
 
   virtual ~TtsSource()
   {
-    curl_slist_free_all(headers_);
+    // curl_slist_free_all(headers_);
   }
 
   void run(AudioStream * audio_stream) override;
@@ -332,7 +331,7 @@ protected:
   std::string voice_;
   std::string model_;
   std::string tts_format_;
-  struct curl_slist * headers_ = nullptr;
+  // struct curl_slist * headers_ = nullptr;
   std::string json_str_;
   std::string url_;
   TtsMethod tts_method_;

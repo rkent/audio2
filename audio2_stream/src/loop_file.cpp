@@ -16,7 +16,7 @@
 #include <sndfile.hh>
 
 #include "rclcpp/rclcpp.hpp"
-#include "audio2_stream/ra_buffer_file.hpp"
+#include "audio2_stream/ra_ops.hpp"
 
 #define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
 //#define TOPIC_FORMAT (SF_FORMAT_OGG | SF_FORMAT_VORBIS)

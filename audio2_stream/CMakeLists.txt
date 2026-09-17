@@ -35,7 +35,7 @@ add_library(
     SHARED
     src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
-    src/lib/ra_buffer_file.cpp
+    src/lib/ra_ops.cpp
     src/lib/AudioStream.cpp
     src/lib/AlsaProxyImpl.cpp
 )

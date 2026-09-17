@@ -1,4 +1,4 @@
-#include "audio2_stream/ra_buffer_file.hpp"
+#include "audio2_stream/ra_ops.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -7,9 +7,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <RtAudio.h>
-#include <sndfile.hh>
 
 // Convert RtAudio format to human-readable string.
 std::string format_to_string(RtAudioFormat format)
