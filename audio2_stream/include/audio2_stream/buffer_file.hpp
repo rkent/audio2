@@ -129,19 +129,6 @@ int sfg_write_convert(
   char * buffer, int samples);
 
 /**
- * alsa_play: Play audio from a SNDFILE using ALSA
- * @param fileh SndfileHandle to read audio data from
- * @param alsa_dev Pointer to the opened ALSA PCM device
- * @param alsa_format ALSA format to use for playback
- * @param shutdown_flag optional atomic boolean flag to signal shutdown
- * @return Optional error message string if an error occurs, std::nullopt on success
- */
-std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
-  std::atomic<bool> * shutdown_flag);
-
-/**
  * Create read and write buffers for format conversion.
  * \param from_format The source format.
  * \param to_format   The destination format.
