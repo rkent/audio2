@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+// RKJ 2026-10-07 added line (see ***RKJ) to suppress cppcheck warning about returning a temporary reference
+
 #ifndef INCLUDE_INJA_INJA_HPP_
 #define INCLUDE_INJA_INJA_HPP_
 
@@ -2979,6 +2981,8 @@ public:
   }
 
   std::ostream& render_to(std::ostream& os, const std::string_view input, const json& data) {
+    // ***RKJ added 2026-10-07 to suppress cppcheck warning about returning a temporary reference
+    // cppcheck-suppress returnTempReference
     return render_to(os, parse(input), data);
   }
 
