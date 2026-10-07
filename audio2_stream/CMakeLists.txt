@@ -50,6 +50,7 @@ add_executable(audio2_play_node src/audio2_play_node.cpp)
 add_executable(ra_audio2_play_node src/ra_audio2_play_node.cpp)
 add_executable(audio2_capture_node src/audio2_capture_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
+add_executable(list_devices src/list_devices.cpp)
 
 target_link_libraries(audio2_stream
   PUBLIC
@@ -121,6 +122,11 @@ target_link_libraries(audio2_capture_node
     ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
+)
+
+target_link_libraries(list_devices
+  PRIVATE
+    RtAudio::rtaudio
 )
 
 include_directories(${SNDFILE_INCLUDE_DIRS})
@@ -218,6 +224,7 @@ install(TARGETS
   audio2_play_node
   ra_audio2_play_node
   audio2_capture_node
+  list_devices
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
