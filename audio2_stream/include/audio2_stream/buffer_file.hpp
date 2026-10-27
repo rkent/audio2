@@ -12,7 +12,7 @@
 #include <optional>
 #include "boost/lockfree/spsc_queue.hpp"
 
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/audioops.hpp"
 
 /**
  * Convert sndfile format to human-readable string.
@@ -22,7 +22,7 @@
 std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
-typedef struct
+typedef struct VIO_DATA
 {
   char *data = nullptr;
   sf_count_t length = 0;
@@ -30,7 +30,7 @@ typedef struct
   sf_count_t capacity = 0;
 } VIO_DATA;
 
-typedef struct
+typedef struct VIO_SOUNDFILE_HANDLE
 {
   SndfileHandle fileh;
   VIO_DATA vio_data;
@@ -68,11 +68,11 @@ int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int sa
 int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
 
 /**
- * Get the sample size in bytes for a given ALSA format.
- * \param format The ALSA format.
+ * Get the sample size in bytes for a given audio device format.
+ * \param format The audio device format.
  * \return       The sample size in bytes, or -1 if unsupported.
  */
-int sample_size_from_alsa_format(snd_pcm_format_t format);
+int sample_size_from_audio_format(AudioFormat format);
 
 /**
  * Get sample size from our SfgRwFormat enum
@@ -89,11 +89,11 @@ int sample_size_from_sfg_format(SfgRwFormat format);
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
 
 /**
- * Read/write type to use for different ALSA formats
- * \param alsa_format The ALSA format enum value.
+ * Read/write type to use for different audio device formats
+ * \param alsa_format The audio device format enum value.
  * \return            Corresponding SfgRwFormat enum value.
  */
-SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format);
+SfgRwFormat sfg_format_from_audio_format(AudioFormat alsa_format);
 
 /**
  * String representation of SfgRwFormat
@@ -129,16 +129,16 @@ int sfg_write_convert(
   char * buffer, int samples);
 
 /**
- * alsa_play: Play audio from a SNDFILE using ALSA
+ * audio_play: Play audio from a SNDFILE to an audio device
  * @param fileh SndfileHandle to read audio data from
- * @param alsa_dev Pointer to the opened ALSA PCM device
- * @param alsa_format ALSA format to use for playback
+ * @param alsa_dev Pointer to the opened audio device
+ * @param alsa_format Audio device format to use for playback
  * @param shutdown_flag optional atomic boolean flag to signal shutdown
  * @return Optional error message string if an error occurs, std::nullopt on success
  */
 std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
+audio_play(
+  SndfileHandle fileh, AudioDevice * alsa_dev, AudioFormat alsa_format,
   std::atomic<bool> * shutdown_flag);
 
 /**

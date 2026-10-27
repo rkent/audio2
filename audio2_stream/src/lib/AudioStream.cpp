@@ -10,11 +10,24 @@
 #include <audio2_stream/AudioStream.hpp>
 #include <inja/inja.hpp>
 
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+// Binary mode, since the command output is raw audio
+#define POPEN_READ_MODE "rb"
+#else
+#define POPEN_READ_MODE "r"
+#endif
+
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
 static bool isProgramInstalled(const std::string & program)
 {
+#ifdef _WIN32
+  std::string command = "where " + program + " > NUL 2>&1";
+#else
   std::string command = "which " + program + " > /dev/null 2>&1";
+#endif
   return system(command.c_str()) == 0;
 }
 
@@ -132,7 +145,7 @@ std::optional<std::string> AudioStream::fix_parms()
 }
 
 std::optional<std::string> AlsaTerminal::open(
-  snd_pcm_stream_t direction,
+  AudioDirection direction,
   AudioStream * audio_stream)
 {
     // Create default proxy implementation if none provided
@@ -150,7 +163,7 @@ std::optional<std::string> AlsaTerminal::open(
     }
   }
 
-  AlsaHwParams hw_params;
+  AudioHwParams hw_params;
   hw_params.device = alsa_device_name_.c_str();
   hw_params.channels = audio_stream->channels_;
   hw_params.samplerate = audio_stream->samplerate_;
@@ -165,7 +178,7 @@ std::optional<std::string> AlsaTerminal::open(
            hw_params.format,
            hw_params.direction);
 
-  AlsaSwParams sw_params;
+  AudioSwParams sw_params;
 
   auto result = alsa_proxy_->open(hw_params, sw_params, direction);
   if (result.has_value()) {
@@ -236,7 +249,7 @@ void AlsaSink::run(AudioStream * audio_stream)
       alsa_format_ = ALSA_FORMAT;
 
       printf("AlsaSink::run opening ALSA device\n");
-      auto open_result = open(SND_PCM_STREAM_PLAYBACK, audio_stream);
+      auto open_result = open(AUDIO_PLAYBACK, audio_stream);
       if (open_result.has_value()) {
         RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device in AlsaSink: %s",
           open_result->c_str());
@@ -258,19 +271,7 @@ void AlsaSink::run(AudioStream * audio_stream)
         done = true;
         break;
       }
-      int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
-      if (false) {
-                // Output ALSA status for debugging
-        snd_pcm_t * alsa_dev = alsa_proxy_->get_handle();
-        if (alsa_dev) {
-          snd_pcm_status_t * stat;
-          snd_pcm_status_alloca(&stat);
-          snd_pcm_status(alsa_dev, stat);
-          snd_output_t *output;
-          snd_output_stdio_attach(&output, stdout, 0);
-          snd_pcm_status_dump(stat, output);
-        }
-      }
+      int bytes_per_sample = audio_format_width(alsa_format_) / 8;
       int write_result = alsa_proxy_->write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 audio_data.data(),
@@ -279,13 +280,13 @@ void AlsaSink::run(AudioStream * audio_stream)
                 nullptr  // shutdown flag
       );
       if (write_result < 0) {
-        printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
+        printf("Error writing to audio device: %d\n", write_result);
       }
     }  while (true);
   }
   printf("AlsaSink::run exiting, pushing silence.\n");
     // Push silence to fill the buffer before closing
-  const int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
+  const int bytes_per_sample = audio_format_width(alsa_format_) / 8;
   int silence_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
   const int silence_size = silence_frames * audio_stream->channels_ * bytes_per_sample;
   std::vector<uint8_t> silence_buffer(silence_size, 0);
@@ -298,7 +299,7 @@ void AlsaSink::run(AudioStream * audio_stream)
             nullptr  // no shutdown flag so we can finish writing silence
     );
     if (written < 0) {
-      printf("Error writing silence to ALSA device: %s\n", snd_strerror(written));
+      printf("Error writing silence to audio device: %d\n", written);
       break;
     }
     printf("Wrote %d silence frames to ALSA device of %d\n", written / audio_stream->channels_,
@@ -343,8 +344,8 @@ void AlsaSource::run(AudioStream * audio_stream)
             alsa_format_,
             &audio_stream->shutdown_flag_);
     if (read_result < 0) {
-      printf("Error reading from ALSA device: %s\n", snd_strerror(read_result));
-            // TODO: handle error
+      printf("Error reading from audio device: %d\n", read_result);
+      break;
     }
     printf("AlsaSource: Read %d samples from ALSA device at %s\n", read_result,
       format_timestamp().c_str());
@@ -603,7 +604,7 @@ void MessageSource::callback(
       audio_stream->data_available_.notify_one();
       continue;
     }
-    printf("MessageSource: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+    printf("MessageSource: Pushed %d samples to audio queue ra: %zu wa: %zu at %s\n",
       samples_converted, audio_stream->queue_.read_available(),
       audio_stream->queue_.write_available(), format_timestamp().c_str());
     audio_stream->data_available_.store(true);
@@ -739,7 +740,7 @@ void AudioStream::process_fileh(SndfileHandle & fileh)
       data_available_.notify_one();
       continue;
     }
-    printf("AudioStream::process_fileh: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+    printf("AudioStream::process_fileh: Pushed %d samples to audio queue ra: %zu wa: %zu at %s\n",
       samples_converted, queue_.read_available(),
       queue_.write_available(), format_timestamp().c_str());
     data_available_.store(true);
@@ -828,7 +829,7 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
       offset += bytes_to_read;
       continue;
     }
-    printf("AudioStream::process_raw: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+    printf("AudioStream::process_raw: Pushed %d samples to audio queue ra: %zu wa: %zu at %s\n",
       samples_converted, queue_.read_available(),
       queue_.write_available(), format_timestamp().c_str());
     data_available_.store(true);
@@ -990,7 +991,7 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
   }
   printf("TtsSource::fetch_tts_program executing command: %s at %s\n", command.c_str(),
     format_timestamp().c_str());
-  FILE * pipe = popen(command.c_str(), "r");
+  FILE * pipe = popen(command.c_str(), POPEN_READ_MODE);
   if (!pipe) {
     return std::string("Failed to execute TTS command");
   }

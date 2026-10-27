@@ -3,14 +3,15 @@
 <package format="3">
   <name>audio2_stream</name>
   <version>0.0.0</version>
-  <description>Demo of use of libsndfile and alsa</description>
+  <description>Demo of use of libsndfile and RtAudio</description>
   <maintainer email="kent@caspia.com">R. Kent James</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>libsndfile1-dev</depend>
-  <depend>libasound2-dev</depend>
+  <!-- RtAudio is built from source in the workspace (src/rtaudio) -->
+  <depend>RtAudio</depend>
   <depend>libboost-dev</depend>
   <depend>rclcpp</depend>
   <depend>audio2_stream_msgs</depend>

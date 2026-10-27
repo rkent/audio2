@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstring>
 #include <sndfile.h>
-#include <alsa/asoundlib.h>
 #include <string>
 #include <vector>
 #include <thread>
@@ -12,7 +11,7 @@
 #include <functional>
 
 #include "rclcpp/rclcpp.hpp"
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/audioops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"

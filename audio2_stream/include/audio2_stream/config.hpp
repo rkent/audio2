@@ -1,9 +1,25 @@
 #ifndef AUDIO2_STREAM_CONFIG_HPP
 #define AUDIO2_STREAM_CONFIG_HPP
 
-#include <limits>
-#include <alsa/asoundlib.h>
 #include <sndfile.hh>
+
+// Sample formats supported by the audio device layer (see audioops.hpp)
+typedef enum
+{
+  AUDIO_FORMAT_UNKNOWN = -1,
+  AUDIO_FORMAT_S8,
+  AUDIO_FORMAT_S16,
+  AUDIO_FORMAT_S32,
+  AUDIO_FORMAT_FLOAT,
+  AUDIO_FORMAT_FLOAT64
+} AudioFormat;
+
+// Direction of an audio device stream
+typedef enum
+{
+  AUDIO_PLAYBACK,
+  AUDIO_CAPTURE
+} AudioDirection;
 
 // These are set in order of preference so sorting gives the lowest as preferable.
 typedef enum
@@ -28,26 +44,20 @@ const int MAX_HEADER = 128;
 // Number of frames per audio queue chunk
 const int STREAM_QUEUE_FRAMES = 480;
 
-// ALSA configuration defaults
+// Audio device (RtAudio) configuration defaults
 const int ALSA_PERIOD_SIZE = 1024;
 const int ALSA_BUFFER_PERIODS = 4;
 const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
-//#define ALSA_DEVICE_NAME "plughw:CARD=sofhdadsp,DEV=0"
-//#define ALSA_DEVICE_NAME "speaker_plug"
-// TODO: this is locking out pipewire, and vice versa when pipewire is active.
-//   The issue is that in Docker, I am not connecting to pipewire, but
-//   to a dmixer device. Apparently I can't do that.
+// "default" selects the system default device. Any other name selects the RtAudio device
+// whose name matches exactly, or else contains it. "null" discards playback and captures
+// silence without touching any hardware.
 #define ALSA_DEVICE_NAME "default"
-const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
+const AudioFormat ALSA_FORMAT = AUDIO_FORMAT_FLOAT;
 const int ALSA_CHANNELS = 2;
 const int ALSA_SAMPLERATE = 48000;
 const int ALSA_START_PERIODS = ALSA_BUFFER_PERIODS / 2;
+// Playback starts once this many frames are buffered (or on drain).
 const long unsigned int ALSA_START_THRESHOLD = ALSA_PERIOD_SIZE * ALSA_START_PERIODS;
-// Never automatically stop the alsa device
-const long unsigned int ALSA_STOP_THRESHOLD = std::numeric_limits<snd_pcm_uframes_t>::max();
-// settings for "samples are zeroed after they are played back"
-const long unsigned int ALSA_SILENCE_SIZE = std::numeric_limits<snd_pcm_uframes_t>::max();
-const long unsigned int ALSA_SILENCE_THRESHOLD = 0;
 
 // Size of audio queue for buffering between source and sink
 const int AUDIO_QUEUE_SIZE = 100;

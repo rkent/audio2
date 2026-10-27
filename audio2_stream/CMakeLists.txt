@@ -5,6 +5,14 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+if(WIN32)
+  # Keep windows.h (pulled in by curl and rclcpp) from defining min/max macros,
+  # and have <cmath> define M_PI
+  add_compile_definitions(NOMINMAX _USE_MATH_DEFINES)
+  # The shared library has no export annotations
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 # Default to C++20, needed for std::atomic with boost lockfree queue
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,7 +23,7 @@ find_package(rclcpp REQUIRED)
 # Find sndfile library from debian package, it does not seem to have a CMake package
 find_library(SNDFILE_LIBRARIES NAMES sndfile REQUIRED)
 find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
-find_package(ALSA REQUIRED)
+find_package(RtAudio REQUIRED)
 find_package(Boost REQUIRED)
 find_package(audio2_stream_msgs REQUIRED)
 find_package(CURL REQUIRED)
@@ -32,7 +40,7 @@ install(DIRECTORY templates/ DESTINATION share/${PROJECT_NAME}/templates)
 add_library(
     ${PROJECT_NAME}
     SHARED
-    src/lib/alsaops.cpp
+    src/lib/audioops.cpp
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
     src/lib/AlsaProxyImpl.cpp
@@ -51,11 +59,10 @@ add_executable(loop_file src/loop_file.cpp)
 target_link_libraries(audio2_stream
   PRIVATE
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
+    RtAudio::rtaudio
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
     nlohmann_json::nlohmann_json
-    CURL::libcurl
     ${audio2_stream_msgs_TARGETS}
 )
 
@@ -64,11 +71,16 @@ target_include_directories(${PROJECT_NAME}
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
+# Public headers use sndfile, curl and boost lockfree. Use target includes rather than
+# include_directories so the sndfile include dir (the conda Library/include on Windows,
+# which has its own gtest) does not leak into the vendored gtest build.
+target_include_directories(${PROJECT_NAME} PUBLIC ${SNDFILE_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC Boost::headers CURL::libcurl)
+
 target_link_libraries(loop_file
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -77,7 +89,6 @@ target_link_libraries(file_play
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -86,7 +97,6 @@ target_link_libraries(audio2_play_remote_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -95,7 +105,6 @@ target_link_libraries(audio2_play_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -104,12 +113,9 @@ target_link_libraries(audio2_capture_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
-
-include_directories(${SNDFILE_INCLUDE_DIRS})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -140,7 +146,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_audio_stream
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
   )
@@ -158,7 +163,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_alsa_mocked
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
   )

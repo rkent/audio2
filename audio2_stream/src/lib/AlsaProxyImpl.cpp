@@ -1,11 +1,11 @@
 #include "audio2_stream/AlsaProxyImpl.hpp"
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/audioops.hpp"
 #include <cstdio>
 
 std::optional<std::string> AlsaProxyImpl::open(
-  AlsaHwParams & hw_vals,
-  AlsaSwParams & sw_vals,
-  snd_pcm_stream_t direction)
+  AudioHwParams & hw_vals,
+  AudioSwParams & sw_vals,
+  AudioDirection direction)
 {
   printf("AlsaProxyImpl::open called at %s\n", format_timestamp().c_str());
   printf(
@@ -20,7 +20,7 @@ std::optional<std::string> AlsaProxyImpl::open(
   hw_vals.direction = direction;
 
     // Open the ALSA device
-  auto result = alsa_open(hw_vals, sw_vals, alsa_dev_);
+  auto result = audio_open(hw_vals, sw_vals, alsa_dev_);
   printf("AlsaProxyImpl::open completed at %s\n", format_timestamp().c_str());
 
   if (result.has_value()) {
@@ -38,9 +38,8 @@ void AlsaProxyImpl::close()
 {
   printf("AlsaProxyImpl::close called\n");
   if (alsa_dev_) {
-    snd_pcm_drain(alsa_dev_);
-    snd_pcm_close(alsa_dev_);
-    alsa_dev_ = nullptr;
+    audio_drain(alsa_dev_);
+    audio_close(alsa_dev_);
   }
 }
 
@@ -48,7 +47,7 @@ int AlsaProxyImpl::write(
   int samples,
   void * data,
   int channels,
-  snd_pcm_format_t format,
+  AudioFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -57,7 +56,7 @@ int AlsaProxyImpl::write(
     return -1;
   }
 
-  int result = alsa_write(samples, alsa_dev_, data, channels, format, shutdown_flag);
+  int result = audio_write(samples, alsa_dev_, data, channels, format, shutdown_flag);
   if (result < 0) {
     error_str_ = "ALSA write failed";
   }
@@ -68,7 +67,7 @@ int AlsaProxyImpl::read(
   int samples,
   void * data,
   int channels,
-  snd_pcm_format_t format,
+  AudioFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -77,7 +76,7 @@ int AlsaProxyImpl::read(
     return -1;
   }
 
-  int result = alsa_read(samples, alsa_dev_, data, channels, format, shutdown_flag);
+  int result = audio_read(samples, alsa_dev_, data, channels, format, shutdown_flag);
   if (result < 0) {
     error_str_ = "ALSA read failed";
   }

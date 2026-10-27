@@ -1,11 +1,10 @@
 #ifndef AUDIO2_STREAM_IALSAPROXY_HPP
 #define AUDIO2_STREAM_IALSAPROXY_HPP
 
-#include <alsa/asoundlib.h>
 #include <optional>
 #include <string>
 #include <atomic>
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/audioops.hpp"
 
 /**
  * Interface for ALSA proxy operations.
@@ -24,9 +23,9 @@ public:
      * \return         Optional error string if opening fails.
      */
   virtual std::optional<std::string> open(
-    AlsaHwParams & hw_vals,
-    AlsaSwParams & sw_vals,
-    snd_pcm_stream_t direction
+    AudioHwParams & hw_vals,
+    AudioSwParams & sw_vals,
+    AudioDirection direction
   ) = 0;
 
     /**
@@ -47,7 +46,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    AudioFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) = 0;
 
@@ -64,15 +63,15 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    AudioFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) = 0;
 
     /**
-     * Get the underlying ALSA device handle (for status operations).
-     * \return Pointer to snd_pcm_t, or nullptr if not open.
+     * Get the underlying audio device handle.
+     * \return Pointer to AudioDevice, or nullptr if not open.
      */
-  virtual snd_pcm_t * get_handle() = 0;
+  virtual AudioDevice * get_handle() = 0;
 
     /**
      * Get error string from last operation.
@@ -84,7 +83,7 @@ public:
      * Get the current format being used.
      * \return ALSA PCM format.
      */
-  virtual snd_pcm_format_t get_format() const = 0;
+  virtual AudioFormat get_format() const = 0;
 };
 
 #endif // AUDIO2_STREAM_IALSAPROXY_HPP

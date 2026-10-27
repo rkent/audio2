@@ -1,10 +1,11 @@
 /**
  * @file loop_file.cpp
- * @brief Test file read, loop through snd_file buffers to the ALSA device.
+ * @brief Test file read, loop through snd_file buffers to the audio device.
  */
 
 #include <sndfile.h>
 #include <atomic>
+#include <csignal>
 #include <fstream>
 #include <sndfile.hh>
 
@@ -52,15 +53,15 @@ public:
       fileh_.samplerate(), fileh_.format());
     printf("channels: %d\n", fileh_.channels());
 
-    AlsaHwParams hw_vals;
+    AudioHwParams hw_vals;
     hw_vals.channels = fileh_.channels();
     hw_vals.samplerate = fileh_.samplerate();
     hw_vals.format = ALSA_FORMAT;
-    AlsaSwParams sw_vals;
-    snd_pcm_t * alsa_dev = nullptr;
-    auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
+    AudioSwParams sw_vals;
+    AudioDevice * alsa_dev = nullptr;
+    auto open_result = audio_open(hw_vals, sw_vals, alsa_dev);
     if (open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for topic publish: %s",
+      RCLCPP_ERROR(rcl_logger, "Failed to open audio device for topic publish: %s",
         open_result->c_str());
       return;
     }
@@ -147,14 +148,14 @@ public:
         return;
       }
 
-      auto err = alsa_play(tr_handle.fileh, alsa_dev, hw_vals.format, &shutdown_flag);
+      auto err = audio_play(tr_handle.fileh, alsa_dev, hw_vals.format, &shutdown_flag);
       if (err) {
-        RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
+        RCLCPP_ERROR(rcl_logger, "Audio play error: %s", err->c_str());
       }
 
     } while (!shutdown_flag.load());
-    snd_pcm_drain(alsa_dev);
-    snd_pcm_close(alsa_dev);
+    audio_drain(alsa_dev);
+    audio_close(alsa_dev);
     return;
   }
 

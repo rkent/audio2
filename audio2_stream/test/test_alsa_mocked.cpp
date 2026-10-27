@@ -11,7 +11,7 @@
 // Occurs in  [ RUN      ] AlsaNullTest.SourceToSinkComplete with a timeout after 60 seconds.
 // Generates lots of output. See log/latest_test/audio2_stream/stdout_stderr.log for details.
 /**
- * Test fixture for ALSA-related tests using the real ALSA 'null' device.
+ * Test fixture for audio device tests using the built-in 'null' device.
  * The 'null' device is perfect for testing - it accepts all writes and returns silence on reads.
  */
 class AlsaNullTest : public ::testing::Test
@@ -30,7 +30,7 @@ protected:
         // Cleanup happens automatically
   }
 
-    // ALSA 'null' device name for testing
+    // 'null' device name for testing
   static constexpr const char * ALSA_NULL_DEVICE = "null";
 };
 
@@ -56,7 +56,7 @@ TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
     printf("Starting stream for AlsaSinkOpenSuccess test\n");
     stream->start();
     printf("Stream started for AlsaSinkOpenSuccess test\n");
-    auto result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
+    auto result = psink->open(AUDIO_PLAYBACK, stream.get());
 
     EXPECT_FALSE(result.has_value()) << "Open should succeed: " <<
     (result.has_value() ? *result : "");
@@ -84,7 +84,7 @@ TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
     // Start the stream
     stream->start();
 
-    auto result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
+    auto result = psink->open(AUDIO_PLAYBACK, stream.get());
 
     ASSERT_TRUE(result.has_value()) << "Open should fail with non-existent device";
     EXPECT_FALSE(result->empty()) << "Error message should not be empty";
@@ -110,7 +110,7 @@ TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 
     // Start the stream
     stream->start();
-    auto result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
+    auto result = psink->open(AUDIO_PLAYBACK, stream.get());
     ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
     (result.has_value() ? *result : "");
 
@@ -147,7 +147,7 @@ TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
         100  // Small queue frames for testing
     );
 
-    auto result = psource->open(SND_PCM_STREAM_CAPTURE, stream.get());
+    auto result = psource->open(AUDIO_CAPTURE, stream.get());
     ASSERT_FALSE(result.has_value()) << "Open should succeed: " <<
     (result.has_value() ? *result : "");
 
@@ -189,9 +189,9 @@ TEST_F(AlsaNullTest, SourceToSinkComplete)
     );
 
     stream->start();
-    auto source_result = psource->open(SND_PCM_STREAM_CAPTURE, stream.get());
+    auto source_result = psource->open(AUDIO_CAPTURE, stream.get());
     ASSERT_FALSE(source_result.has_value()) << "Source open should succeed";
-    auto sink_result = psink->open(SND_PCM_STREAM_PLAYBACK, stream.get());
+    auto sink_result = psink->open(AUDIO_PLAYBACK, stream.get());
     ASSERT_FALSE(sink_result.has_value()) << "Sink open should succeed";
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     stream->shutdown();

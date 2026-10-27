@@ -11,8 +11,8 @@
 class AlsaProxyImpl : public IAlsaProxy
 {
 public:
-  AlsaProxyImpl(snd_pcm_t * alsa_dev = nullptr)
-  : alsa_dev_(alsa_dev), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
+  AlsaProxyImpl(AudioDevice * alsa_dev = nullptr)
+  : alsa_dev_(alsa_dev), error_str_(""), format_(AUDIO_FORMAT_UNKNOWN) {}
 
   virtual ~AlsaProxyImpl()
   {
@@ -20,9 +20,9 @@ public:
   }
 
   std::optional<std::string> open(
-    AlsaHwParams & hw_vals,
-    AlsaSwParams & sw_vals,
-    snd_pcm_stream_t direction
+    AudioHwParams & hw_vals,
+    AudioSwParams & sw_vals,
+    AudioDirection direction
   ) override;
 
   void close() override;
@@ -31,7 +31,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    AudioFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -39,11 +39,11 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    AudioFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
-  snd_pcm_t * get_handle() override
+  AudioDevice * get_handle() override
   {
     return alsa_dev_;
   }
@@ -53,15 +53,15 @@ public:
     return error_str_;
   }
 
-  snd_pcm_format_t get_format() const override
+  AudioFormat get_format() const override
   {
     return format_;
   }
 
 private:
-  snd_pcm_t * alsa_dev_;
+  AudioDevice * alsa_dev_;
   std::string error_str_;
-  snd_pcm_format_t format_;
+  AudioFormat format_;
 };
 
 #endif // AUDIO2_STREAM_ALSAPROXYIMPL_HPP

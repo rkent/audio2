@@ -1,11 +1,12 @@
 /**
  * @file file_play.cpp
- * @brief Test file read, loop through snd_file buffers to the ALSA device.
+ * @brief Test file read, loop through snd_file buffers to the audio device.
  */
 
 #include <sndfile.h>
 #include <atomic>
 #include <chrono>
+#include <csignal>
 #include <fstream>
 #include <sndfile.hh>
 #include <iostream>
@@ -17,23 +18,6 @@
 std::atomic<bool> shutdown_flag(false);
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/file_play");
-
-static snd_output_t *output = nullptr;
-#include <alsa/asoundlib.h>
-
-void showstat(snd_pcm_t *handle)
-{
-  int err;
-  snd_pcm_status_t *status;
-  snd_output_stdio_attach(&output, stdout, 0);
-
-  snd_pcm_status_alloca(&status);
-  if ((err = snd_pcm_status(handle, status)) < 0) {
-    printf("Stream status error: %s\n", snd_strerror(err));
-    exit(0);
-  }
-  snd_pcm_status_dump(status, output);
-}
 
 void signal_handler(int signal)
 {
@@ -63,15 +47,15 @@ public:
       fileh.samplerate(), fileh.format());
     printf("channels: %d\n", fileh.channels());
 
-    AlsaHwParams hw_vals;
+    AudioHwParams hw_vals;
     hw_vals.channels = fileh.channels();
     hw_vals.samplerate = fileh.samplerate();
     hw_vals.format = ALSA_FORMAT;
-    AlsaSwParams sw_vals;
-    snd_pcm_t * alsa_dev = nullptr;
-    auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
+    AudioSwParams sw_vals;
+    AudioDevice * alsa_dev = nullptr;
+    auto open_result = audio_open(hw_vals, sw_vals, alsa_dev);
     if (open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device for file play: %s",
+      RCLCPP_ERROR(rcl_logger, "Failed to open audio device for file play: %s",
         open_result->c_str());
       return;
     }
@@ -80,28 +64,12 @@ public:
     fileh.command(SFC_SET_NORM_FLOAT, NULL, SF_FALSE);
     fileh.command(SFC_SET_NORM_DOUBLE, NULL, SF_FALSE);
 
-    auto err = alsa_play(fileh, alsa_dev, hw_vals.format, &shutdown_flag);
+    auto err = audio_play(fileh, alsa_dev, hw_vals.format, &shutdown_flag);
     if (err) {
-      RCLCPP_ERROR(rcl_logger, "ALSA play error: %s", err->c_str());
+      RCLCPP_ERROR(rcl_logger, "Audio play error: %s", err->c_str());
     }
-    snd_pcm_status_t *status;
-    snd_pcm_status_alloca(&status);
-        //void * silence_buf = std::calloc(ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS, 1);
-        //snd_pcm_writei(alsa_dev, silence_buf, ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS);
-        //std::free(silence_buf);
-
-        //for (int i = 0; i < 5 && snd_pcm_state(alsa_dev) == SND_PCM_STATE_XRUN; i++) {
-        //    rclcpp::sleep_for(std::chrono::milliseconds(1));
-        //    printf("frames %ld \n", snd_pcm_avail_update(alsa_dev));
-        //    showstat(alsa_dev);
-        //} while (!shutdown_flag.load() && snd_pcm_state(alsa_dev) == SND_PCM_STATE_RUNNING);
-        //} while (false);
-        //}
-    snd_pcm_drain(alsa_dev);
-        //rclcpp::sleep_for(std::chrono::milliseconds(500));
-        //puts("3");
-    snd_pcm_close(alsa_dev);
-        //puts("4");
+    audio_drain(alsa_dev);
+    audio_close(alsa_dev);
     return;
   }
 };

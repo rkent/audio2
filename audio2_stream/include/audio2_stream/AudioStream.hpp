@@ -2,7 +2,7 @@
 #define AUDIO2_STREAM_AUDIOSTREAM_HPP
 
 #include "audio2_stream/config.hpp"
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/audioops.hpp"
 #include "audio2_stream/IAlsaProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
@@ -25,8 +25,10 @@ inline unique_identifier_msgs::msg::UUID generate_uuid()
   // Generate random number
   unique_identifier_msgs::msg::UUID uuid;
   std::mt19937 gen(std::random_device{}());
-  std::independent_bits_engine<std::mt19937, 8, uint8_t> bit_eng(gen);
-  std::generate(uuid.uuid.begin(), uuid.uuid.end(), bit_eng);
+  // uint8_t is not a valid independent_bits_engine type (MSVC enforces this)
+  std::independent_bits_engine<std::mt19937, 8, unsigned int> bit_eng(gen);
+  std::generate(uuid.uuid.begin(), uuid.uuid.end(),
+    [&bit_eng]() {return static_cast<uint8_t>(bit_eng());});
 
   return uuid;
 }
@@ -184,10 +186,10 @@ public:
     are_parms_bound_ = true;
   }
 
-  std::optional<std::string> open(snd_pcm_stream_t direction, AudioStream * audio_stream);
+  std::optional<std::string> open(AudioDirection direction, AudioStream * audio_stream);
 
   std::string alsa_device_name_;
-  snd_pcm_format_t alsa_format_;
+  AudioFormat alsa_format_;
   std::unique_ptr<IAlsaProxy> alsa_proxy_;
   bool are_parms_fixed_;
 
