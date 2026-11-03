@@ -5,6 +5,7 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 
 /**
@@ -45,7 +46,8 @@ protected:
     file.write(samples.data(), samples.size());
   }
 
-  const std::string test_audio_file_ = "/tmp/test_audio.wav";
+  const std::string test_audio_file_ =
+    (std::filesystem::temp_directory_path() / "test_audio.wav").string();
 };
 
 /**

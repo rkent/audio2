@@ -219,11 +219,13 @@ int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
   return -2;   // Should not reach here
 }
 
+#ifdef AUDIO2_HAVE_ALSA
 // Get sample size in bytes from alsa's snd_pcm_format_t
 int sample_size_from_alsa_format(snd_pcm_format_t format)
 {
   return snd_pcm_format_width(format) / 8;
 }
+#endif
 
 // Get sample size from our SfgRwFormat enum
 int sample_size_from_sfg_format(SfgRwFormat format)
@@ -263,6 +265,7 @@ const char * sfg_format_to_string(SfgRwFormat format)
   }
 }
 
+#ifdef AUDIO2_HAVE_ALSA
 SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format)
 {
   switch (alsa_format) {
@@ -281,6 +284,7 @@ SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format)
       return SFG_INVALID;
   }
 }
+#endif
 // Read/write type to use for different sndfile formats
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
 {
@@ -337,6 +341,7 @@ float SCALE_S20 = 1LL << 19;
 float SCALE_S24 = 1LL << 23;
 float SCALE_S32 = 1LL << 31;
 
+#ifdef AUDIO2_HAVE_ALSA
 int
 scale_data(
   int readcount, snd_pcm_format_t read_format, snd_pcm_format_t alsa_format,
@@ -424,6 +429,7 @@ scale_data(
   }
   return 0;
 }
+#endif
 
 std::optional<std::string> create_convert_vectors(
   SfgRwFormat r_format, SfgRwFormat w_format, int samples,
@@ -551,6 +557,7 @@ int convert_types(
   return samples;
 }
 
+#ifdef AUDIO2_HAVE_ALSA
 // debug string of ALSA format
 std::string format_to_string(snd_pcm_format_t format)
 {
@@ -579,3 +586,4 @@ std::string format_to_string(snd_pcm_format_t format)
       return "UNKNOWN";
   }
 }
+#endif

@@ -5,6 +5,14 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+if(WIN32)
+  # Keep windows.h (pulled in by curl and rclcpp) from defining min/max macros,
+  # and have <cmath> define M_PI
+  add_compile_definitions(NOMINMAX _USE_MATH_DEFINES)
+  # The shared library has no export annotations
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 # Default to C++20, needed for std::atomic with boost lockfree queue
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,12 +23,19 @@ find_package(rclcpp REQUIRED)
 # Find sndfile library from debian package, it does not seem to have a CMake package
 find_library(SNDFILE_LIBRARIES NAMES sndfile REQUIRED)
 find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
-find_package(ALSA REQUIRED)
+# ALSA is only available on Linux. Without it, only the RtAudio based code is built.
+if(WIN32)
+  set(AUDIO2_HAVE_ALSA OFF)
+else()
+  find_package(ALSA REQUIRED)
+  set(AUDIO2_HAVE_ALSA ON)
+endif()
 find_package(Boost REQUIRED)
 find_package(audio2_stream_msgs REQUIRED)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(rtaudio_vendor REQUIRED)
 find_package(RtAudio REQUIRED)
 
 # Add all exported headers to include/<package_name> otherwise other packages cannot see it
@@ -33,12 +48,16 @@ install(DIRECTORY templates/ DESTINATION share/${PROJECT_NAME}/templates)
 add_library(
     ${PROJECT_NAME}
     SHARED
-    src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
     src/lib/ra_ops.cpp
     src/lib/AudioStream.cpp
-    src/lib/AlsaProxyImpl.cpp
 )
+if(AUDIO2_HAVE_ALSA)
+  target_sources(${PROJECT_NAME} PRIVATE src/lib/alsaops.cpp src/lib/AlsaProxyImpl.cpp)
+  # Public headers include the ALSA headers when AUDIO2_HAVE_ALSA is defined
+  target_compile_definitions(${PROJECT_NAME} PUBLIC AUDIO2_HAVE_ALSA)
+  target_link_libraries(${PROJECT_NAME} PUBLIC ALSA::ALSA)
+endif()
 
 #set(SOURCE_FILES
 #  src/alsaops.cpp
@@ -46,9 +65,7 @@ add_library(
 #)
 add_executable(file_play src/file_play.cpp)
 add_executable(audio2_play_remote_node src/audio2_play_remote_node.cpp)
-add_executable(audio2_play_node src/audio2_play_node.cpp)
 add_executable(ra_audio2_play_node src/ra_audio2_play_node.cpp)
-add_executable(audio2_capture_node src/audio2_capture_node.cpp)
 add_executable(loop_file src/loop_file.cpp)
 add_executable(list_devices src/list_devices.cpp)
 
@@ -57,7 +74,6 @@ target_link_libraries(audio2_stream
     RtAudio::rtaudio
   PRIVATE
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
     nlohmann_json::nlohmann_json
@@ -69,6 +85,12 @@ target_include_directories(${PROJECT_NAME}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
+
+# Public headers use sndfile and boost lockfree. Use target includes rather than
+# include_directories so the sndfile include dir (the conda Library/include on Windows,
+# which has its own gtest) does not leak into the vendored gtest build.
+target_include_directories(${PROJECT_NAME} PUBLIC ${SNDFILE_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC Boost::headers)
 
 target_link_libraries(loop_file
   PRIVATE
@@ -92,16 +114,6 @@ target_link_libraries(audio2_play_remote_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-)
-
-target_link_libraries(audio2_play_node
-  PRIVATE
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -115,21 +127,37 @@ target_link_libraries(ra_audio2_play_node
     ${audio2_stream_msgs_TARGETS}
 )
 
-target_link_libraries(audio2_capture_node
-  PRIVATE
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-)
-
 target_link_libraries(list_devices
   PRIVATE
     RtAudio::rtaudio
 )
 
-include_directories(${SNDFILE_INCLUDE_DIRS})
+# Nodes that use AlsaSink or AlsaSource directly
+if(AUDIO2_HAVE_ALSA)
+  add_executable(audio2_play_node src/audio2_play_node.cpp)
+  add_executable(audio2_capture_node src/audio2_capture_node.cpp)
+
+  target_link_libraries(audio2_play_node
+    PRIVATE
+      ${PROJECT_NAME}
+      ${SNDFILE_LIBRARIES}
+      rclcpp::rclcpp
+      ${audio2_stream_msgs_TARGETS}
+  )
+
+  target_link_libraries(audio2_capture_node
+    PRIVATE
+      ${PROJECT_NAME}
+      ${SNDFILE_LIBRARIES}
+      rclcpp::rclcpp
+      ${audio2_stream_msgs_TARGETS}
+  )
+
+  install(TARGETS
+    audio2_play_node
+    audio2_capture_node
+    DESTINATION lib/${PROJECT_NAME})
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -160,7 +188,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_audio_stream
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
   )
@@ -169,33 +196,34 @@ if(BUILD_TESTING)
     $<INSTALL_INTERFACE:include>
   )
 
-  # Unit tests for ALSA operations with mocking
-  ament_add_gtest(test_alsa_mocked
-    test/test_alsa_mocked.cpp
-  )
-  #target_compile_options(test_alsa_mocked PRIVATE ${THREAD_SANITIZER_COMPILE_FLAGS})
-  #target_link_options(test_alsa_mocked PRIVATE ${THREAD_SANITIZER_LINK_FLAGS})
-  target_link_libraries(test_alsa_mocked
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-  )
-  target_include_directories(test_alsa_mocked PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-  )
+  # Unit tests for ALSA operations with mocking, and the integration test of audio2_play_node
+  if(AUDIO2_HAVE_ALSA)
+    ament_add_gtest(test_alsa_mocked
+      test/test_alsa_mocked.cpp
+    )
+    #target_compile_options(test_alsa_mocked PRIVATE ${THREAD_SANITIZER_COMPILE_FLAGS})
+    #target_link_options(test_alsa_mocked PRIVATE ${THREAD_SANITIZER_LINK_FLAGS})
+    target_link_libraries(test_alsa_mocked
+      ${PROJECT_NAME}
+      ${SNDFILE_LIBRARIES}
+      rclcpp::rclcpp
+      ${audio2_stream_msgs_TARGETS}
+    )
+    target_include_directories(test_alsa_mocked PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
 
-  # Integration tests using launch_testing
-  find_package(launch_testing_ament_cmake REQUIRED)
+    # Integration tests using launch_testing
+    find_package(launch_testing_ament_cmake REQUIRED)
 
-  # Add integration test for audio2_play_node
-  add_launch_test(
-    test/integration/launch/test_audio2_play_node.launch.py
-    TARGET test_audio2_play_node_integration
-    TIMEOUT 60
-  )
+    # Add integration test for audio2_play_node
+    add_launch_test(
+      test/integration/launch/test_audio2_play_node.launch.py
+      TARGET test_audio2_play_node_integration
+      TIMEOUT 60
+    )
+  endif()
 
   # Install integration test files
   install(
@@ -221,9 +249,7 @@ install(TARGETS
   file_play
   loop_file
   audio2_play_remote_node
-  audio2_play_node
   ra_audio2_play_node
-  audio2_capture_node
   list_devices
   DESTINATION lib/${PROJECT_NAME})
 

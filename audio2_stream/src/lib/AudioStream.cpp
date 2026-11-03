@@ -7,15 +7,30 @@
 #include <cstdio>
 #include <curl/curl.h>
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#ifdef AUDIO2_HAVE_ALSA
 #include <audio2_stream/AlsaProxyImpl.hpp>
+#endif
 #include <audio2_stream/AudioStream.hpp>
 #include <inja/inja.hpp>
+
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+// Binary mode, since the command output is raw audio
+#define POPEN_READ_MODE "rb"
+#else
+#define POPEN_READ_MODE "r"
+#endif
 
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
 static bool isProgramInstalled(const std::string & program)
 {
+#ifdef _WIN32
+  std::string command = "where " + program + " > NUL 2>&1";
+#else
   std::string command = "which " + program + " > /dev/null 2>&1";
+#endif
   return system(command.c_str()) == 0;
 }
 
@@ -132,6 +147,7 @@ std::optional<std::string> AudioStream::fix_parms()
   return std::nullopt;
 }
 
+#ifdef AUDIO2_HAVE_ALSA
 std::optional<std::string> AlsaTerminal::open(
   snd_pcm_stream_t direction,
   AudioStream * audio_stream)
@@ -313,6 +329,8 @@ void AlsaSink::run(AudioStream * audio_stream)
   return;
 }
 
+#endif // AUDIO2_HAVE_ALSA
+
 void RaSink::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
@@ -372,6 +390,7 @@ void RaSink::run(AudioStream * audio_stream)
   audio_stream->shutdown();
 }
 
+#ifdef AUDIO2_HAVE_ALSA
 void AlsaSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
@@ -425,6 +444,8 @@ void AlsaSource::run(AudioStream * audio_stream)
   printf("AlsaSource::run final exiting\n");
   return;
 }
+
+#endif // AUDIO2_HAVE_ALSA
 
 std::optional<std::string> SndFileSource::open()
 {
@@ -663,7 +684,7 @@ void MessageSource::callback(
       audio_stream->data_available_.notify_one();
       continue;
     }
-    printf("MessageSource: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+    printf("MessageSource: Pushed %d samples to audio queue ra: %zu wa: %zu at %s\n",
       samples_converted, audio_stream->queue_.read_available(),
       audio_stream->queue_.write_available(), format_timestamp().c_str());
     audio_stream->data_available_.store(true);
@@ -799,7 +820,7 @@ void AudioStream::process_fileh(SndfileHandle & fileh)
       data_available_.notify_one();
       continue;
     }
-    printf("AudioStream::process_fileh: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+    printf("AudioStream::process_fileh: Pushed %d samples to audio queue ra: %zu wa: %zu at %s\n",
       samples_converted, queue_.read_available(),
       queue_.write_available(), format_timestamp().c_str());
     data_available_.store(true);
@@ -888,7 +909,7 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
       offset += bytes_to_read;
       continue;
     }
-    printf("AudioStream::process_raw: Pushed %d samples to audio queue ra: %lu wa: %lu at %s\n",
+    printf("AudioStream::process_raw: Pushed %d samples to audio queue ra: %zu wa: %zu at %s\n",
       samples_converted, queue_.read_available(),
       queue_.write_available(), format_timestamp().c_str());
     data_available_.store(true);
@@ -1050,7 +1071,7 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
   }
   printf("TtsSource::fetch_tts_program executing command: %s at %s\n", command.c_str(),
     format_timestamp().c_str());
-  FILE * pipe = popen(command.c_str(), "r");
+  FILE * pipe = popen(command.c_str(), POPEN_READ_MODE);
   if (!pipe) {
     return std::string("Failed to execute TTS command");
   }

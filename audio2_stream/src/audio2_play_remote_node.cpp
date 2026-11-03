@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstring>
 #include <sndfile.h>
-#include <alsa/asoundlib.h>
 #include <string>
 #include <vector>
 #include <thread>

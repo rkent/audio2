@@ -120,6 +120,7 @@ public:
             get_parameter("alsa_device_name").as_string(),
             nullptr
     );
+    auto alsa_source_raw = alsa_source.get();  // alsa_source is moved into the stream below
 
         // Create the message publisher
     auto publisher = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>(audio_topic,
@@ -141,7 +142,7 @@ public:
             get_parameter("stream_queue_frames").as_int()
     );
 
-    auto alsa_open_result = alsa_source->open(SND_PCM_STREAM_CAPTURE, audio_stream.get());
+    auto alsa_open_result = alsa_source_raw->open(SND_PCM_STREAM_CAPTURE, audio_stream.get());
     if (alsa_open_result.has_value()) {
       RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for capture: %s",
         alsa_open_result->c_str());

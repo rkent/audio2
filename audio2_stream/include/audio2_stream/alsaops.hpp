@@ -2,9 +2,10 @@
 #define SNDPLAY_ALSAOPS_HPP
 
 #include "audio2_stream/config.hpp"
-#include <alsa/asoundlib.h>
 
 #include <atomic>
+#include <cstdio>
+#include <cstring>
 #include <tuple>
 #include <optional>
 #include <string>
@@ -23,10 +24,15 @@ inline std::string format_timestamp()
     1000;
 
   char buffer[256];
-  snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%03ld",
-                hours.count(), minutes.count(), seconds.count(), milliseconds.count());
+  snprintf(buffer, sizeof(buffer), "%02lld:%02lld:%02lld:%03lld",
+    static_cast<long long>(hours.count()), static_cast<long long>(minutes.count()),
+    static_cast<long long>(seconds.count()), static_cast<long long>(milliseconds.count()));
   return std::string(buffer);
 }
+
+// Everything below needs ALSA, which is only available on Linux
+#ifdef AUDIO2_HAVE_ALSA
+#include <alsa/asoundlib.h>
 
 // ALSA hardware parameters values
 typedef struct AlsaHwParams
@@ -140,5 +146,7 @@ private:
   std::atomic<bool> * shutdown_flag_;
   std::atomic<bool> * data_available_;
 };
+
+#endif // AUDIO2_HAVE_ALSA
 
 #endif

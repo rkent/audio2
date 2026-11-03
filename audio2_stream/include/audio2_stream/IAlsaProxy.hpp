@@ -1,6 +1,8 @@
 #ifndef AUDIO2_STREAM_IALSAPROXY_HPP
 #define AUDIO2_STREAM_IALSAPROXY_HPP
 
+#ifdef AUDIO2_HAVE_ALSA
+
 #include <alsa/asoundlib.h>
 #include <optional>
 #include <string>
@@ -86,5 +88,7 @@ public:
      */
   virtual snd_pcm_format_t get_format() const = 0;
 };
+
+#endif // AUDIO2_HAVE_ALSA
 
 #endif // AUDIO2_STREAM_IALSAPROXY_HPP

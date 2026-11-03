@@ -14,7 +14,8 @@
   <depend>libboost-dev</depend>
   <depend>rclcpp</depend>
   <depend>audio2_stream_msgs</depend>
-  <!-- <depend>rtaudio</depend> -->
+  <!-- RtAudio is built from the rkent fork by rtaudio_vendor -->
+  <depend>rtaudio_vendor</depend>
   <depend>armadillo</depend>
   <depend>curl</depend>
   <depend>nlohmann-json-dev</depend>

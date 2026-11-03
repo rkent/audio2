@@ -22,7 +22,7 @@
 std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
-typedef struct
+typedef struct VIO_DATA
 {
   char *data = nullptr;
   sf_count_t length = 0;
@@ -30,7 +30,7 @@ typedef struct
   sf_count_t capacity = 0;
 } VIO_DATA;
 
-typedef struct
+typedef struct VIO_SOUNDFILE_HANDLE
 {
   SndfileHandle fileh;
   VIO_DATA vio_data;
@@ -67,12 +67,14 @@ int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int sa
  */
 int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
 
+#ifdef AUDIO2_HAVE_ALSA
 /**
  * Get the sample size in bytes for a given ALSA format.
  * \param format The ALSA format.
  * \return       The sample size in bytes, or -1 if unsupported.
  */
 int sample_size_from_alsa_format(snd_pcm_format_t format);
+#endif
 
 /**
  * Get sample size from our SfgRwFormat enum
@@ -88,12 +90,14 @@ int sample_size_from_sfg_format(SfgRwFormat format);
  */
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
 
+#ifdef AUDIO2_HAVE_ALSA
 /**
  * Read/write type to use for different ALSA formats
  * \param alsa_format The ALSA format enum value.
  * \return            Corresponding SfgRwFormat enum value.
  */
 SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format);
+#endif
 
 /**
  * String representation of SfgRwFormat

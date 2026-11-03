@@ -2,8 +2,10 @@
 #define AUDIO2_STREAM_CONFIG_HPP
 
 #include <limits>
-#include <alsa/asoundlib.h>
 #include <sndfile.hh>
+#ifdef AUDIO2_HAVE_ALSA
+#include <alsa/asoundlib.h>
+#endif
 
 // These are set in order of preference so sorting gives the lowest as preferable.
 typedef enum
@@ -38,16 +40,18 @@ const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIOD
 //   The issue is that in Docker, I am not connecting to pipewire, but
 //   to a dmixer device. Apparently I can't do that.
 #define ALSA_DEVICE_NAME "default"
-const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
 const int ALSA_CHANNELS = 2;
 const int ALSA_SAMPLERATE = 48000;
 const int ALSA_START_PERIODS = ALSA_BUFFER_PERIODS / 2;
 const long unsigned int ALSA_START_THRESHOLD = ALSA_PERIOD_SIZE * ALSA_START_PERIODS;
+#ifdef AUDIO2_HAVE_ALSA
+const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
 // Never automatically stop the alsa device
 const long unsigned int ALSA_STOP_THRESHOLD = std::numeric_limits<snd_pcm_uframes_t>::max();
 // settings for "samples are zeroed after they are played back"
 const long unsigned int ALSA_SILENCE_SIZE = std::numeric_limits<snd_pcm_uframes_t>::max();
 const long unsigned int ALSA_SILENCE_THRESHOLD = 0;
+#endif
 
 // Size of audio queue for buffering between source and sink
 const int AUDIO_QUEUE_SIZE = 100;
