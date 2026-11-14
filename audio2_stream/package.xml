@@ -3,7 +3,7 @@
 <package format="3">
   <name>audio2_stream</name>
   <version>0.0.0</version>
-  <description>Demo of use of libsndfile and alsa</description>
+  <description>Nodes that play and capture audio on Linux (ALSA) and Windows (WASAPI): sound files, text-to-speech, and audio streamed between nodes over topics</description>
   <maintainer email="kent@caspia.com">R. Kent James</maintainer>
   <license>Apache-2.0</license>
 
