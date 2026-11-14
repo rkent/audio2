@@ -253,6 +253,83 @@ TEST_F(AudioStreamTest, FormatConversion)
 }
 
 /**
+ * Test the read type chosen for each sndfile format.
+ */
+TEST_F(AudioStreamTest, SndfileFormatMapping)
+{
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_WAV | SF_FORMAT_PCM_U8), SFG_BYTE);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_WAV | SF_FORMAT_PCM_16), SFG_SHORT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_WAV | SF_FORMAT_PCM_24), SFG_INT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_WAV | SF_FORMAT_FLOAT), SFG_FLOAT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_WAV | SF_FORMAT_DOUBLE), SFG_DOUBLE);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_FLAC | SF_FORMAT_PCM_16), SFG_SHORT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_OGG | SF_FORMAT_VORBIS), SFG_INT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_OGG | SF_FORMAT_OPUS), SFG_INT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III), SFG_SHORT);
+  // Apple Lossless: the narrowest type that holds the stored bit depth
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_CAF | SF_FORMAT_ALAC_16), SFG_SHORT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_CAF | SF_FORMAT_ALAC_20), SFG_INT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_CAF | SF_FORMAT_ALAC_24), SFG_INT);
+  EXPECT_EQ(sfg_format_from_sndfile_format(SF_FORMAT_CAF | SF_FORMAT_ALAC_32), SFG_INT);
+}
+
+/**
+ * Test decoding an Apple Lossless (ALAC in CAF) file through SndFileSource's path,
+ * AudioStream::process_fileh. ALAC cannot be decoded until the file is closed, so it is
+ * only usable from files, not as an AudioChunk message format.
+ */
+TEST_F(AudioStreamTest, SndFileSourceDecodesAppleLossless)
+{
+  const std::string path =
+    (std::filesystem::temp_directory_path() / "test_audio_alac.caf").string();
+  const int samplerate = 48000;
+  const int channels = 2;
+  const int frames = samplerate / 4;  // 0.25 s, since process_fileh paces in real time
+
+  // A different tone per channel, so channel order errors show up
+  std::vector<short> original(static_cast<size_t>(frames) * channels);
+  for (int f = 0; f < frames; ++f) {
+    for (int c = 0; c < channels; ++c) {
+      original[static_cast<size_t>(f) * channels + c] = static_cast<short>(
+        16384 * std::sin(2.0 * M_PI * 440.0 * (c + 1) * f / samplerate));
+    }
+  }
+  {
+    SndfileHandle file(path, SFM_WRITE, SF_FORMAT_CAF | SF_FORMAT_ALAC_16, channels, samplerate);
+    ASSERT_FALSE(file.error()) << file.strError();
+    ASSERT_EQ(file.writef(original.data(), frames), frames);
+  }  // closing the file writes the ALAC packet table
+
+  auto source = std::make_unique<SndFileSource>(path);
+  SndFileSource * source_raw = source.get();
+  ASSERT_FALSE(source->open().has_value());
+  EXPECT_EQ(source_raw->sndfileh_.format() & SF_FORMAT_SUBMASK, SF_FORMAT_ALAC_16);
+
+  const int chunk_frames = 2400;  // fewer chunks than the queue holds, so none are dropped
+  AudioStream stream(std::move(source), nullptr, "alac_test", chunk_frames);
+  testing::internal::CaptureStdout();
+  stream.process_fileh(source_raw->sndfileh_);
+  std::string output = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(output.find("Unsupported sndfile sub-format"), std::string::npos);
+
+  // With no sink, chunks are float
+  std::vector<float> decoded;
+  std::vector<uint8_t> chunk;
+  while (stream.queue_.pop(chunk)) {
+    const float * values = reinterpret_cast<const float *>(chunk.data());
+    decoded.insert(decoded.end(), values, values + chunk.size() / sizeof(float));
+  }
+  std::remove(path.c_str());
+
+  ASSERT_EQ(decoded.size(), original.size());
+  float max_error = 0.0f;
+  for (size_t i = 0; i < original.size(); ++i) {
+    max_error = std::max(max_error, std::fabs(decoded[i] - original[i] / 32768.0f));
+  }
+  EXPECT_LE(max_error, 1.0f / 32768);
+}
+
+/**
  * Test buffer vector creation for format conversion.
  */
 TEST_F(AudioStreamTest, ConvertBufferCreation)

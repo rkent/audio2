@@ -273,11 +273,15 @@ SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
       return SFG_BYTE;
     case SF_FORMAT_PCM_16:
     case SF_FORMAT_MPEG_LAYER_III:
+    case SF_FORMAT_ALAC_16:
       return SFG_SHORT;
     case SF_FORMAT_PCM_24:
     case SF_FORMAT_PCM_32:
     case SF_FORMAT_VORBIS:
     case SF_FORMAT_OPUS:
+    case SF_FORMAT_ALAC_20:
+    case SF_FORMAT_ALAC_24:
+    case SF_FORMAT_ALAC_32:
       return SFG_INT;
     case SF_FORMAT_FLOAT:
       return SFG_FLOAT;
