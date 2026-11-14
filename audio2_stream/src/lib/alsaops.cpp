@@ -56,7 +56,7 @@ int alsa_write_frames(
                   // unless we explicitly start it.
           snd_pcm_start (alsa_dev);
         } else {
-          printf("alsa_write: wrote zero frames.n");
+          printf("alsa_write: wrote zero frames.\n");
         }
         continue;
       case -EAGAIN:
@@ -77,13 +77,13 @@ int alsa_write_frames(
         break;
 
       case -EBADFD:
-        fprintf (stderr, "alsa_write: Bad PCM state.n");
+        fprintf (stderr, "alsa_write: Bad PCM state.\n");
         return 0;
         break;
 
   #if defined ESTRPIPE && ESTRPIPE != EPIPE
       case -ESTRPIPE:
-        fprintf (stderr, "alsa_write: Suspend event.n");
+        fprintf (stderr, "alsa_write: Suspend event.\n");
         return 0;
         break;
   #endif
@@ -286,7 +286,7 @@ int alsa_read_frames(
         break;
 
       case -EBADFD:
-        fprintf (stderr, "alsa_read: Bad PCM state.n");
+        fprintf (stderr, "alsa_read: Bad PCM state.\n");
         return 0;
         break;
 
