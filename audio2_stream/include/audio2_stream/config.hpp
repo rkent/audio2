@@ -2,7 +2,7 @@
 #define AUDIO2_STREAM_CONFIG_HPP
 
 #include <limits>
-#include <alsa/asoundlib.h>
+#include "audio2_stream/alsa_compat.hpp"
 #include <sndfile.hh>
 
 // These are set in order of preference so sorting gives the lowest as preferable.

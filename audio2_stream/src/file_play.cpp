@@ -19,7 +19,7 @@ std::atomic<bool> shutdown_flag(false);
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/file_play");
 
 static snd_output_t *output = nullptr;
-#include <alsa/asoundlib.h>
+#include "audio2_stream/alsa_compat.hpp"
 
 void showstat(snd_pcm_t *handle)
 {

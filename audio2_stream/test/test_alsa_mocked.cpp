@@ -34,11 +34,19 @@ protected:
   static constexpr const char * ALSA_NULL_DEVICE = "null";
 };
 
+// ALSA is stubbed on Windows (see alsa_compat.hpp), so tests needing a working device are skipped
+#ifdef _WIN32
+#define REQUIRE_ALSA_NULL_DEVICE() GTEST_SKIP() << "ALSA 'null' device is not available on Windows"
+#else
+#define REQUIRE_ALSA_NULL_DEVICE()
+#endif
+
 /**
  * Test that AlsaSink can be created with the 'null' device and opens successfully.
  */
 TEST_F(AlsaNullTest, AlsaSinkOpenSuccess)
 {
+    REQUIRE_ALSA_NULL_DEVICE();
     auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
     // TODO: need to set sink channel, samplerate, and format.
     auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_proxy));
@@ -96,6 +104,7 @@ TEST_F(AlsaNullTest, AlsaSinkOpenFailure)
  */
 TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
 {
+    REQUIRE_ALSA_NULL_DEVICE();
     auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
     auto sink = std::make_unique<AlsaSink>(ALSA_NULL_DEVICE, std::move(alsa_proxy));
     auto psink = sink.get();  // Store raw pointer for later use in test
@@ -135,6 +144,7 @@ TEST_F(AlsaNullTest, AlsaSinkWriteAudioData)
  */
 TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
 {
+    REQUIRE_ALSA_NULL_DEVICE();
     auto alsa_proxy = std::make_unique<AlsaProxyImpl>();
     auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(alsa_proxy));
     auto psource = source.get();  // Store raw pointer for later use in test
@@ -170,6 +180,7 @@ TEST_F(AlsaNullTest, AlsaSourceReadAudioData)
  */
 TEST_F(AlsaNullTest, SourceToSinkComplete)
 {
+    REQUIRE_ALSA_NULL_DEVICE();
     // Create source (capture from 'null')
     auto source_proxy = std::make_unique<AlsaProxyImpl>();
     auto source = std::make_unique<AlsaSource>(ALSA_NULL_DEVICE, std::move(source_proxy));

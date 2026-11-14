@@ -10,11 +10,24 @@
 #include <audio2_stream/AudioStream.hpp>
 #include <inja/inja.hpp>
 
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+// Binary mode is required on Windows so raw audio bytes are not translated
+#define POPEN_READ_MODE "rb"
+#define WHICH_COMMAND "where "
+#define NULL_DEVICE "NUL"
+#else
+#define POPEN_READ_MODE "r"
+#define WHICH_COMMAND "which "
+#define NULL_DEVICE "/dev/null"
+#endif
+
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
 
 static bool isProgramInstalled(const std::string & program)
 {
-  std::string command = "which " + program + " > /dev/null 2>&1";
+  std::string command = WHICH_COMMAND + program + " > " NULL_DEVICE " 2>&1";
   return system(command.c_str()) == 0;
 }
 
@@ -990,7 +1003,7 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
   }
   printf("TtsSource::fetch_tts_program executing command: %s at %s\n", command.c_str(),
     format_timestamp().c_str());
-  FILE * pipe = popen(command.c_str(), "r");
+  FILE * pipe = popen(command.c_str(), POPEN_READ_MODE);
   if (!pipe) {
     return std::string("Failed to execute TTS command");
   }

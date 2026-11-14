@@ -25,8 +25,10 @@ inline unique_identifier_msgs::msg::UUID generate_uuid()
   // Generate random number
   unique_identifier_msgs::msg::UUID uuid;
   std::mt19937 gen(std::random_device{}());
-  std::independent_bits_engine<std::mt19937, 8, uint8_t> bit_eng(gen);
-  std::generate(uuid.uuid.begin(), uuid.uuid.end(), bit_eng);
+  // uint8_t is not a valid result type for independent_bits_engine (MSVC enforces this)
+  std::independent_bits_engine<std::mt19937, 8, unsigned int> bit_eng(gen);
+  std::generate(uuid.uuid.begin(), uuid.uuid.end(),
+    [&bit_eng]() {return static_cast<uint8_t>(bit_eng());});
 
   return uuid;
 }

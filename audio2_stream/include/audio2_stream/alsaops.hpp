@@ -2,7 +2,7 @@
 #define SNDPLAY_ALSAOPS_HPP
 
 #include "audio2_stream/config.hpp"
-#include <alsa/asoundlib.h>
+#include "audio2_stream/alsa_compat.hpp"
 
 #include <atomic>
 #include <tuple>

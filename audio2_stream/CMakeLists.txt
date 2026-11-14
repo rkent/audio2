@@ -15,7 +15,18 @@ find_package(rclcpp REQUIRED)
 # Find sndfile library from debian package, it does not seem to have a CMake package
 find_library(SNDFILE_LIBRARIES NAMES sndfile REQUIRED)
 find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
-find_package(ALSA REQUIRED)
+if(WIN32)
+  # ALSA is Linux-only. alsa_compat.hpp stubs the API, so link against an empty target.
+  add_library(ALSA::ALSA INTERFACE IMPORTED)
+  # Export all symbols from the shared library, since the code has no dllexport annotations
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  # Keep windows.h (pulled in by curl) from defining min/max macros
+  add_compile_definitions(NOMINMAX)
+  # MSVC only defines M_PI and friends when asked
+  add_compile_definitions(_USE_MATH_DEFINES)
+else()
+  find_package(ALSA REQUIRED)
+endif()
 find_package(Boost REQUIRED)
 find_package(audio2_stream_msgs REQUIRED)
 find_package(CURL REQUIRED)
@@ -96,6 +107,7 @@ target_link_libraries(audio2_play_node
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
+    CURL::libcurl
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -109,7 +121,11 @@ target_link_libraries(audio2_capture_node
     ${audio2_stream_msgs_TARGETS}
 )
 
-include_directories(${SNDFILE_INCLUDE_DIRS})
+
+# Attach sndfile headers to the library (SYSTEM, propagated to everything linking it) rather
+# than directory-wide. A directory-wide include of a shared prefix such as the pixi/conda
+# Library/include would shadow the vendored gtest headers, which ament adds as SYSTEM.
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${SNDFILE_INCLUDE_DIRS})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

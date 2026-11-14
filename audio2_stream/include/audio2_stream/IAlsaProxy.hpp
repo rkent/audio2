@@ -1,7 +1,7 @@
 #ifndef AUDIO2_STREAM_IALSAPROXY_HPP
 #define AUDIO2_STREAM_IALSAPROXY_HPP
 
-#include <alsa/asoundlib.h>
+#include "audio2_stream/alsa_compat.hpp"
 #include <optional>
 #include <string>
 #include <atomic>

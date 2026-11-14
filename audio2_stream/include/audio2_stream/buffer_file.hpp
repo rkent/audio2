@@ -22,7 +22,7 @@
 std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
-typedef struct
+typedef struct VIO_DATA
 {
   char *data = nullptr;
   sf_count_t length = 0;
@@ -30,7 +30,7 @@ typedef struct
   sf_count_t capacity = 0;
 } VIO_DATA;
 
-typedef struct
+typedef struct VIO_SOUNDFILE_HANDLE
 {
   SndfileHandle fileh;
   VIO_DATA vio_data;
