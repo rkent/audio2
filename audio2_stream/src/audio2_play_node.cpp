@@ -278,7 +278,13 @@ int main(int argc, [[maybe_unused]] char ** argv)
   auto node = std::make_shared<Audio2PlayNode>();
   rclcpp::spin(node);
   RCLCPP_INFO(rcl_logger, "audio2_play_node shutting down...");
+  // Ctrl-C under ros2 launch sends SIGINT twice (from the terminal and from launch), and a
+  // second one must not kill the process during cleanup. Release the node (closing streams and
+  // the audio device) while rclcpp's handler still absorbs SIGINT, then ignore SIGINT once
+  // rclcpp::shutdown() restores the default action, for the remaining middleware teardown.
+  node.reset();
   rclcpp::shutdown();
+  std::signal(SIGINT, SIG_IGN);
 
   return 0;
 }
