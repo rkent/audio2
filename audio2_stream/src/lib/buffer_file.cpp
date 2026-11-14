@@ -149,13 +149,14 @@ std::optional<std::string> wopen_vio_to_vector(
       sample_size_from_sfg_format(sfg_format_from_sndfile_format(sf_format)));
   auto bytes_per_chunk = frames * channels * sample_size;
   size_t file_size = bytes_per_chunk + MAX_HEADER;
-  vector.reserve(file_size);
-  vector.clear();
+  // libsndfile writes through vio_data.data, so the bytes must be elements of the vector, not
+  // just reserved capacity. The encoded length is tracked in vio_data.length.
+  vector.assign(file_size, 0);
 
   vio_sndfileh.vio_data.data = reinterpret_cast<char *>(vector.data());
   vio_sndfileh.vio_data.length = 0;
   vio_sndfileh.vio_data.offset = 0;
-  vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(vector.capacity());
+  vio_sndfileh.vio_data.capacity = static_cast<sf_count_t>(vector.size());
   vio_sndfileh.fileh = SndfileHandle(
         vio,
         &vio_sndfileh.vio_data,
