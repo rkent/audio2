@@ -56,7 +56,6 @@ public:
     int samples,
     void * data,
     int channels,
-    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -64,7 +63,6 @@ public:
     int samples,
     void * data,
     int channels,
-    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 

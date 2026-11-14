@@ -82,8 +82,7 @@ TEST(WasapiProxyTest, PlaybackSilence)
 
   // 100 ms of silence
   std::vector<float> silence(2400, 0.0f);
-  int written = proxy.write(static_cast<int>(silence.size()), silence.data(), 1,
-    SampleFormat::Float);
+  int written = proxy.write(static_cast<int>(silence.size()), silence.data(), 1);
   EXPECT_EQ(written, static_cast<int>(silence.size())) << proxy.get_error();
 
   proxy.close();
@@ -121,9 +120,10 @@ TEST(WasapiProxyTest, CaptureSamples)
 
   // 100 ms of stereo audio, read in two parts to exercise leftover packet handling
   std::vector<float> buffer(4800 * 2, 1.0f);
-  int first = proxy.read(1001 * 2, buffer.data(), 2, SampleFormat::Float);
+  ASSERT_EQ(proxy.get_format(), SampleFormat::Float);  // the buffer holds floats
+  int first = proxy.read(1001 * 2, buffer.data(), 2);
   EXPECT_EQ(first, 1001 * 2) << proxy.get_error();
-  int second = proxy.read(3799 * 2, buffer.data() + first, 2, SampleFormat::Float);
+  int second = proxy.read(3799 * 2, buffer.data() + first, 2);
   EXPECT_EQ(second, 3799 * 2) << proxy.get_error();
 
   proxy.close();
@@ -142,8 +142,7 @@ TEST(WasapiProxyTest, ReadStopsOnShutdownFlag)
 
   std::atomic<bool> shutdown_flag{true};
   std::vector<float> buffer(16000, 0.0f);
-  int got = proxy.read(static_cast<int>(buffer.size()), buffer.data(), 1, SampleFormat::Float,
-    &shutdown_flag);
+  int got = proxy.read(static_cast<int>(buffer.size()), buffer.data(), 1, &shutdown_flag);
   EXPECT_EQ(got, 0);
 }
 

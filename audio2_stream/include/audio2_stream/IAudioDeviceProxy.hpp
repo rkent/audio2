@@ -65,11 +65,10 @@ public:
   virtual void close() = 0;
 
     /**
-     * Write audio data to the device.
+     * Write audio data to the device, in the sample format chosen by open() (get_format()).
      * \param samples      Number of samples (frames * channels) to write.
      * \param data         Pointer to audio data buffer.
      * \param channels     Number of audio channels.
-     * \param format       Sample format of the audio data.
      * \param shutdown_flag Pointer to shutdown flag (optional).
      * \return             Number of samples written, or negative error code.
      */
@@ -77,16 +76,14 @@ public:
     int samples,
     void * data,
     int channels,
-    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) = 0;
 
     /**
-     * Read audio data from the device.
+     * Read audio data from the device, in the sample format chosen by open() (get_format()).
      * \param samples      Number of samples (frames * channels) to read.
      * \param data         Pointer to buffer for audio data.
      * \param channels     Number of audio channels.
-     * \param format       Sample format of the audio data.
      * \param shutdown_flag Pointer to shutdown flag (optional).
      * \return             Number of samples read, or negative error code.
      */
@@ -94,7 +91,6 @@ public:
     int samples,
     void * data,
     int channels,
-    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) = 0;
 

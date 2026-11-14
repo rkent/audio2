@@ -274,7 +274,6 @@ void DeviceSink::run(AudioStream * audio_stream)
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 audio_data.data(),
                 audio_stream->channels_, // channels
-                sample_format_,
                 nullptr  // shutdown flag
       );
       if (write_result < 0) {
@@ -293,7 +292,6 @@ void DeviceSink::run(AudioStream * audio_stream)
             silence_frames * audio_stream->channels_,
             silence_buffer.data(),
             audio_stream->channels_,
-            sample_format_,
             nullptr  // no shutdown flag so we can finish writing silence
     );
     if (written < 0) {
@@ -339,7 +337,6 @@ void DeviceSource::run(AudioStream * audio_stream)
             audio_stream->queue_frames_ * audio_stream->channels_,
             audio_data.data(),
             audio_stream->channels_,
-            sample_format_,
             &audio_stream->shutdown_flag_);
     if (read_result < 0) {
       printf("Error reading from audio device: %s\n", proxy_->get_error().c_str());

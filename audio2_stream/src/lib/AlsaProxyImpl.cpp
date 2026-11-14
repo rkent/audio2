@@ -99,7 +99,6 @@ int AlsaProxyImpl::write(
   int samples,
   void * data,
   int channels,
-  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -107,9 +106,13 @@ int AlsaProxyImpl::write(
     error_str_ = "ALSA device is not opened";
     return -1;
   }
+  if (format_ == SampleFormat::Unknown) {
+    error_str_ = "ALSA device is pre-opened but not configured; call open() first";
+    return -1;
+  }
 
   int result = alsa_write(
-    samples, alsa_dev_, data, channels, to_alsa_format(format), shutdown_flag);
+    samples, alsa_dev_, data, channels, to_alsa_format(format_), shutdown_flag);
   if (result < 0) {
     error_str_ = std::string("ALSA write failed: ") + snd_strerror(result);
   }
@@ -120,7 +123,6 @@ int AlsaProxyImpl::read(
   int samples,
   void * data,
   int channels,
-  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -128,8 +130,13 @@ int AlsaProxyImpl::read(
     error_str_ = "ALSA device is not opened";
     return -1;
   }
+  if (format_ == SampleFormat::Unknown) {
+    error_str_ = "ALSA device is pre-opened but not configured; call open() first";
+    return -1;
+  }
 
-  int result = alsa_read(samples, alsa_dev_, data, channels, to_alsa_format(format), shutdown_flag);
+  int result = alsa_read(
+    samples, alsa_dev_, data, channels, to_alsa_format(format_), shutdown_flag);
   if (result < 0) {
     error_str_ = std::string("ALSA read failed: ") + snd_strerror(result);
   }

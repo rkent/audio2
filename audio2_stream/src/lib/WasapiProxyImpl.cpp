@@ -316,7 +316,7 @@ std::optional<std::string> WasapiProxyImpl::resolve_device(
   std::wstring wanted_lower = to_lower(wanted);
   std::vector<std::string> available;
   ComPtr<IMMDevice> name_match;
-  for_each_endpoint(enumerator.Get(), flow,
+  hr = for_each_endpoint(enumerator.Get(), flow,
     [&](IMMDevice * endpoint, const std::wstring & id, const std::wstring & name) {
       available.push_back(to_utf8(name));
       if (id == wanted) {
@@ -597,11 +597,9 @@ int WasapiProxyImpl::read(
   int samples,
   void * data,
   int channels,
-  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
-  (void)format;  // the device was opened with format_, which callers read in
   ensure_com();
   if (!impl_->capture) {
     error_str_ = "WASAPI capture device is not opened";
