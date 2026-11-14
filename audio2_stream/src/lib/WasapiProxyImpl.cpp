@@ -150,7 +150,8 @@ bool make_wave_format(
   } else {
     wfx.dwChannelMask = 0;
   }
-  wfx.SubFormat = sample_format->is_float ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+  wfx.SubFormat =
+    sample_format->is_float ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
   return true;
 }
 
@@ -317,16 +318,16 @@ std::optional<std::string> WasapiProxyImpl::resolve_device(
   std::vector<std::string> available;
   ComPtr<IMMDevice> name_match;
   hr = for_each_endpoint(enumerator.Get(), flow,
-    [&](IMMDevice * endpoint, const std::wstring & id, const std::wstring & name) {
-      available.push_back(to_utf8(name));
-      if (id == wanted) {
-        impl_->device = endpoint;
-        return true;
-      }
-      if (!name_match && to_lower(name).find(wanted_lower) != std::wstring::npos) {
-        name_match = endpoint;
-      }
-      return false;
+      [&](IMMDevice * endpoint, const std::wstring & id, const std::wstring & name) {
+        available.push_back(to_utf8(name));
+        if (id == wanted) {
+          impl_->device = endpoint;
+          return true;
+        }
+        if (!name_match && to_lower(name).find(wanted_lower) != std::wstring::npos) {
+          name_match = endpoint;
+        }
+        return false;
     });
   if (FAILED(hr)) {
     // Report the real cause rather than "not found" with an empty device list
