@@ -44,6 +44,7 @@ foreach(header ${UNBUILT_HEADERS})
 endforeach()
 install(DIRECTORY include/ DESTINATION include ${UNBUILT_HEADER_EXCLUDES})
 install(DIRECTORY templates/ DESTINATION share/${PROJECT_NAME}/templates)
+install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
 
 # 1. Define the shared library
 # Add all source files of the library to add_library
