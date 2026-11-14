@@ -34,7 +34,15 @@ find_package(ament_index_cpp REQUIRED)
 
 # Add all exported headers to include/<package_name> otherwise other packages cannot see it
 # This makes headers available to other packages that depend on yours.
-install(DIRECTORY include/ DESTINATION include)
+# Only the backend compiled for this platform (see below) is installed; use
+# make_default_device_proxy() rather than naming a backend class directly.
+if(WIN32)
+  set(UNBUILT_BACKEND_HEADER "AlsaProxyImpl.hpp")
+else()
+  set(UNBUILT_BACKEND_HEADER "WasapiProxyImpl.hpp")
+endif()
+install(DIRECTORY include/ DESTINATION include
+  PATTERN ${UNBUILT_BACKEND_HEADER} EXCLUDE)
 install(DIRECTORY templates/ DESTINATION share/${PROJECT_NAME}/templates)
 
 # 1. Define the shared library
