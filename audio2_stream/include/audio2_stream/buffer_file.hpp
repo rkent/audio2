@@ -22,14 +22,6 @@
 AUDIO2_STREAM_PUBLIC
 std::string format_to_string(int format);
 
-/**
- * Convert a device sample format to a human-readable string.
- * \param format The SampleFormat.
- * \return       A string representing the format, e.g. "FLOAT".
- */
-AUDIO2_STREAM_PUBLIC
-std::string format_to_string(SampleFormat format);
-
 // Virtual I/O context for reading/writing from/to memory
 typedef struct VIO_DATA
 {
@@ -80,14 +72,6 @@ AUDIO2_STREAM_PUBLIC
 int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
 
 /**
- * Get the sample size in bytes for a given device sample format.
- * \param format The SampleFormat.
- * \return       The sample size in bytes, or -1 if unsupported.
- */
-AUDIO2_STREAM_PUBLIC
-int sample_size_from_sample_format(SampleFormat format);
-
-/**
  * Get sample size from our SfgRwFormat enum
  * \param format The SfgRwFormat enum value.
  * \return       The sample size in bytes.
@@ -102,14 +86,6 @@ int sample_size_from_sfg_format(SfgRwFormat format);
  */
 AUDIO2_STREAM_PUBLIC
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
-
-/**
- * Read/write type to use for different device sample formats
- * \param format The SampleFormat.
- * \return       Corresponding SfgRwFormat enum value.
- */
-AUDIO2_STREAM_PUBLIC
-SfgRwFormat sfg_format_from_sample_format(SampleFormat format);
 
 /**
  * String representation of SfgRwFormat

@@ -223,12 +223,6 @@ int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
   return -2;   // Should not reach here
 }
 
-// Get sample size in bytes from a device SampleFormat
-int sample_size_from_sample_format(SampleFormat format)
-{
-  return sample_format_bytes(format);
-}
-
 // Get sample size from our SfgRwFormat enum
 int sample_size_from_sfg_format(SfgRwFormat format)
 {
@@ -267,24 +261,6 @@ const char * sfg_format_to_string(SfgRwFormat format)
   }
 }
 
-SfgRwFormat sfg_format_from_sample_format(SampleFormat format)
-{
-  switch (format) {
-    case SampleFormat::S8:
-    case SampleFormat::U8:
-      return SFG_BYTE;
-    case SampleFormat::S16:
-      return SFG_SHORT;
-    case SampleFormat::S32:
-      return SFG_INT;
-    case SampleFormat::Float:
-      return SFG_FLOAT;
-    case SampleFormat::Float64:
-      return SFG_DOUBLE;
-    default:
-      return SFG_INVALID;
-  }
-}
 // Read/write type to use for different sndfile formats
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format)
 {
@@ -551,33 +527,4 @@ int convert_types(
     }
   }
   return samples;
-}
-
-// debug string of a device SampleFormat
-std::string format_to_string(SampleFormat format)
-{
-  switch (format) {
-    case SampleFormat::S8:
-      return "S8";
-    case SampleFormat::U8:
-      return "U8";
-    case SampleFormat::S16:
-      return "S16";
-    case SampleFormat::U16:
-      return "U16";
-    case SampleFormat::S24:
-      return "S24";
-    case SampleFormat::U24:
-      return "U24";
-    case SampleFormat::S32:
-      return "S32";
-    case SampleFormat::U32:
-      return "U32";
-    case SampleFormat::Float:
-      return "FLOAT";
-    case SampleFormat::Float64:
-      return "FLOAT64";
-    default:
-      return "UNKNOWN";
-  }
 }

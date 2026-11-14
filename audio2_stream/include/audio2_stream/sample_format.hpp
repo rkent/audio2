@@ -5,7 +5,7 @@
  * Sample format of audio exchanged with an audio device, independent of the backend.
  *
  * The integer values match ALSA's little-endian snd_pcm_format_t values (enforced in
- * alsaops.hpp), since they are used as the nodes' integer "sample_format" parameter.
+ * src/lib/alsaops.hpp), since they are used as the nodes' integer "sample_format" parameter.
  * Do not renumber them.
  */
 enum class SampleFormat : int

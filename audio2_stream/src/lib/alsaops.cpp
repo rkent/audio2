@@ -1,11 +1,8 @@
 #include <cstring>
 
-#include "audio2_stream/alsaops.hpp"
-#include "audio2_stream/buffer_file.hpp"
+#include "alsaops.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include <sndfile.h>
-#include <algorithm>
 #include <atomic>
 #include <format>
 #include <string>
@@ -327,66 +324,3 @@ int alsa_read(
     return -1;
   }
 }
-
-#define BUFFER_LEN                      (1000 * 4)
-
-// Play audio from a SNDFILE using ALSA
-std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
-  std::atomic<bool> * shutdown_flag)
-{
-  auto sndfile = fileh.rawHandle();
-  int format = fileh.format();
-  int channels = fileh.channels();
-
-  static char r_buffer [BUFFER_LEN];    // read buffer
-  static char w_buffer [BUFFER_LEN];    // write buffer
-
-  int readcount;
-  int epipe_count = 0;  // xrun score for this playback, see alsa_write
-  auto read_sfg_format = sfg_format_from_sndfile_format(format);
-
-    // Disable normalization since we are handling scaling ourselves.
-  sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE);
-  sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE);
-
-  int samples = std::min(BUFFER_LEN / sample_size_from_sfg_format(read_sfg_format),
-    BUFFER_LEN / sample_size_from_sample_format(from_alsa_format(alsa_format)));
-  printf("Starting ALSA playback: alsa_format=%s, samples=%d\n",
-        format_to_string(from_alsa_format(alsa_format)).c_str(), samples);
-
-  while ((readcount = sfg_read(fileh, read_sfg_format, r_buffer, samples)) > 0) {
-    printf("Read %d samples from sound file expecting %d\n", readcount, samples);
-    if (readcount < 0) {
-      return std::string("Error reading from sound file");
-    }
-    int samples_converted = convert_types(read_sfg_format,
-      sfg_format_from_sample_format(from_alsa_format(alsa_format)),
-      r_buffer, w_buffer, readcount);
-    if (samples_converted < 0) {
-      return std::string("Error converting audio data for playback");
-    } else if (samples_converted != readcount) {
-      return std::string("Mismatch in converted samples count");
-    }
-    auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format, shutdown_flag,
-      epipe_count);
-    if (count < 0) {
-      return std::string("Error writing to ALSA device");
-    } else if (count != readcount) {
-      return std::string("Mismatch in ALSA write count: expected ") + std::to_string(readcount) +
-             ", got " + std::to_string(count);
-    }
-    printf("Wrote %d samples to ALSA\n", count);
-
-        // Check if shutdown has been requested
-    if (shutdown_flag && shutdown_flag->load()) {
-      break;
-    }
-  }
-
-  if (shutdown_flag && shutdown_flag->load()) {
-    return std::string("Playback interrupted by shutdown signal");
-  }
-  return std::nullopt;
-} /* alsa_play */

@@ -2,9 +2,11 @@
 #define AUDIO2_STREAM_ALSAPROXYIMPL_HPP
 
 #include "audio2_stream/IAudioDeviceProxy.hpp"
-#include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/visibility_control.hpp"
 #include <memory>
+
+// Declared as in <alsa/asoundlib.h>, so users of this header do not need ALSA headers
+typedef struct _snd_pcm snd_pcm_t;
 
 /**
  * ALSA implementation of IAudioDeviceProxy that wraps actual ALSA hardware operations.

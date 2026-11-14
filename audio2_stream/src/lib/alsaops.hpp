@@ -1,15 +1,13 @@
 #ifndef SNDPLAY_ALSAOPS_HPP
 #define SNDPLAY_ALSAOPS_HPP
 
-// ALSA device operations. Linux only: neither this header nor alsaops.cpp is part of the
-// Windows build, where audio devices use WasapiProxyImpl instead.
+// ALSA device operations used by AlsaProxyImpl. Internal to the library and Linux only:
+// neither this header nor alsaops.cpp is part of the Windows build.
 
 #include "audio2_stream/config.hpp"
-#include "audio2_stream/visibility_control.hpp"
 #include "audio2_stream/timestamp.hpp"
 
 #include <alsa/asoundlib.h>
-#include <sndfile.hh>
 
 #include <atomic>
 #include <cstring>
@@ -113,7 +111,6 @@ typedef struct AlsaSwParams
  * \param device   Pointer to the opened ALSA PCM device, or nullptr on failure.
  * \return         Optional error string if opening fails.
  */
-AUDIO2_STREAM_PUBLIC
 std::optional<std::string>
 alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& device);
 
@@ -130,7 +127,6 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& device);
  *                    is above 140 makes the call give up and return -EPIPE.
  * \return          Number of samples written, or negative error code.
  */
-AUDIO2_STREAM_PUBLIC
 int alsa_write(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
   snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag, int & epipe_count);
@@ -139,23 +135,8 @@ int alsa_write(
  * Read audio data from an ALSA device. Parameters are as for alsa_write.
  * \return Number of samples read, or negative error code.
  */
-AUDIO2_STREAM_PUBLIC
 int alsa_read(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
   snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag, int & epipe_count);
-
-/**
- * alsa_play: Play audio from a SNDFILE using ALSA
- * @param fileh SndfileHandle to read audio data from
- * @param alsa_dev Pointer to the opened ALSA PCM device
- * @param alsa_format ALSA format to use for playback
- * @param shutdown_flag optional atomic boolean flag to signal shutdown
- * @return Optional error message string if an error occurs, std::nullopt on success
- */
-AUDIO2_STREAM_PUBLIC
-std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
-  std::atomic<bool> * shutdown_flag);
 
 #endif

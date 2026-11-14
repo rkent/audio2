@@ -1,5 +1,5 @@
 #include "audio2_stream/AlsaProxyImpl.hpp"
-#include "audio2_stream/alsaops.hpp"
+#include "alsaops.hpp"
 #include <cstdio>
 
 std::unique_ptr<IAudioDeviceProxy> make_default_device_proxy()

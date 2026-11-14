@@ -34,7 +34,7 @@ find_package(ament_index_cpp REQUIRED)
 # Only headers for code compiled on this platform (see below) are installed; use
 # make_default_device_proxy() rather than naming a backend class directly.
 if(WIN32)
-  set(UNBUILT_HEADERS AlsaProxyImpl.hpp alsaops.hpp)
+  set(UNBUILT_HEADERS AlsaProxyImpl.hpp)
 else()
   set(UNBUILT_HEADERS WasapiProxyImpl.hpp)
 endif()
