@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include "audio2_stream/config.hpp"
+#include "audio2_stream/visibility_control.hpp"
 
 enum class AudioDirection
 {
@@ -32,7 +33,7 @@ struct DeviceParams
  * (AlsaProxyImpl on Linux, WasapiProxyImpl on Windows).
  * This abstraction also allows for mocking and testing of device-dependent code.
  */
-class IAudioDeviceProxy
+class AUDIO2_STREAM_PUBLIC IAudioDeviceProxy
 {
 public:
   virtual ~IAudioDeviceProxy() = default;
@@ -124,6 +125,7 @@ public:
  * Create the audio device proxy for this platform's backend.
  * Defined by the compiled backend: AlsaProxyImpl.cpp (Linux) or WasapiProxyImpl.cpp (Windows).
  */
+AUDIO2_STREAM_PUBLIC
 std::unique_ptr<IAudioDeviceProxy> make_default_device_proxy();
 
 #endif // AUDIO2_STREAM_IAUDIODEVICEPROXY_HPP

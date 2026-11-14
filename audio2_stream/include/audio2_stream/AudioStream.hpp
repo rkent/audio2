@@ -2,6 +2,7 @@
 #define AUDIO2_STREAM_AUDIOSTREAM_HPP
 
 #include "audio2_stream/config.hpp"
+#include "audio2_stream/visibility_control.hpp"
 #include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/IAudioDeviceProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
@@ -77,7 +78,7 @@ public:
 // Forward declaration
 class AudioTerminal;
 
-class AudioStream
+class AUDIO2_STREAM_PUBLIC AudioStream
 {
 public:
   AudioStream(
@@ -137,7 +138,7 @@ public:
 
 };
 
-class AudioTerminal
+class AUDIO2_STREAM_PUBLIC AudioTerminal
 {
 public:
   AudioTerminal()
@@ -155,7 +156,7 @@ public:
   virtual void run(AudioStream * audio_stream) = 0;
 };
 
-class SndFileSource : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC SndFileSource : public AudioTerminal
 {
 public:
   SndFileSource(const std::string & file_path)
@@ -170,7 +171,7 @@ protected:
 };
 
 // An audio device endpoint, using the platform backend through IAudioDeviceProxy
-class DeviceTerminal : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC DeviceTerminal : public AudioTerminal
 {
 public:
   DeviceTerminal(
@@ -198,7 +199,7 @@ public:
   void close();
 };
 
-class DeviceSink : public DeviceTerminal
+class AUDIO2_STREAM_PUBLIC DeviceSink : public DeviceTerminal
 {
 public:
   DeviceSink(
@@ -211,7 +212,7 @@ public:
   void run(AudioStream * audio_stream) override;
 };
 
-class DeviceSource : public DeviceTerminal
+class AUDIO2_STREAM_PUBLIC DeviceSource : public DeviceTerminal
 {
 public:
   DeviceSource(
@@ -229,7 +230,7 @@ public:
   void run(AudioStream * audio_stream) override;
 };
 
-class MessageSink : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC MessageSink : public AudioTerminal
 {
 public:
   MessageSink(
@@ -259,7 +260,7 @@ protected:
   std::string description_;
 };
 
-class MessageSource : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC MessageSource : public AudioTerminal
 {
 public:
   MessageSource(std::string topic)
@@ -282,7 +283,7 @@ protected:
   std::string topic_;
 };
 
-class TtsSource : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC TtsSource : public AudioTerminal
 {
 public:
   TtsSource(

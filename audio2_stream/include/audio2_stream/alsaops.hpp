@@ -2,6 +2,7 @@
 #define SNDPLAY_ALSAOPS_HPP
 
 #include "audio2_stream/config.hpp"
+#include "audio2_stream/visibility_control.hpp"
 #include "audio2_stream/alsa_compat.hpp"
 
 #include <atomic>
@@ -84,6 +85,7 @@ typedef struct AlsaSwParams
 
 // Function declarations
 
+AUDIO2_STREAM_PUBLIC
 std::optional<std::string>
 alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev);
 /**
@@ -93,6 +95,7 @@ alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev);
  * \param device   Pointer to the opened ALSA PCM device, or nullptr on failure.
  * \return         Optional error string if opening fails.
  */
+AUDIO2_STREAM_PUBLIC
 std::optional<std::string>
 alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& device);
 
@@ -106,10 +109,12 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& device);
  * \param shutdown_flag Pointer to atomic boolean to signal shutdown.
  * \return          Number of samples written, or negative error code.
  */
+AUDIO2_STREAM_PUBLIC
 int alsa_write(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
   snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag);
 
+AUDIO2_STREAM_PUBLIC
 int alsa_read(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
   snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag);
@@ -117,7 +122,7 @@ int alsa_read(
 /**
  * Thread-safe ALSA writer class that consumes audio data from a lock-free queue.
  */
-class AlsaWriteThread
+class AUDIO2_STREAM_PUBLIC AlsaWriteThread
 {
 public:
   AlsaWriteThread(

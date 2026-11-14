@@ -3,13 +3,14 @@
 
 #include "audio2_stream/IAudioDeviceProxy.hpp"
 #include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/visibility_control.hpp"
 #include <memory>
 
 /**
  * ALSA implementation of IAudioDeviceProxy that wraps actual ALSA hardware operations.
  * This is used in production code for actual audio I/O on Linux.
  */
-class AlsaProxyImpl : public IAudioDeviceProxy
+class AUDIO2_STREAM_PUBLIC AlsaProxyImpl : public IAudioDeviceProxy
 {
 public:
   AlsaProxyImpl()

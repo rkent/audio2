@@ -2,6 +2,7 @@
 #define AUDIO2_STREAM_WASAPIPROXYIMPL_HPP
 
 #include "audio2_stream/IAudioDeviceProxy.hpp"
+#include "audio2_stream/visibility_control.hpp"
 #include <memory>
 #include <optional>
 #include <string>
@@ -21,6 +22,7 @@ struct WasapiSampleFormat
  * Map a sample format to its WASAPI layout.
  * \return The layout, or std::nullopt if the format is not supported by this backend.
  */
+AUDIO2_STREAM_PUBLIC
 std::optional<WasapiSampleFormat> wasapi_sample_format(snd_pcm_format_t format);
 
 /**
@@ -32,7 +34,7 @@ std::optional<WasapiSampleFormat> wasapi_sample_format(snd_pcm_format_t format);
  * name matches an endpoint ID exactly, or a case-insensitive substring of an endpoint's
  * friendly name (e.g. "Speakers", "USB Audio").
  */
-class WasapiProxyImpl : public IAudioDeviceProxy
+class AUDIO2_STREAM_PUBLIC WasapiProxyImpl : public IAudioDeviceProxy
 {
 public:
   WasapiProxyImpl();

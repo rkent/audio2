@@ -19,8 +19,6 @@ if(WIN32)
   # ALSA is Linux-only. alsa_compat.hpp stubs the API, so link against an empty target.
   # Audio devices use the WASAPI backend instead (WasapiProxyImpl).
   add_library(ALSA::ALSA INTERFACE IMPORTED)
-  # Export all symbols from the shared library, since the code has no dllexport annotations
-  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
   # Keep windows.h (pulled in by curl) from defining min/max macros
   add_compile_definitions(NOMINMAX)
   # MSVC only defines M_PI and friends when asked
@@ -48,6 +46,8 @@ add_library(
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
 )
+# Selects dllexport in visibility_control.hpp while building the library; users get dllimport
+target_compile_definitions(${PROJECT_NAME} PRIVATE "AUDIO2_STREAM_BUILDING_LIBRARY")
 # Audio device backend; each defines make_default_device_proxy()
 if(WIN32)
   target_sources(${PROJECT_NAME} PRIVATE src/lib/WasapiProxyImpl.cpp)
