@@ -189,6 +189,13 @@ public:
                 get_parameter("device_name").as_string(),
                 get_device_proxy(get_parameter("device_name").as_string())
       );
+            // The stream has no source to negotiate with, so restrict the sink to the format
+            // of the incoming audio. Otherwise the device opens at the sink's preferred rate
+            // and channel count, and the audio plays at the wrong speed and pitch.
+      device_sink->config_ranges_->samplerate_values = {vio_handle.fileh.samplerate()};
+      device_sink->config_ranges_->channel_values = {vio_handle.fileh.channels()};
+      RCLCPP_INFO(rcl_logger, "New audio stream: %d Hz, %d channels",
+        vio_handle.fileh.samplerate(), vio_handle.fileh.channels());
       auto audio_stream = std::make_unique<AudioStream>(
                 nullptr,
                 std::move(device_sink),

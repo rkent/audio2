@@ -1,7 +1,16 @@
 """Launch file for audio2_play_node integration tests."""
 
+import array
+import io
+import math
+import os
+import struct
 import sys
+import time
 import unittest
+import wave
+
+from audio2_stream_msgs.msg import AudioChunk, StreamHeader
 
 import launch
 
@@ -13,9 +22,22 @@ from launch_testing.actions import ReadyToTest
 import rclpy
 from rclpy.node import Node
 
-# from audio2_stream_msgs.msg import (
-#    AudioChunk, PlayFile, TtsProvider, TtsRequest
-# )
+from unique_identifier_msgs.msg import UUID
+
+
+def make_wav_chunk(samplerate, channels, frames):
+    """Return a 16-bit PCM WAV file of a sine wave as bytes, like one AudioChunk's data."""
+    frame_samples = []
+    for frame in range(frames):
+        value = int(8000 * math.sin(2 * math.pi * 440 * frame / samplerate))
+        frame_samples.append(struct.pack('<h', value) * channels)
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(samplerate)
+        wav.writeframes(b''.join(frame_samples))
+    return buffer.getvalue()
 
 
 def generate_test_description():
@@ -77,6 +99,37 @@ class TestAudio2PlayNodeBasic(unittest.TestCase):
         node_names = self.test_node.get_node_names()
         self.assertIn('audio2_play_node_test', node_names,
                       'audio2_play_node should be running')
+
+    @unittest.skipIf(sys.platform == 'win32', 'needs the ALSA null device')
+    def test_chunk_stream_opens_device_in_its_format(self, proc_output, node_under_test):
+        """Test that a stream of audio chunks opens the device at the chunks' rate and channels."""
+        publisher = self.test_node.create_publisher(AudioChunk, 'audio_stream_chunks', 10)
+        deadline = time.time() + 10.0
+        while publisher.get_subscription_count() == 0 and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertGreater(publisher.get_subscription_count(), 0,
+                           'audio2_play_node should subscribe to audio_stream_chunks')
+
+        # Neither format is the device's preferred 24000 Hz mono
+        for samplerate, channels in ((48000, 2), (16000, 1)):
+            uuid = UUID(uuid=list(os.urandom(16)))
+            for sequence in range(5):
+                message = AudioChunk()
+                message.header.uuid = uuid
+                message.header.sequence = sequence
+                message.data = array.array('B', make_wav_chunk(samplerate, channels, 480))
+                publisher.publish(message)
+                time.sleep(0.01)
+            end_of_stream = AudioChunk()
+            end_of_stream.header.uuid = uuid
+            end_of_stream.header.sequence = StreamHeader.SEQUENCE_EOS
+            publisher.publish(end_of_stream)
+
+            # Printed by the node's library to stdout; assertWaitFor reads stderr by default
+            proc_output.assertWaitFor(
+                f'DeviceTerminal::open called with params: device=null, '
+                f'channels={channels}, samplerate={samplerate}',
+                process=node_under_test, timeout=10, stream='stdout')
 
 
 @launch_testing.post_shutdown_test()
