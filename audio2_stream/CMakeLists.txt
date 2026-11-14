@@ -179,6 +179,13 @@ if(BUILD_TESTING)
     src/lib/subprocess.cpp
   )
   target_include_directories(test_subprocess PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/lib)
+  if(WIN32)
+    # Child program for the Windows run_process tests, standing in for cat, echo and sh
+    add_executable(subprocess_helper test/subprocess_helper.cpp)
+    add_dependencies(test_subprocess subprocess_helper)
+    target_compile_definitions(test_subprocess PRIVATE
+      SUBPROCESS_HELPER="$<TARGET_FILE:subprocess_helper>")
+  endif()
 
   # Unit tests for DeviceSink/DeviceSource against the platform audio backend
   ament_add_gtest(test_device_terminal
