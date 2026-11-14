@@ -143,7 +143,11 @@ std::optional<std::string> wopen_vio_to_vector(
   int frames
 )
 {
-  auto bytes_per_chunk = frames * channels * sample_size_from_sfg_format(sfg_format);
+  // Size for the wider of the samples written and the samples stored in the file, which can be
+  // wider (e.g. float written to a double file). vio_write cannot grow the buffer.
+  int sample_size = std::max(sample_size_from_sfg_format(sfg_format),
+      sample_size_from_sfg_format(sfg_format_from_sndfile_format(sf_format)));
+  auto bytes_per_chunk = frames * channels * sample_size;
   size_t file_size = bytes_per_chunk + MAX_HEADER;
   vector.reserve(file_size);
   vector.clear();
