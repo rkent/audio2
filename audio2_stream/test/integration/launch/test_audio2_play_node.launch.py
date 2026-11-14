@@ -31,8 +31,8 @@ def generate_test_description():
         executable='audio2_play_node',
         name='audio2_play_node_test',
         parameters=[{
-            'alsa_device_name': 'null',  # Use ALSA null device for testing
-            'alsa_format': 14,  # SND_PCM_FORMAT_FLOAT
+            'device_name': 'null',  # ALSA null device; on Windows no such device exists
+            'sample_format': 14,  # SND_PCM_FORMAT_FLOAT
             'stream_queue_frames': 480
         }],
         output='screen',

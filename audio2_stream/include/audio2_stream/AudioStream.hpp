@@ -3,7 +3,7 @@
 
 #include "audio2_stream/config.hpp"
 #include "audio2_stream/alsaops.hpp"
-#include "audio2_stream/IAlsaProxy.hpp"
+#include "audio2_stream/IAudioDeviceProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
@@ -169,59 +169,61 @@ protected:
   std::string file_path_;
 };
 
-class AlsaTerminal : public AudioTerminal
+// An audio device endpoint, using the platform backend through IAudioDeviceProxy
+class DeviceTerminal : public AudioTerminal
 {
 public:
-  AlsaTerminal(
-    std::string alsa_device_name,
-    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
+  DeviceTerminal(
+    std::string device_name,
+    std::unique_ptr<IAudioDeviceProxy> proxy = nullptr
   )
   : AudioTerminal(),
-    alsa_device_name_(alsa_device_name),
-    alsa_format_(ALSA_FORMAT),
-    alsa_proxy_(std::move(alsa_proxy)),
+    device_name_(device_name),
+    sample_format_(DEFAULT_SAMPLE_FORMAT),
+    proxy_(std::move(proxy)),
     are_parms_fixed_(false)
   {
-     // We assume that ALSA is configured to allow any samplerate or channel.
+     // We assume that the device backend converts any samplerate or channel count
+     // (ALSA plug/default devices, WASAPI auto-conversion).
     are_parms_bound_ = true;
   }
 
-  std::optional<std::string> open(snd_pcm_stream_t direction, AudioStream * audio_stream);
+  std::optional<std::string> open(AudioDirection direction, AudioStream * audio_stream);
 
-  std::string alsa_device_name_;
-  snd_pcm_format_t alsa_format_;
-  std::unique_ptr<IAlsaProxy> alsa_proxy_;
+  std::string device_name_;
+  snd_pcm_format_t sample_format_;
+  std::unique_ptr<IAudioDeviceProxy> proxy_;
   bool are_parms_fixed_;
 
   void close();
 };
 
-class AlsaSink : public AlsaTerminal
+class DeviceSink : public DeviceTerminal
 {
 public:
-  AlsaSink(
-    std::string alsa_device_name,
-    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
+  DeviceSink(
+    std::string device_name,
+    std::unique_ptr<IAudioDeviceProxy> proxy = nullptr
   )
-  :AlsaTerminal(alsa_device_name, std::move(alsa_proxy))
+  :DeviceTerminal(device_name, std::move(proxy))
   {}
 
   void run(AudioStream * audio_stream) override;
 };
 
-class AlsaSource : public AlsaTerminal
+class DeviceSource : public DeviceTerminal
 {
 public:
-  AlsaSource(
-    std::string alsa_device_name,
-    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
+  DeviceSource(
+    std::string device_name,
+    std::unique_ptr<IAudioDeviceProxy> proxy = nullptr
   )
-  :AlsaTerminal(alsa_device_name, std::move(alsa_proxy))
+  :DeviceTerminal(device_name, std::move(proxy))
   {}
 
-  ~AlsaSource()
+  ~DeviceSource()
   {
-    printf("AlsaSource::~AlsaSource called\n");
+    printf("DeviceSource::~DeviceSource called\n");
   }
 
   void run(AudioStream * audio_stream) override;

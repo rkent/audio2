@@ -2,33 +2,79 @@
 #include "audio2_stream/alsaops.hpp"
 #include <cstdio>
 
+std::unique_ptr<IAudioDeviceProxy> make_default_device_proxy()
+{
+  return std::make_unique<AlsaProxyImpl>();
+}
+
+static snd_pcm_stream_t to_alsa_stream(AudioDirection direction)
+{
+  return direction == AudioDirection::Capture ? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK;
+}
+
+std::optional<std::string> AlsaProxyImpl::preopen(
+  const std::string & device,
+  AudioDirection direction)
+{
+  if (alsa_dev_) {
+    return std::nullopt;
+  }
+  device_name_ = device;
+  int open_result = snd_pcm_open(&alsa_dev_, device.c_str(), to_alsa_stream(direction), 0);
+  if (open_result < 0) {
+    alsa_dev_ = nullptr;
+    error_str_ = snd_strerror(open_result);
+    return error_str_;
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> AlsaProxyImpl::open(
-  AlsaHwParams & hw_vals,
-  AlsaSwParams & sw_vals,
-  snd_pcm_stream_t direction)
+  DeviceParams & params,
+  AudioDirection direction)
 {
   printf("AlsaProxyImpl::open called at %s\n", format_timestamp().c_str());
   printf(
-    "AlsaProxyImpl::open called with hw_params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
-           hw_vals.device,
-           hw_vals.channels,
-           hw_vals.samplerate,
-           hw_vals.format,
-           direction);
+    "AlsaProxyImpl::open called with params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
+           params.device.c_str(),
+           params.channels,
+           params.samplerate,
+           params.format,
+           static_cast<int>(direction));
 
-    // Set direction in hw_vals
-  hw_vals.direction = direction;
+  if (alsa_dev_ && device_name_ != params.device) {
+    // Pre-opened for a different device
+    snd_pcm_close(alsa_dev_);
+    alsa_dev_ = nullptr;
+  }
+  device_name_ = params.device;
 
-    // Open the ALSA device
+  AlsaHwParams hw_vals;
+  hw_vals.device = device_name_.c_str();
+  hw_vals.channels = params.channels;
+  hw_vals.samplerate = params.samplerate;
+  hw_vals.format = params.format;
+  hw_vals.period_size = params.period_frames;
+  hw_vals.buffer_size = params.buffer_frames;
+  hw_vals.direction = to_alsa_stream(direction);
+  AlsaSwParams sw_vals;
+
+    // Open the ALSA device, reusing a pre-opened handle if present
   auto result = alsa_open(hw_vals, sw_vals, alsa_dev_);
   printf("AlsaProxyImpl::open completed at %s\n", format_timestamp().c_str());
 
   if (result.has_value()) {
+    alsa_dev_ = nullptr;  // alsa_open closes the device on failure
     error_str_ = result.value();
     return error_str_;
   }
 
-    // Store the format that was actually opened
+    // Report the values that were actually opened
+  params.channels = hw_vals.channels;
+  params.samplerate = hw_vals.samplerate;
+  params.format = hw_vals.format;
+  params.period_frames = hw_vals.period_size;
+  params.buffer_frames = hw_vals.buffer_size;
   format_ = hw_vals.format;
 
   return std::nullopt;
@@ -59,7 +105,7 @@ int AlsaProxyImpl::write(
 
   int result = alsa_write(samples, alsa_dev_, data, channels, format, shutdown_flag);
   if (result < 0) {
-    error_str_ = "ALSA write failed";
+    error_str_ = std::string("ALSA write failed: ") + snd_strerror(result);
   }
   return result;
 }
@@ -79,7 +125,7 @@ int AlsaProxyImpl::read(
 
   int result = alsa_read(samples, alsa_dev_, data, channels, format, shutdown_flag);
   if (result < 0) {
-    error_str_ = "ALSA read failed";
+    error_str_ = std::string("ALSA read failed: ") + snd_strerror(result);
   }
   printf("AlsaProxyImpl::read requested %d samples, got %d samples\n", samples, result);
   return result;

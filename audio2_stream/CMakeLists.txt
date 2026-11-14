@@ -17,6 +17,7 @@ find_library(SNDFILE_LIBRARIES NAMES sndfile REQUIRED)
 find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
 if(WIN32)
   # ALSA is Linux-only. alsa_compat.hpp stubs the API, so link against an empty target.
+  # Audio devices use the WASAPI backend instead (WasapiProxyImpl).
   add_library(ALSA::ALSA INTERFACE IMPORTED)
   # Export all symbols from the shared library, since the code has no dllexport annotations
   set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
@@ -46,8 +47,14 @@ add_library(
     src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
-    src/lib/AlsaProxyImpl.cpp
 )
+# Audio device backend; each defines make_default_device_proxy()
+if(WIN32)
+  target_sources(${PROJECT_NAME} PRIVATE src/lib/WasapiProxyImpl.cpp)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ole32)
+else()
+  target_sources(${PROJECT_NAME} PRIVATE src/lib/AlsaProxyImpl.cpp)
+endif()
 
 #set(SOURCE_FILES
 #  src/alsaops.cpp
@@ -165,23 +172,39 @@ if(BUILD_TESTING)
     $<INSTALL_INTERFACE:include>
   )
 
-  # Unit tests for ALSA operations with mocking
-  ament_add_gtest(test_alsa_mocked
-    test/test_alsa_mocked.cpp
+  # Unit tests for DeviceSink/DeviceSource against the platform audio backend
+  ament_add_gtest(test_device_terminal
+    test/test_device_terminal.cpp
   )
-  #target_compile_options(test_alsa_mocked PRIVATE ${THREAD_SANITIZER_COMPILE_FLAGS})
-  #target_link_options(test_alsa_mocked PRIVATE ${THREAD_SANITIZER_LINK_FLAGS})
-  target_link_libraries(test_alsa_mocked
+  #target_compile_options(test_device_terminal PRIVATE ${THREAD_SANITIZER_COMPILE_FLAGS})
+  #target_link_options(test_device_terminal PRIVATE ${THREAD_SANITIZER_LINK_FLAGS})
+  target_link_libraries(test_device_terminal
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
     ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
   )
-  target_include_directories(test_alsa_mocked PUBLIC
+  target_include_directories(test_device_terminal PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
   )
+
+  if(WIN32)
+    # Unit tests for the WASAPI backend
+    ament_add_gtest(test_wasapi
+      test/test_wasapi.cpp
+    )
+    target_link_libraries(test_wasapi
+      ${PROJECT_NAME}
+      rclcpp::rclcpp
+      ${audio2_stream_msgs_TARGETS}
+    )
+    target_include_directories(test_wasapi PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
+  endif()
 
   # Integration tests using launch_testing
   find_package(launch_testing_ament_cmake REQUIRED)

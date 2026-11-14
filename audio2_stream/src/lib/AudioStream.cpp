@@ -6,7 +6,7 @@
 #include <fstream>
 #include <cstdio>
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include <audio2_stream/AlsaProxyImpl.hpp>
+#include <audio2_stream/IAudioDeviceProxy.hpp>
 #include <audio2_stream/AudioStream.hpp>
 #include <inja/inja.hpp>
 
@@ -144,99 +144,96 @@ std::optional<std::string> AudioStream::fix_parms()
   return std::nullopt;
 }
 
-std::optional<std::string> AlsaTerminal::open(
-  snd_pcm_stream_t direction,
+std::optional<std::string> DeviceTerminal::open(
+  AudioDirection direction,
   AudioStream * audio_stream)
 {
-    // Create default proxy implementation if none provided
-  printf("AlsaTerminal::open called\n");
-  if (!alsa_proxy_) {
-    alsa_proxy_ = std::make_unique<AlsaProxyImpl>();
+    // Create the platform's default proxy implementation if none provided
+  printf("DeviceTerminal::open called\n");
+  if (!proxy_) {
+    proxy_ = make_default_device_proxy();
   }
 
   if (!audio_stream->parms_fixed()) {
     auto fix_result = audio_stream->fix_parms();
     if (fix_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for AlsaTerminal: %s",
+      RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for DeviceTerminal: %s",
         fix_result->c_str());
       return fix_result;
     }
   }
 
-  AlsaHwParams hw_params;
-  hw_params.device = alsa_device_name_.c_str();
-  hw_params.channels = audio_stream->channels_;
-  hw_params.samplerate = audio_stream->samplerate_;
-  hw_params.format = alsa_format_;
-  hw_params.direction = direction;
+  DeviceParams params;
+  params.device = device_name_;
+  params.channels = audio_stream->channels_;
+  params.samplerate = audio_stream->samplerate_;
+  params.format = sample_format_;
 
   printf(
-    "AlsaTerminal::open called with hw_params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
-           hw_params.device,
-           hw_params.channels,
-           hw_params.samplerate,
-           hw_params.format,
-           hw_params.direction);
+    "DeviceTerminal::open called with params: device=%s, channels=%u, samplerate=%u, format=%d, direction=%d\n",
+           params.device.c_str(),
+           params.channels,
+           params.samplerate,
+           params.format,
+           static_cast<int>(direction));
 
-  AlsaSwParams sw_params;
-
-  auto result = alsa_proxy_->open(hw_params, sw_params, direction);
+  auto result = proxy_->open(params, direction);
   if (result.has_value()) {
     return result.value();
   }
-    // alsa_proxy_->open may change the format if original is not supported.
-  alsa_format_ = alsa_proxy_->get_format();
-  if (audio_stream->samplerate_ != static_cast<int>(hw_params.samplerate)) {
+    // proxy_->open may change the format if original is not supported.
+  sample_format_ = proxy_->get_format();
+  if (audio_stream->samplerate_ != static_cast<int>(params.samplerate)) {
     char buffer[256];
-    snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from ALSA device.\n",
-      audio_stream->samplerate_, hw_params.samplerate);
+    snprintf(buffer, sizeof(buffer), "Error: Requested samplerate %u, got %u from audio device.\n",
+      audio_stream->samplerate_, params.samplerate);
     return std::string(buffer);
   }
   are_parms_fixed_ = true;
   return std::nullopt;
 }
 
-void AlsaTerminal::close()
+void DeviceTerminal::close()
 {
-  printf("AlsaTerminal::close called\n");
-  if (alsa_proxy_) {
-    alsa_proxy_->close();
+  printf("DeviceTerminal::close called\n");
+  if (proxy_) {
+    proxy_->close();
   }
   return;
 }
 
-void AlsaSink::run(AudioStream * audio_stream)
+void DeviceSink::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
-  assert(alsa_proxy_);
-  printf("AlsaSink::run started\n");
+  assert(proxy_);
+  printf("DeviceSink::run started\n");
   if (audio_stream->shutdown_flag_.load()) {
-    printf("AlsaSink::run exiting immediately due to shutdown flag\n");
+    printf("DeviceSink::run exiting immediately due to shutdown flag\n");
     return;
   }
   bool done = false;
   while (!done && !audio_stream->shutdown_flag_.load()) {
-    std::string error_str = alsa_proxy_->get_error();
+    std::string error_str = proxy_->get_error();
     if (error_str.length() > 0) {
-      printf("AlsaSink::run exiting due to ALSA error: %s\n", error_str.c_str());
+      printf("DeviceSink::run exiting due to device error: %s\n", error_str.c_str());
       break;
     }
     std::vector<uint8_t> audio_data;
 
         // Wait to pop from queue
-    printf("Waiting to pop from queue in AlsaSink::run at %s\n", format_timestamp().c_str());
+    printf("Waiting to pop from queue in DeviceSink::run at %s\n", format_timestamp().c_str());
     audio_stream->data_available_.wait(false);     // Wait until there's something to process
     std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
-    printf("\nAlsaSink::run thread %zu woke up to process audio data at %s\n", hash_id,
+    printf("\nDeviceSink::run thread %zu woke up to process audio data at %s\n", hash_id,
       format_timestamp().c_str());
     audio_stream->data_available_.store(false);
 
     if (!are_parms_fixed_) {
-      printf("AlsaSink::run fixing parameters before processing audio data\n");
+      printf("DeviceSink::run fixing parameters before processing audio data\n");
       if (!audio_stream->parms_fixed()) {
         auto fix_result = audio_stream->fix_parms();
         if (fix_result.has_value()) {
-          RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for AlsaSink: %s",
+          RCLCPP_ERROR(rcl_logger, "Error fixing audio parameters for DeviceSink: %s",
             fix_result->c_str());
           break;
         }
@@ -246,21 +243,21 @@ void AlsaSink::run(AudioStream * audio_stream)
         break;
       }
           // ToDo: vary format depending on sfg format
-      alsa_format_ = ALSA_FORMAT;
+      sample_format_ = DEFAULT_SAMPLE_FORMAT;
 
-      printf("AlsaSink::run opening ALSA device\n");
-      auto open_result = open(SND_PCM_STREAM_PLAYBACK, audio_stream);
+      printf("DeviceSink::run opening audio device\n");
+      auto open_result = open(AudioDirection::Playback, audio_stream);
       if (open_result.has_value()) {
-        RCLCPP_ERROR(rcl_logger, "Failed to open ALSA device in AlsaSink: %s",
+        RCLCPP_ERROR(rcl_logger, "Failed to open audio device in DeviceSink: %s",
           open_result->c_str());
         return;
       }
-      printf("AlsaSink::run ALSA device opened successfully\n");
+      printf("DeviceSink::run audio device opened successfully\n");
     }
 
         // empty the queue
     do {
-      printf("AlsaSink: popping audio data from queue ra: %zu wa: %zu \n",
+      printf("DeviceSink: popping audio data from queue ra: %zu wa: %zu \n",
         audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
       auto pop_result = audio_stream->queue_.pop(audio_data);
       if (!pop_result) {
@@ -271,74 +268,62 @@ void AlsaSink::run(AudioStream * audio_stream)
         done = true;
         break;
       }
-      int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
-      if (false) {
-                // Output ALSA status for debugging
-        snd_pcm_t * alsa_dev = alsa_proxy_->get_handle();
-        if (alsa_dev) {
-          snd_pcm_status_t * stat;
-          snd_pcm_status_alloca(&stat);
-          snd_pcm_status(alsa_dev, stat);
-          snd_output_t *output;
-          snd_output_stdio_attach(&output, stdout, 0);
-          snd_pcm_status_dump(stat, output);
-        }
-      }
-      int write_result = alsa_proxy_->write(
+      int bytes_per_sample = snd_pcm_format_width(sample_format_) / 8;
+      int write_result = proxy_->write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 audio_data.data(),
                 audio_stream->channels_, // channels
-                alsa_format_,
+                sample_format_,
                 nullptr  // shutdown flag
       );
       if (write_result < 0) {
-        printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
+        printf("Error writing to audio device: %s\n", proxy_->get_error().c_str());
       }
     }  while (true);
   }
-  printf("AlsaSink::run exiting, pushing silence.\n");
+  printf("DeviceSink::run exiting, pushing silence.\n");
     // Push silence to fill the buffer before closing
-  const int bytes_per_sample = snd_pcm_format_width(alsa_format_) / 8;
-  int silence_frames = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
+  const int bytes_per_sample = snd_pcm_format_width(sample_format_) / 8;
+  int silence_frames = DEVICE_BUFFER_SIZE;
   const int silence_size = silence_frames * audio_stream->channels_ * bytes_per_sample;
   std::vector<uint8_t> silence_buffer(silence_size, 0);
   while (silence_frames > 0) {
-    int written = alsa_proxy_->write(
+    int written = proxy_->write(
             silence_frames * audio_stream->channels_,
             silence_buffer.data(),
             audio_stream->channels_,
-            alsa_format_,
+            sample_format_,
             nullptr  // no shutdown flag so we can finish writing silence
     );
     if (written < 0) {
-      printf("Error writing silence to ALSA device: %s\n", snd_strerror(written));
+      printf("Error writing silence to audio device: %s\n", proxy_->get_error().c_str());
       break;
     }
-    printf("Wrote %d silence frames to ALSA device of %d\n", written / audio_stream->channels_,
+    printf("Wrote %d silence frames to audio device of %d\n", written / audio_stream->channels_,
       silence_frames);
     silence_frames -= written / audio_stream->channels_;
   }
 
   close();
-  printf("AlsaSink::run final exiting\n");
+  printf("DeviceSink::run final exiting\n");
   audio_stream->shutdown();
   return;
 }
 
-void AlsaSource::run(AudioStream * audio_stream)
+void DeviceSource::run(AudioStream * audio_stream)
 {
   assert(audio_stream);
-  printf("AlsaSource::run started\n");
+  printf("DeviceSource::run started\n");
   std::vector<uint8_t> audio_data;
     // Add capacity to audio_data to hold one queue chunk of audio.
   auto bytes_per_chunk = audio_stream->queue_frames_ * audio_stream->channels_ *
     sample_size_from_sfg_format(SFG_RW_FORMAT);
 
   while (!audio_stream->shutdown_flag_.load()) {
-    printf("AlsaSource::run loop started\n");
+    printf("DeviceSource::run loop started\n");
     audio_data.resize(bytes_per_chunk);
-    if (!alsa_proxy_->get_handle()) {
-      printf("AlsaSource::run no ALSA proxy handle\n");
+    if (!proxy_ || !proxy_->is_open()) {
+      printf("DeviceSource::run audio device is not open\n");
       break;
     }
     if (audio_stream->queue_.write_available() == 0) {
@@ -348,18 +333,19 @@ void AlsaSource::run(AudioStream * audio_stream)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
-    printf("AlsaSource: Attempting to read from ALSA device\n");
-    auto read_result = alsa_proxy_->read(
+    printf("DeviceSource: Attempting to read from audio device\n");
+    auto read_result = proxy_->read(
             audio_stream->queue_frames_ * audio_stream->channels_,
             audio_data.data(),
             audio_stream->channels_,
-            alsa_format_,
+            sample_format_,
             &audio_stream->shutdown_flag_);
     if (read_result < 0) {
-      printf("Error reading from ALSA device: %s\n", snd_strerror(read_result));
-            // TODO: handle error
+      printf("Error reading from audio device: %s\n", proxy_->get_error().c_str());
+            // TODO: handle error. Stop rather than resize the buffer to a negative size.
+      break;
     }
-    printf("AlsaSource: Read %d samples from ALSA device at %s\n", read_result,
+    printf("DeviceSource: Read %d samples from audio device at %s\n", read_result,
       format_timestamp().c_str());
     audio_data.resize(read_result * sample_size_from_sfg_format(SFG_RW_FORMAT));
     if (!audio_stream->queue_.push(audio_data)) {
@@ -369,13 +355,13 @@ void AlsaSource::run(AudioStream * audio_stream)
     }
     audio_stream->data_available_.store(true);
     audio_stream->data_available_.notify_one();
-    printf("AlsaSource: Pushed %d samples to audio queue at %s\n", read_result,
+    printf("DeviceSource: Pushed %d samples to audio queue at %s\n", read_result,
       format_timestamp().c_str());
   }
-  printf("AlsaSource::run exiting.\n");
+  printf("DeviceSource::run exiting.\n");
 
   close();
-  printf("AlsaSource::run final exiting\n");
+  printf("DeviceSource::run final exiting\n");
   return;
 }
 

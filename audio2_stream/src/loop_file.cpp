@@ -55,7 +55,7 @@ public:
     AlsaHwParams hw_vals;
     hw_vals.channels = fileh_.channels();
     hw_vals.samplerate = fileh_.samplerate();
-    hw_vals.format = ALSA_FORMAT;
+    hw_vals.format = DEFAULT_SAMPLE_FORMAT;
     AlsaSwParams sw_vals;
     snd_pcm_t * alsa_dev = nullptr;
     auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);

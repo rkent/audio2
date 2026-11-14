@@ -31,13 +31,13 @@ inline std::string format_timestamp()
 // ALSA hardware parameters values
 typedef struct AlsaHwParams
 {
-  const char *device = ALSA_DEVICE_NAME;
+  const char *device = DEFAULT_DEVICE_NAME;
   unsigned int channels = 1;
-  snd_pcm_uframes_t buffer_size = ALSA_BUFFER_SIZE;
-  snd_pcm_uframes_t period_size = ALSA_PERIOD_SIZE;
+  snd_pcm_uframes_t buffer_size = DEVICE_BUFFER_SIZE;
+  snd_pcm_uframes_t period_size = DEVICE_PERIOD_SIZE;
   snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;
-  snd_pcm_format_t format = ALSA_FORMAT;
-  unsigned int samplerate = ALSA_SAMPLERATE;
+  snd_pcm_format_t format = DEFAULT_SAMPLE_FORMAT;
+  unsigned int samplerate = DEFAULT_SAMPLERATE;
   snd_pcm_stream_t direction = SND_PCM_STREAM_PLAYBACK;
   bool operator!=(const AlsaHwParams & p_rhs) const
   {

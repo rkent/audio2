@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstring>
 #include <sndfile.h>
-#include "audio2_stream/alsa_compat.hpp"
 #include <string>
 #include <vector>
 #include <thread>

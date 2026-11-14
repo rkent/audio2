@@ -147,7 +147,7 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev)
 {
   auto requested_hw_vals = hw_vals;   // Copy for reporting
   const char * device = hw_vals.device;
-  alsa_dev = nullptr;
+  // alsa_dev may be a pre-opened handle (see AlsaProxyImpl::preopen), which is reused below
   snd_pcm_hw_params_t *hw_params;
   snd_pcm_sw_params_t *sw_params;
 
