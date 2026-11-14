@@ -52,6 +52,7 @@ add_library(
     SHARED
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
+    src/lib/subprocess.cpp
 )
 # Selects dllexport in visibility_control.hpp while building the library; users get dllimport
 target_compile_definitions(${PROJECT_NAME} PRIVATE "AUDIO2_STREAM_BUILDING_LIBRARY")
@@ -171,6 +172,13 @@ if(BUILD_TESTING)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
   )
+
+  # Unit tests for run_process. It is internal to the library (not exported), so compile it in.
+  ament_add_gtest(test_subprocess
+    test/test_subprocess.cpp
+    src/lib/subprocess.cpp
+  )
+  target_include_directories(test_subprocess PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/lib)
 
   # Unit tests for DeviceSink/DeviceSource against the platform audio backend
   ament_add_gtest(test_device_terminal

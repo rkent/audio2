@@ -9,16 +9,12 @@
 #include <audio2_stream/IAudioDeviceProxy.hpp>
 #include <audio2_stream/AudioStream.hpp>
 #include <inja/inja.hpp>
+#include "subprocess.hpp"
 
 #ifdef _WIN32
-#define popen _popen
-#define pclose _pclose
-// Binary mode is required on Windows so raw audio bytes are not translated
-#define POPEN_READ_MODE "rb"
 #define WHICH_COMMAND "where "
 #define NULL_DEVICE "NUL"
 #else
-#define POPEN_READ_MODE "r"
 #define WHICH_COMMAND "which "
 #define NULL_DEVICE "/dev/null"
 #endif
@@ -969,12 +965,14 @@ std::optional<std::string> TtsSource::open()
 
 std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & audio_data)
 {
-  std::string command;
+  // The text is passed on stdin and the program is run without a shell, so the text and
+  // voice (both from the request message) can never be interpreted as commands.
+  std::vector<std::string> argv;
   if (name_ == "espeak") {
     if (hasEspeakNG()) {
-      command = "espeak-ng --stdout \"" + text_ + "\"";
+      argv = {"espeak-ng", "--stdout", "--stdin"};
     } else if (hasEspeak()) {
-      command = "espeak --stdout \"" + text_ + "\"";
+      argv = {"espeak", "--stdout", "--stdin"};
     } else {
       return std::string("Neither espeak nor espeak-ng is installed");
     }
@@ -982,30 +980,25 @@ std::optional<std::string> TtsSource::fetch_tts_program(std::vector<uint8_t> & a
     if (!isProgramInstalled("piper")) {
       return std::string("Piper TTS program is not installed");
     }
-    command = "piper --output-raw -m " + voice_ + " --data-dir " + PIPER_DATA_DIR + " -- " + "\"" +
-      text_ + "\"";
+    // With no text arguments, piper reads the text from stdin
+    argv = {"piper", "--output-raw", "-m", voice_, "--data-dir", PIPER_DATA_DIR};
   } else {
     return std::string("Unsupported TTS provider: ") + name_;
   }
-  printf("TtsSource::fetch_tts_program executing command: %s at %s\n", command.c_str(),
-    format_timestamp().c_str());
-  FILE * pipe = popen(command.c_str(), POPEN_READ_MODE);
-  if (!pipe) {
-    return std::string("Failed to execute TTS command");
+  std::string command;
+  for (const auto & arg : argv) {
+    command += (command.empty() ? "" : " ") + arg;
   }
-  printf("TtsSource::fetch_tts_program started reading audio data at %s\n",
-    format_timestamp().c_str());
-  // ToDo: the buffer size should match the audio chunk size.
-  char buffer[4096];
-  size_t bytes_read;
-      // TODO: we should stream this data to the audio stream as it comes in, rather than buffering the whole thing in memory.
-  while ((bytes_read = fread(buffer, 1, sizeof(buffer), pipe)) > 0) {
-    printf("TtsSource::fetch_tts_program read %zu bytes of audio data\n", bytes_read);
-    audio_data.insert(audio_data.end(), buffer, buffer + bytes_read);
+  printf("TtsSource::fetch_tts_program executing command: %s (text on stdin) at %s\n",
+    command.c_str(), format_timestamp().c_str());
+  // TODO: we should stream this data to the audio stream as it comes in, rather than buffering
+  // the whole thing in memory.
+  int exit_code = 0;
+  if (auto error = run_process(argv, text_, audio_data, exit_code)) {
+    return std::string("Failed to execute TTS command: ") + *error;
   }
-  int result = pclose(pipe);
-  if (result != 0) {
-    return std::format("TTS command failed with code {}", result);
+  if (exit_code != 0) {
+    return std::format("TTS command failed with code {}", exit_code);
   }
   printf("TtsSource::fetch_tts_program completed with %zu bytes of audio data at %s\n",
     audio_data.size(), format_timestamp().c_str());
