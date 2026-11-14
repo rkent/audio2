@@ -246,7 +246,11 @@ public:
     sfFormat_(sfFormat),
     publisher_(publisher),
     description_(description)
-  {}
+  {
+    // Chunks are encoded at whatever samplerate and channel count the stream uses,
+    // so the default config ranges apply.
+    are_parms_bound_ = true;
+  }
 
   ~MessageSink()
   {

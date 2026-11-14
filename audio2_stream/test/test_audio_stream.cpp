@@ -330,6 +330,28 @@ TEST_F(AudioStreamTest, SndFileSourceDecodesAppleLossless)
 }
 
 /**
+ * Test that a stream into a MessageSink, as used by audio2_capture_node and
+ * audio2_play_remote_node, can resolve its samplerate and channel count.
+ */
+TEST_F(AudioStreamTest, MessageSinkStreamParametersResolve)
+{
+  createTestAudioFile(test_audio_file_, 48000, 2);
+  auto node = std::make_shared<rclcpp::Node>("message_sink_test");
+  auto publisher = node->create_publisher<audio2_stream_msgs::msg::AudioChunk>("test_chunks", 10);
+
+  auto source = std::make_unique<SndFileSource>(test_audio_file_);
+  ASSERT_FALSE(source->open().has_value());
+  auto sink = std::make_unique<MessageSink>("test_chunks", SF_FORMAT_DEFAULT, publisher, "test");
+  EXPECT_TRUE(sink->are_parms_bound_);
+
+  AudioStream stream(std::move(source), std::move(sink), "message sink test");
+  auto result = stream.fix_parms();
+  EXPECT_FALSE(result.has_value()) << *result;
+  EXPECT_EQ(stream.samplerate_, 48000);
+  EXPECT_EQ(stream.channels_, 2);
+}
+
+/**
  * Test buffer vector creation for format conversion.
  */
 TEST_F(AudioStreamTest, ConvertBufferCreation)
