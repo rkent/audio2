@@ -328,6 +328,10 @@ std::optional<std::string> WasapiProxyImpl::resolve_device(
       }
       return false;
     });
+  if (FAILED(hr)) {
+    // Report the real cause rather than "not found" with an empty device list
+    return hresult_error(std::format("cannot enumerate {} devices", direction_name(direction)), hr);
+  }
   if (!impl_->device) {
     impl_->device = name_match;
   }
@@ -531,11 +535,9 @@ int WasapiProxyImpl::write(
   int samples,
   void * data,
   int channels,
-  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
-  (void)format;  // the device was opened with format_, which callers write in
   ensure_com();
   if (!impl_->render) {
     error_str_ = "WASAPI playback device is not opened";
