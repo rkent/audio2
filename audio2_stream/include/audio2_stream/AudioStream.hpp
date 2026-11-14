@@ -11,6 +11,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <cstring>
 #include <random>
 #include <curl/curl.h>
 #include <set>
@@ -20,17 +21,18 @@
 #include "rclcpp/rclcpp.hpp"
 #include "unique_identifier_msgs/msg/uuid.hpp"
 
-// Adapted from https://github.com/autowarefoundation/autoware_utils/tree/main/autoware_utils_uuid
+// Random (version 4) UUID, per RFC 9562. Bytes come straight from std::random_device
+// (OS entropy on glibc and MSVC), giving the full 122 random bits.
 inline unique_identifier_msgs::msg::UUID generate_uuid()
 {
-  // Generate random number
   unique_identifier_msgs::msg::UUID uuid;
-  std::mt19937 gen(std::random_device{}());
-  // uint8_t is not a valid result type for independent_bits_engine (MSVC enforces this)
-  std::independent_bits_engine<std::mt19937, 8, unsigned int> bit_eng(gen);
-  std::generate(uuid.uuid.begin(), uuid.uuid.end(),
-    [&bit_eng]() {return static_cast<uint8_t>(bit_eng());});
-
+  std::random_device rd;
+  for (std::size_t i = 0; i < uuid.uuid.size(); i += sizeof(uint32_t)) {
+    uint32_t r = rd();
+    std::memcpy(&uuid.uuid[i], &r, sizeof(r));
+  }
+  uuid.uuid[6] = (uuid.uuid[6] & 0x0F) | 0x40;  // version 4
+  uuid.uuid[8] = (uuid.uuid[8] & 0x3F) | 0x80;  // RFC 9562 variant
   return uuid;
 }
 
