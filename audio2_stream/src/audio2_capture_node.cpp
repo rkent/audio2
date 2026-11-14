@@ -11,7 +11,6 @@
 #include <functional>
 
 #include "rclcpp/rclcpp.hpp"
-#include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
@@ -38,7 +37,8 @@ public:
     printf("Audio device name: %s\n", get_parameter("device_name").as_string().c_str());
 
     param_desc.description = "Audio sample format for capture";
-    param_desc.additional_constraints = "Must be a valid snd_pcm_format_t integer value.";
+    param_desc.additional_constraints =
+      "A SampleFormat integer value (same numbering as ALSA snd_pcm_format_t; 14 = float).";
     param_desc.read_only = false;
     this->declare_parameter<int>("sample_format", static_cast<int>(DEFAULT_SAMPLE_FORMAT),
       param_desc);

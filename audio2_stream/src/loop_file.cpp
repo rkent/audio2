@@ -9,6 +9,7 @@
 #include <sndfile.hh>
 
 #include "rclcpp/rclcpp.hpp"
+#include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 
 #define TOPIC_FORMAT (SF_FORMAT_WAV | SF_FORMAT_PCM_32)
@@ -55,7 +56,7 @@ public:
     AlsaHwParams hw_vals;
     hw_vals.channels = fileh_.channels();
     hw_vals.samplerate = fileh_.samplerate();
-    hw_vals.format = DEFAULT_SAMPLE_FORMAT;
+    hw_vals.format = to_alsa_format(DEFAULT_SAMPLE_FORMAT);
     AlsaSwParams sw_vals;
     snd_pcm_t * alsa_dev = nullptr;
     auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);

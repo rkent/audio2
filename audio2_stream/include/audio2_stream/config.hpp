@@ -1,8 +1,7 @@
 #ifndef AUDIO2_STREAM_CONFIG_HPP
 #define AUDIO2_STREAM_CONFIG_HPP
 
-#include <limits>
-#include "audio2_stream/alsa_compat.hpp"
+#include "audio2_stream/sample_format.hpp"
 #include <sndfile.hh>
 
 // These are set in order of preference so sorting gives the lowest as preferable.
@@ -39,18 +38,9 @@ const long unsigned int DEVICE_BUFFER_SIZE = DEVICE_PERIOD_SIZE * DEVICE_BUFFER_
 //   to a dmixer device. Apparently I can't do that.
 // "default" selects the system default device (ALSA) or default endpoint (WASAPI)
 #define DEFAULT_DEVICE_NAME "default"
-const snd_pcm_format_t DEFAULT_SAMPLE_FORMAT = SND_PCM_FORMAT_FLOAT;
+const SampleFormat DEFAULT_SAMPLE_FORMAT = SampleFormat::Float;
 const int DEFAULT_CHANNELS = 2;
 const int DEFAULT_SAMPLERATE = 48000;
-
-// ALSA-only software parameter defaults
-const int ALSA_START_PERIODS = DEVICE_BUFFER_PERIODS / 2;
-const long unsigned int ALSA_START_THRESHOLD = DEVICE_PERIOD_SIZE * ALSA_START_PERIODS;
-// Never automatically stop the alsa device
-const long unsigned int ALSA_STOP_THRESHOLD = std::numeric_limits<snd_pcm_uframes_t>::max();
-// settings for "samples are zeroed after they are played back"
-const long unsigned int ALSA_SILENCE_SIZE = std::numeric_limits<snd_pcm_uframes_t>::max();
-const long unsigned int ALSA_SILENCE_THRESHOLD = 0;
 
 // Size of audio queue for buffering between source and sink
 const int AUDIO_QUEUE_SIZE = 100;

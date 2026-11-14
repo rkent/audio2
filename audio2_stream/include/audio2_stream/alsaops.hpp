@@ -1,32 +1,54 @@
 #ifndef SNDPLAY_ALSAOPS_HPP
 #define SNDPLAY_ALSAOPS_HPP
 
+// ALSA device operations. Linux only: neither this header nor alsaops.cpp is part of the
+// Windows build, where audio devices use WasapiProxyImpl instead.
+
 #include "audio2_stream/config.hpp"
 #include "audio2_stream/visibility_control.hpp"
-#include "audio2_stream/alsa_compat.hpp"
+#include "audio2_stream/timestamp.hpp"
+
+#include <alsa/asoundlib.h>
+#include <sndfile.hh>
 
 #include <atomic>
+#include <cstring>
+#include <limits>
 #include <tuple>
 #include <optional>
 #include <string>
-#include <chrono>
 #include "boost/lockfree/spsc_queue.hpp"
 
-// utility function to format timestamps for debugging
-inline std::string format_timestamp()
-{
-  auto time_point = std::chrono::steady_clock::now();
-  auto time_since_epoch = time_point.time_since_epoch();
-  auto hours = std::chrono::duration_cast<std::chrono::hours>(time_since_epoch) % 24;
-  auto minutes = std::chrono::duration_cast<std::chrono::minutes>(time_since_epoch) % 60;
-  auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_since_epoch) % 60;
-  auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch) %
-    1000;
+// ALSA software parameter defaults
+const int ALSA_START_PERIODS = DEVICE_BUFFER_PERIODS / 2;
+const long unsigned int ALSA_START_THRESHOLD = DEVICE_PERIOD_SIZE * ALSA_START_PERIODS;
+// Never automatically stop the alsa device
+const long unsigned int ALSA_STOP_THRESHOLD = std::numeric_limits<snd_pcm_uframes_t>::max();
+// settings for "samples are zeroed after they are played back"
+const long unsigned int ALSA_SILENCE_SIZE = std::numeric_limits<snd_pcm_uframes_t>::max();
+const long unsigned int ALSA_SILENCE_THRESHOLD = 0;
 
-  char buffer[256];
-  snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%03ld",
-                hours.count(), minutes.count(), seconds.count(), milliseconds.count());
-  return std::string(buffer);
+// SampleFormat values are ALSA's, so conversion is a cast. Keep them in sync.
+static_assert(static_cast<int>(SampleFormat::Unknown) == SND_PCM_FORMAT_UNKNOWN);
+static_assert(static_cast<int>(SampleFormat::S8) == SND_PCM_FORMAT_S8);
+static_assert(static_cast<int>(SampleFormat::U8) == SND_PCM_FORMAT_U8);
+static_assert(static_cast<int>(SampleFormat::S16) == SND_PCM_FORMAT_S16_LE);
+static_assert(static_cast<int>(SampleFormat::U16) == SND_PCM_FORMAT_U16_LE);
+static_assert(static_cast<int>(SampleFormat::S24) == SND_PCM_FORMAT_S24_LE);
+static_assert(static_cast<int>(SampleFormat::U24) == SND_PCM_FORMAT_U24_LE);
+static_assert(static_cast<int>(SampleFormat::S32) == SND_PCM_FORMAT_S32_LE);
+static_assert(static_cast<int>(SampleFormat::U32) == SND_PCM_FORMAT_U32_LE);
+static_assert(static_cast<int>(SampleFormat::Float) == SND_PCM_FORMAT_FLOAT_LE);
+static_assert(static_cast<int>(SampleFormat::Float64) == SND_PCM_FORMAT_FLOAT64_LE);
+
+constexpr snd_pcm_format_t to_alsa_format(SampleFormat format)
+{
+  return static_cast<snd_pcm_format_t>(format);
+}
+
+constexpr SampleFormat from_alsa_format(snd_pcm_format_t format)
+{
+  return static_cast<SampleFormat>(format);
 }
 
 // ALSA hardware parameters values
@@ -37,7 +59,7 @@ typedef struct AlsaHwParams
   snd_pcm_uframes_t buffer_size = DEVICE_BUFFER_SIZE;
   snd_pcm_uframes_t period_size = DEVICE_PERIOD_SIZE;
   snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;
-  snd_pcm_format_t format = DEFAULT_SAMPLE_FORMAT;
+  snd_pcm_format_t format = to_alsa_format(DEFAULT_SAMPLE_FORMAT);
   unsigned int samplerate = DEFAULT_SAMPLERATE;
   snd_pcm_stream_t direction = SND_PCM_STREAM_PLAYBACK;
   bool operator!=(const AlsaHwParams & p_rhs) const
@@ -118,6 +140,20 @@ AUDIO2_STREAM_PUBLIC
 int alsa_read(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
   snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag);
+
+/**
+ * alsa_play: Play audio from a SNDFILE using ALSA
+ * @param fileh SndfileHandle to read audio data from
+ * @param alsa_dev Pointer to the opened ALSA PCM device
+ * @param alsa_format ALSA format to use for playback
+ * @param shutdown_flag optional atomic boolean flag to signal shutdown
+ * @return Optional error message string if an error occurs, std::nullopt on success
+ */
+AUDIO2_STREAM_PUBLIC
+std::optional<std::string>
+alsa_play(
+  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
+  std::atomic<bool> * shutdown_flag);
 
 /**
  * Thread-safe ALSA writer class that consumes audio data from a lock-free queue.

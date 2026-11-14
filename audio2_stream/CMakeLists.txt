@@ -16,9 +16,6 @@ find_package(rclcpp REQUIRED)
 find_library(SNDFILE_LIBRARIES NAMES sndfile REQUIRED)
 find_path(SNDFILE_INCLUDE_DIRS sndfile.h REQUIRED)
 if(WIN32)
-  # ALSA is Linux-only. alsa_compat.hpp stubs the API, so link against an empty target.
-  # Audio devices use the WASAPI backend instead (WasapiProxyImpl).
-  add_library(ALSA::ALSA INTERFACE IMPORTED)
   # Keep windows.h (pulled in by curl) from defining min/max macros
   add_compile_definitions(NOMINMAX)
   # MSVC only defines M_PI and friends when asked
@@ -34,15 +31,18 @@ find_package(ament_index_cpp REQUIRED)
 
 # Add all exported headers to include/<package_name> otherwise other packages cannot see it
 # This makes headers available to other packages that depend on yours.
-# Only the backend compiled for this platform (see below) is installed; use
+# Only headers for code compiled on this platform (see below) are installed; use
 # make_default_device_proxy() rather than naming a backend class directly.
 if(WIN32)
-  set(UNBUILT_BACKEND_HEADER "AlsaProxyImpl.hpp")
+  set(UNBUILT_HEADERS AlsaProxyImpl.hpp alsaops.hpp)
 else()
-  set(UNBUILT_BACKEND_HEADER "WasapiProxyImpl.hpp")
+  set(UNBUILT_HEADERS WasapiProxyImpl.hpp)
 endif()
-install(DIRECTORY include/ DESTINATION include
-  PATTERN ${UNBUILT_BACKEND_HEADER} EXCLUDE)
+set(UNBUILT_HEADER_EXCLUDES)
+foreach(header ${UNBUILT_HEADERS})
+  list(APPEND UNBUILT_HEADER_EXCLUDES PATTERN ${header} EXCLUDE)
+endforeach()
+install(DIRECTORY include/ DESTINATION include ${UNBUILT_HEADER_EXCLUDES})
 install(DIRECTORY templates/ DESTINATION share/${PROJECT_NAME}/templates)
 
 # 1. Define the shared library
@@ -50,7 +50,6 @@ install(DIRECTORY templates/ DESTINATION share/${PROJECT_NAME}/templates)
 add_library(
     ${PROJECT_NAME}
     SHARED
-    src/lib/alsaops.cpp
     src/lib/buffer_file.cpp
     src/lib/AudioStream.cpp
 )
@@ -61,23 +60,21 @@ if(WIN32)
   target_sources(${PROJECT_NAME} PRIVATE src/lib/WasapiProxyImpl.cpp)
   target_link_libraries(${PROJECT_NAME} PRIVATE ole32)
 else()
-  target_sources(${PROJECT_NAME} PRIVATE src/lib/AlsaProxyImpl.cpp)
+  target_sources(${PROJECT_NAME} PRIVATE src/lib/AlsaProxyImpl.cpp src/lib/alsaops.cpp)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ALSA::ALSA)
 endif()
 
 #set(SOURCE_FILES
 #  src/alsaops.cpp
 #  src/buffer_file.cpp
 #)
-add_executable(file_play src/file_play.cpp)
 add_executable(audio2_play_remote_node src/audio2_play_remote_node.cpp)
 add_executable(audio2_play_node src/audio2_play_node.cpp)
 add_executable(audio2_capture_node src/audio2_capture_node.cpp)
-add_executable(loop_file src/loop_file.cpp)
 
 target_link_libraries(audio2_stream
   PRIVATE
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
     nlohmann_json::nlohmann_json
@@ -90,29 +87,27 @@ target_include_directories(${PROJECT_NAME}
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(loop_file
-  PRIVATE
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-)
-
-target_link_libraries(file_play
-  PRIVATE
-    ${PROJECT_NAME}
-    ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
-    rclcpp::rclcpp
-    ${audio2_stream_msgs_TARGETS}
-)
+# ALSA-only test tools, which use alsaops directly rather than an IAudioDeviceProxy
+if(NOT WIN32)
+  add_executable(file_play src/file_play.cpp)
+  add_executable(loop_file src/loop_file.cpp)
+  foreach(tool file_play loop_file)
+    target_link_libraries(${tool}
+      PRIVATE
+        ${PROJECT_NAME}
+        ${SNDFILE_LIBRARIES}
+        ALSA::ALSA
+        rclcpp::rclcpp
+        ${audio2_stream_msgs_TARGETS}
+    )
+  endforeach()
+  install(TARGETS file_play loop_file DESTINATION lib/${PROJECT_NAME})
+endif()
 
 target_link_libraries(audio2_play_remote_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -121,7 +116,6 @@ target_link_libraries(audio2_play_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     CURL::libcurl
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
@@ -131,7 +125,6 @@ target_link_libraries(audio2_capture_node
   PRIVATE
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
 )
@@ -171,7 +164,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_audio_stream
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
   )
@@ -189,7 +181,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_device_terminal
     ${PROJECT_NAME}
     ${SNDFILE_LIBRARIES}
-    ALSA::ALSA
     rclcpp::rclcpp
     ${audio2_stream_msgs_TARGETS}
   )
@@ -245,8 +236,6 @@ install(TARGETS
   RUNTIME DESTINATION bin)
 
 install(TARGETS
-  file_play
-  loop_file
   audio2_play_remote_node
   audio2_play_node
   audio2_capture_node

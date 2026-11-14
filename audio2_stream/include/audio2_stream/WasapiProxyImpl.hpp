@@ -23,7 +23,7 @@ struct WasapiSampleFormat
  * \return The layout, or std::nullopt if the format is not supported by this backend.
  */
 AUDIO2_STREAM_PUBLIC
-std::optional<WasapiSampleFormat> wasapi_sample_format(snd_pcm_format_t format);
+std::optional<WasapiSampleFormat> wasapi_sample_format(SampleFormat format);
 
 /**
  * WASAPI (Windows Audio Session API) implementation of IAudioDeviceProxy.
@@ -56,7 +56,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -64,7 +64,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -80,7 +80,7 @@ public:
     return error_str_;
   }
 
-  snd_pcm_format_t get_format() const override
+  SampleFormat get_format() const override
   {
     return format_;
   }
@@ -95,7 +95,7 @@ private:
   std::unique_ptr<Impl> impl_;
   std::string device_name_;
   std::string error_str_;
-  snd_pcm_format_t format_;
+  SampleFormat format_;
 
   std::optional<std::string> resolve_device(const std::string & device, AudioDirection direction);
   int fail(const char * context, long hr);

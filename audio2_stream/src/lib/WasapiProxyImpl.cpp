@@ -1,5 +1,5 @@
 #include "audio2_stream/WasapiProxyImpl.hpp"
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/timestamp.hpp"
 
 #include <windows.h>
 #include <mmdeviceapi.h>
@@ -126,7 +126,7 @@ const char * direction_name(AudioDirection direction)
 }
 
 bool make_wave_format(
-  snd_pcm_format_t format, unsigned int channels, unsigned int samplerate,
+  SampleFormat format, unsigned int channels, unsigned int samplerate,
   WAVEFORMATEXTENSIBLE & wfx)
 {
   auto sample_format = wasapi_sample_format(format);
@@ -201,19 +201,19 @@ HRESULT create_enumerator(ComPtr<IMMDeviceEnumerator> & enumerator)
 
 }  // namespace
 
-std::optional<WasapiSampleFormat> wasapi_sample_format(snd_pcm_format_t format)
+std::optional<WasapiSampleFormat> wasapi_sample_format(SampleFormat format)
 {
   switch (format) {
-    case SND_PCM_FORMAT_FLOAT:
+    case SampleFormat::Float:
       return WasapiSampleFormat{true, 32, 32};
-    case SND_PCM_FORMAT_FLOAT64:
+    case SampleFormat::Float64:
       return WasapiSampleFormat{true, 64, 64};
-    case SND_PCM_FORMAT_S16:
+    case SampleFormat::S16:
       return WasapiSampleFormat{false, 16, 16};
-    case SND_PCM_FORMAT_S32:
+    case SampleFormat::S32:
       return WasapiSampleFormat{false, 32, 32};
-    case SND_PCM_FORMAT_S24:
-      // ALSA S24 is 24 significant bits in a 32-bit container
+    case SampleFormat::S24:
+      // S24 is 24 significant bits in a 32-bit container
       return WasapiSampleFormat{false, 32, 24};
     default:
       return std::nullopt;
@@ -254,7 +254,7 @@ struct WasapiProxyImpl::Impl
 };
 
 WasapiProxyImpl::WasapiProxyImpl()
-: impl_(std::make_unique<Impl>()), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN)
+: impl_(std::make_unique<Impl>()), error_str_(""), format_(SampleFormat::Unknown)
 {}
 
 WasapiProxyImpl::~WasapiProxyImpl()
@@ -378,7 +378,7 @@ std::optional<std::string> WasapiProxyImpl::open(
            params.device.c_str(),
            params.channels,
            params.samplerate,
-           params.format,
+           static_cast<int>(params.format),
            direction_name(direction));
   error_str_.clear();
 
@@ -408,14 +408,14 @@ std::optional<std::string> WasapiProxyImpl::open(
   const REFERENCE_TIME buffer_duration = static_cast<REFERENCE_TIME>(
     10000000.0 * params.buffer_frames / params.samplerate);
 
-    // Sometimes a requested format fails but a different one succeeds (same order as alsa_open).
+    // Sometimes a requested format fails but a different one succeeds (same order as ALSA).
     // An audio client can only be initialized once, so each attempt activates a new one.
-  for (snd_pcm_format_t format : {params.format, SND_PCM_FORMAT_S32, SND_PCM_FORMAT_S16,
-      SND_PCM_FORMAT_FLOAT})
+  for (SampleFormat format : {params.format, SampleFormat::S32, SampleFormat::S16,
+      SampleFormat::Float})
   {
     if (!error_str_.empty()) {
       printf("WasapiProxyImpl::open failed: (%s)\nretrying with format %d\n", error_str_.c_str(),
-        format);
+        static_cast<int>(format));
     }
     WAVEFORMATEXTENSIBLE wfx;
     if (!make_wave_format(format, params.channels, params.samplerate, wfx)) {
@@ -479,7 +479,7 @@ std::optional<std::string> WasapiProxyImpl::open(
     error_str_.clear();
     if (format != params.format) {
       printf("\nWarning: Requested sample format %d not available, using %d instead.\n",
-        params.format, format);
+        static_cast<int>(params.format), static_cast<int>(format));
     }
     format_ = format;
     params.format = format;
@@ -530,7 +530,7 @@ int WasapiProxyImpl::write(
   int samples,
   void * data,
   int channels,
-  snd_pcm_format_t format,
+  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -594,7 +594,7 @@ int WasapiProxyImpl::read(
   int samples,
   void * data,
   int channels,
-  snd_pcm_format_t format,
+  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {

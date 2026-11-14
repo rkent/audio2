@@ -219,10 +219,10 @@ int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples)
   return -2;   // Should not reach here
 }
 
-// Get sample size in bytes from alsa's snd_pcm_format_t
-int sample_size_from_alsa_format(snd_pcm_format_t format)
+// Get sample size in bytes from a device SampleFormat
+int sample_size_from_sample_format(SampleFormat format)
 {
-  return snd_pcm_format_width(format) / 8;
+  return sample_format_bytes(format);
 }
 
 // Get sample size from our SfgRwFormat enum
@@ -263,19 +263,19 @@ const char * sfg_format_to_string(SfgRwFormat format)
   }
 }
 
-SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format)
+SfgRwFormat sfg_format_from_sample_format(SampleFormat format)
 {
-  switch (alsa_format) {
-    case SND_PCM_FORMAT_S8:
-    case SND_PCM_FORMAT_U8:
+  switch (format) {
+    case SampleFormat::S8:
+    case SampleFormat::U8:
       return SFG_BYTE;
-    case SND_PCM_FORMAT_S16:
+    case SampleFormat::S16:
       return SFG_SHORT;
-    case SND_PCM_FORMAT_S32:
+    case SampleFormat::S32:
       return SFG_INT;
-    case SND_PCM_FORMAT_FLOAT:
+    case SampleFormat::Float:
       return SFG_FLOAT;
-    case SND_PCM_FORMAT_FLOAT64:
+    case SampleFormat::Float64:
       return SFG_DOUBLE;
     default:
       return SFG_INVALID;
@@ -328,8 +328,6 @@ int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int sa
   return -2;   // Should not reach here
 }
 
-#define BUFFER_LEN                      (1000 * 4)
-
 // Scale factors for converting float to integer formats
 float SCALE_S8 = 1LL << 7;
 float SCALE_S16 = 1LL << 15;
@@ -339,80 +337,80 @@ float SCALE_S32 = 1LL << 31;
 
 int
 scale_data(
-  int readcount, snd_pcm_format_t read_format, snd_pcm_format_t alsa_format,
+  int readcount, SampleFormat read_format, SampleFormat alsa_format,
   void * r_buffer, void * w_buffer, float scale)
 {
     // TODO: return r_buffer directly if same data type
     // printf("Scaling data: readcount=%d, read_format=%x, alsa_format=%x, scale=%f\n", readcount, read_format, alsa_format, scale) ;
   for (int i = 0; i < readcount; ++i) {
-    if (read_format == SND_PCM_FORMAT_S32) {
-      if (alsa_format == SND_PCM_FORMAT_S32) {
+    if (read_format == SampleFormat::S32) {
+      if (alsa_format == SampleFormat::S32) {
         (reinterpret_cast<int *>(w_buffer))[i] = (reinterpret_cast<int *>(r_buffer))[i];
         continue;
-      } else if (alsa_format == SND_PCM_FORMAT_S16) {
+      } else if (alsa_format == SampleFormat::S16) {
         (reinterpret_cast<short *>(w_buffer))[i] =
           static_cast<short>((reinterpret_cast<int *>(r_buffer))[i]);
         continue;
       }
       float value = (reinterpret_cast<int *>(r_buffer))[i] / scale;
-      if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+      if (alsa_format == SampleFormat::Float) {
         (reinterpret_cast<float *>(w_buffer))[i] = value;
-      } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+      } else if (alsa_format == SampleFormat::Float64) {
         (reinterpret_cast<double *>(w_buffer))[i] = static_cast<double>(value);
       } else {
         return -1;         // Unsupported ALSA format for int playback
       }
-    } else if (read_format == SND_PCM_FORMAT_S16) {
-      if (alsa_format == SND_PCM_FORMAT_S16) {
+    } else if (read_format == SampleFormat::S16) {
+      if (alsa_format == SampleFormat::S16) {
         (reinterpret_cast<short *>(w_buffer))[i] = (reinterpret_cast<short *>(r_buffer))[i];
         continue;
-      } else if (alsa_format == SND_PCM_FORMAT_S32) {
+      } else if (alsa_format == SampleFormat::S32) {
         (reinterpret_cast<int *>(w_buffer))[i] =
           static_cast<int>((reinterpret_cast<short *>(r_buffer))[i]);
         continue;
       }
       float value = static_cast<float>((reinterpret_cast<short *>(r_buffer))[i]) / scale;
             // printf("Scaled S16 value: %f\n", value) ;
-      if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+      if (alsa_format == SampleFormat::Float) {
         (reinterpret_cast<float *>(w_buffer))[i] = value;
         continue;
-      } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+      } else if (alsa_format == SampleFormat::Float64) {
         (reinterpret_cast<double *>(w_buffer))[i] = static_cast<double>(value);
         continue;
       } else {
         return -2;         // Unsupported ALSA format for short playback
       }
-    } else if (read_format == SND_PCM_FORMAT_FLOAT) {
-      if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+    } else if (read_format == SampleFormat::Float) {
+      if (alsa_format == SampleFormat::Float) {
         (reinterpret_cast<float *>(w_buffer))[i] = (reinterpret_cast<float *>(r_buffer))[i];
         continue;
-      } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+      } else if (alsa_format == SampleFormat::Float64) {
         (reinterpret_cast<double *>(w_buffer))[i] =
           static_cast<double>((reinterpret_cast<float *>(r_buffer))[i]);
         continue;
       }
       float value = (reinterpret_cast<float *>((r_buffer))[i]) * scale;
-      if (alsa_format == SND_PCM_FORMAT_S16) {
+      if (alsa_format == SampleFormat::S16) {
         (reinterpret_cast<short *>(w_buffer))[i] = static_cast<short>(value);
-      } else if (alsa_format == SND_PCM_FORMAT_S32) {
+      } else if (alsa_format == SampleFormat::S32) {
         (reinterpret_cast<int *>(w_buffer))[i] = static_cast<int>(value);
       } else {
         return -3;         // Unsupported ALSA format for float playback
       }
-    } else if (read_format == SND_PCM_FORMAT_FLOAT64) {
-      if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
+    } else if (read_format == SampleFormat::Float64) {
+      if (alsa_format == SampleFormat::Float64) {
         (reinterpret_cast<double *>(w_buffer))[i] = (reinterpret_cast<double *>(r_buffer))[i];
         continue;
-      } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
+      } else if (alsa_format == SampleFormat::Float) {
         (reinterpret_cast<float *>(w_buffer))[i] =
           static_cast<float>((reinterpret_cast<double *>(r_buffer))[i]);
         continue;
       }
       double value = (reinterpret_cast<double *>(r_buffer))[i] * static_cast<double>(scale);
-      if (alsa_format == SND_PCM_FORMAT_S16) {
+      if (alsa_format == SampleFormat::S16) {
         (reinterpret_cast<short *>(w_buffer))[i] = static_cast<short>(value);
         continue;
-      } else if (alsa_format == SND_PCM_FORMAT_S32) {
+      } else if (alsa_format == SampleFormat::S32) {
         (reinterpret_cast<int *>(w_buffer))[i] = static_cast<int>(value);
         continue;
       } else {
@@ -551,89 +549,31 @@ int convert_types(
   return samples;
 }
 
-// debug string of ALSA format
-std::string format_to_string(snd_pcm_format_t format)
+// debug string of a device SampleFormat
+std::string format_to_string(SampleFormat format)
 {
   switch (format) {
-    case SND_PCM_FORMAT_S8:
+    case SampleFormat::S8:
       return "S8";
-    case SND_PCM_FORMAT_U8:
+    case SampleFormat::U8:
       return "U8";
-    case SND_PCM_FORMAT_S16:
+    case SampleFormat::S16:
       return "S16";
-    case SND_PCM_FORMAT_U16:
+    case SampleFormat::U16:
       return "U16";
-    case SND_PCM_FORMAT_S24:
+    case SampleFormat::S24:
       return "S24";
-    case SND_PCM_FORMAT_U24:
+    case SampleFormat::U24:
       return "U24";
-    case SND_PCM_FORMAT_S32:
+    case SampleFormat::S32:
       return "S32";
-    case SND_PCM_FORMAT_U32:
+    case SampleFormat::U32:
       return "U32";
-    case SND_PCM_FORMAT_FLOAT:
+    case SampleFormat::Float:
       return "FLOAT";
-    case SND_PCM_FORMAT_FLOAT64:
+    case SampleFormat::Float64:
       return "FLOAT64";
     default:
       return "UNKNOWN";
   }
 }
-
-// Play audio from a SNDFILE using ALSA
-std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
-  std::atomic<bool> * shutdown_flag)
-{
-  auto sndfile = fileh.rawHandle();
-  int format = fileh.format();
-  int channels = fileh.channels();
-
-  static char r_buffer [BUFFER_LEN];    // read buffer
-  static char w_buffer [BUFFER_LEN];    // write buffer
-
-  int readcount;
-  auto read_sfg_format = sfg_format_from_sndfile_format(format);
-
-    // Disable normalization since we are handling scaling ourselves.
-  sf_command (sndfile, SFC_SET_NORM_FLOAT, NULL, SF_FALSE);
-  sf_command (sndfile, SFC_SET_NORM_DOUBLE, NULL, SF_FALSE);
-
-  int samples = std::min(BUFFER_LEN / sample_size_from_sfg_format(read_sfg_format),
-    BUFFER_LEN / sample_size_from_alsa_format(alsa_format));
-  printf("Starting ALSA playback: alsa_format=%s, samples=%d\n",
-        format_to_string(alsa_format).c_str(), samples);
-
-  while ((readcount = sfg_read(fileh, read_sfg_format, r_buffer, samples)) > 0) {
-    printf("Read %d samples from sound file expecting %d\n", readcount, samples);
-    if (readcount < 0) {
-      return std::string("Error reading from sound file");
-    }
-    int samples_converted = convert_types(read_sfg_format, sfg_format_from_alsa_format(alsa_format),
-      r_buffer, w_buffer, readcount);
-    if (samples_converted < 0) {
-      return std::string("Error converting audio data for playback");
-    } else if (samples_converted != readcount) {
-      return std::string("Mismatch in converted samples count");
-    }
-    auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format, shutdown_flag);
-    if (count < 0) {
-      return std::string("Error writing to ALSA device");
-    } else if (count != readcount) {
-      return std::string("Mismatch in ALSA write count: expected ") + std::to_string(readcount) +
-             ", got " + std::to_string(count);
-    }
-    printf("Wrote %d samples to ALSA\n", count);
-
-        // Check if shutdown has been requested
-    if (shutdown_flag && shutdown_flag->load()) {
-      break;
-    }
-  }
-
-  if (shutdown_flag && shutdown_flag->load()) {
-    return std::string("Playback interrupted by shutdown signal");
-  }
-  return std::nullopt;
-} /* alsa_play */

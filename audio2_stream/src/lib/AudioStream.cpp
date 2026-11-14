@@ -174,7 +174,7 @@ std::optional<std::string> DeviceTerminal::open(
            params.device.c_str(),
            params.channels,
            params.samplerate,
-           params.format,
+           static_cast<int>(params.format),
            static_cast<int>(direction));
 
   auto result = proxy_->open(params, direction);
@@ -268,7 +268,7 @@ void DeviceSink::run(AudioStream * audio_stream)
         done = true;
         break;
       }
-      int bytes_per_sample = snd_pcm_format_width(sample_format_) / 8;
+      int bytes_per_sample = sample_format_bytes(sample_format_);
       int write_result = proxy_->write(
                 static_cast<int>(audio_data.size() / bytes_per_sample),
                 audio_data.data(),
@@ -283,7 +283,7 @@ void DeviceSink::run(AudioStream * audio_stream)
   }
   printf("DeviceSink::run exiting, pushing silence.\n");
     // Push silence to fill the buffer before closing
-  const int bytes_per_sample = snd_pcm_format_width(sample_format_) / 8;
+  const int bytes_per_sample = sample_format_bytes(sample_format_);
   int silence_frames = DEVICE_BUFFER_SIZE;
   const int silence_size = silence_frames * audio_stream->channels_ * bytes_per_sample;
   std::vector<uint8_t> silence_buffer(silence_size, 0);

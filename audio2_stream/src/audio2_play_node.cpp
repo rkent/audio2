@@ -11,7 +11,6 @@
 #include <functional>
 
 #include "rclcpp/rclcpp.hpp"
-#include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
@@ -39,7 +38,8 @@ public:
     this->declare_parameter<std::string>("device_name", DEFAULT_DEVICE_NAME, param_desc);
 
     param_desc.description = "Audio sample format for playback";
-    param_desc.additional_constraints = "Must be a valid snd_pcm_format_t integer value.";
+    param_desc.additional_constraints =
+      "A SampleFormat integer value (same numbering as ALSA snd_pcm_format_t; 14 = float).";
     param_desc.read_only = false;
     this->declare_parameter<int>("sample_format", static_cast<int>(DEFAULT_SAMPLE_FORMAT),
       param_desc);

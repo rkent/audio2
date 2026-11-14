@@ -17,7 +17,7 @@ ROS2 node for playing audio through an audio device (ALSA on Linux, WASAPI on Wi
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `device_name` | string | `"default"` | Audio device for playback. Linux: ALSA device name. Windows: `"default"` for the default endpoint, or part of a device's friendly name, or its endpoint ID |
-| `sample_format` | integer | `14` (SND_PCM_FORMAT_FLOAT) | Audio sample format for playback (snd_pcm_format_t value) |
+| `sample_format` | integer | `14` (`SampleFormat::Float`) | Audio sample format for playback (`SampleFormat` value) |
 | `stream_queue_frames` | integer | `480` | Number of frames per audio chunk in the stream |
 
 ## Example Usage
@@ -54,4 +54,4 @@ ros2 topic pub /play_file_local audio2_stream_msgs/msg/PlayFile \
 - Multiple audio streams can play concurrently, managed by unique UUIDs
 - The node automatically handles format conversions for TTS sources
 - Finished audio streams are automatically cleaned up every 20ms
-- The `sample_format` parameter value 14 corresponds to SND_PCM_FORMAT_FLOAT
+- The `sample_format` parameter value 14 corresponds to `SampleFormat::Float` (`sample_format.hpp`), numbered like ALSA's `snd_pcm_format_t`

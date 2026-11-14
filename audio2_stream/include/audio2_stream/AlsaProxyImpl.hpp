@@ -14,7 +14,7 @@ class AUDIO2_STREAM_PUBLIC AlsaProxyImpl : public IAudioDeviceProxy
 {
 public:
   AlsaProxyImpl()
-  : alsa_dev_(nullptr), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
+  : alsa_dev_(nullptr), error_str_(""), format_(SampleFormat::Unknown) {}
 
   virtual ~AlsaProxyImpl()
   {
@@ -37,7 +37,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -45,7 +45,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -64,7 +64,7 @@ public:
     return error_str_;
   }
 
-  snd_pcm_format_t get_format() const override
+  SampleFormat get_format() const override
   {
     return format_;
   }
@@ -78,7 +78,7 @@ private:
   snd_pcm_t * alsa_dev_;
   std::string device_name_;
   std::string error_str_;
-  snd_pcm_format_t format_;
+  SampleFormat format_;
 };
 
 #endif // AUDIO2_STREAM_ALSAPROXYIMPL_HPP

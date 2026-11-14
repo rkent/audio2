@@ -11,9 +11,8 @@
 #include <memory>
 #include <atomic>
 #include <optional>
+#include <string>
 #include "boost/lockfree/spsc_queue.hpp"
-
-#include "audio2_stream/alsaops.hpp"
 
 /**
  * Convert sndfile format to human-readable string.
@@ -22,6 +21,14 @@
  */
 AUDIO2_STREAM_PUBLIC
 std::string format_to_string(int format);
+
+/**
+ * Convert a device sample format to a human-readable string.
+ * \param format The SampleFormat.
+ * \return       A string representing the format, e.g. "FLOAT".
+ */
+AUDIO2_STREAM_PUBLIC
+std::string format_to_string(SampleFormat format);
 
 // Virtual I/O context for reading/writing from/to memory
 typedef struct VIO_DATA
@@ -73,12 +80,12 @@ AUDIO2_STREAM_PUBLIC
 int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
 
 /**
- * Get the sample size in bytes for a given ALSA format.
- * \param format The ALSA format.
+ * Get the sample size in bytes for a given device sample format.
+ * \param format The SampleFormat.
  * \return       The sample size in bytes, or -1 if unsupported.
  */
 AUDIO2_STREAM_PUBLIC
-int sample_size_from_alsa_format(snd_pcm_format_t format);
+int sample_size_from_sample_format(SampleFormat format);
 
 /**
  * Get sample size from our SfgRwFormat enum
@@ -97,12 +104,12 @@ AUDIO2_STREAM_PUBLIC
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
 
 /**
- * Read/write type to use for different ALSA formats
- * \param alsa_format The ALSA format enum value.
- * \return            Corresponding SfgRwFormat enum value.
+ * Read/write type to use for different device sample formats
+ * \param format The SampleFormat.
+ * \return       Corresponding SfgRwFormat enum value.
  */
 AUDIO2_STREAM_PUBLIC
-SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format);
+SfgRwFormat sfg_format_from_sample_format(SampleFormat format);
 
 /**
  * String representation of SfgRwFormat
@@ -139,20 +146,6 @@ AUDIO2_STREAM_PUBLIC
 int sfg_write_convert(
   SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format,
   char * buffer, int samples);
-
-/**
- * alsa_play: Play audio from a SNDFILE using ALSA
- * @param fileh SndfileHandle to read audio data from
- * @param alsa_dev Pointer to the opened ALSA PCM device
- * @param alsa_format ALSA format to use for playback
- * @param shutdown_flag optional atomic boolean flag to signal shutdown
- * @return Optional error message string if an error occurs, std::nullopt on success
- */
-AUDIO2_STREAM_PUBLIC
-std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
-  std::atomic<bool> * shutdown_flag);
 
 /**
  * Create read and write buffers for format conversion.

@@ -11,6 +11,7 @@
 #include <iostream>
 
 #include "rclcpp/rclcpp.hpp"
+#include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 
  // Global flag to signal thread shutdown
@@ -19,7 +20,6 @@ std::atomic<bool> shutdown_flag(false);
 static auto rcl_logger = rclcpp::get_logger("audio2_stream/file_play");
 
 static snd_output_t *output = nullptr;
-#include "audio2_stream/alsa_compat.hpp"
 
 void showstat(snd_pcm_t *handle)
 {
@@ -66,7 +66,7 @@ public:
     AlsaHwParams hw_vals;
     hw_vals.channels = fileh.channels();
     hw_vals.samplerate = fileh.samplerate();
-    hw_vals.format = DEFAULT_SAMPLE_FORMAT;
+    hw_vals.format = to_alsa_format(DEFAULT_SAMPLE_FORMAT);
     AlsaSwParams sw_vals;
     snd_pcm_t * alsa_dev = nullptr;
     auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);

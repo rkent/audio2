@@ -39,7 +39,7 @@ std::optional<std::string> AlsaProxyImpl::open(
            params.device.c_str(),
            params.channels,
            params.samplerate,
-           params.format,
+           static_cast<int>(params.format),
            static_cast<int>(direction));
 
   if (alsa_dev_ && device_name_ != params.device) {
@@ -53,7 +53,7 @@ std::optional<std::string> AlsaProxyImpl::open(
   hw_vals.device = device_name_.c_str();
   hw_vals.channels = params.channels;
   hw_vals.samplerate = params.samplerate;
-  hw_vals.format = params.format;
+  hw_vals.format = to_alsa_format(params.format);
   hw_vals.period_size = params.period_frames;
   hw_vals.buffer_size = params.buffer_frames;
   hw_vals.direction = to_alsa_stream(direction);
@@ -72,10 +72,10 @@ std::optional<std::string> AlsaProxyImpl::open(
     // Report the values that were actually opened
   params.channels = hw_vals.channels;
   params.samplerate = hw_vals.samplerate;
-  params.format = hw_vals.format;
+  params.format = from_alsa_format(hw_vals.format);
   params.period_frames = hw_vals.period_size;
   params.buffer_frames = hw_vals.buffer_size;
-  format_ = hw_vals.format;
+  format_ = from_alsa_format(hw_vals.format);
 
   return std::nullopt;
 }
@@ -94,7 +94,7 @@ int AlsaProxyImpl::write(
   int samples,
   void * data,
   int channels,
-  snd_pcm_format_t format,
+  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -103,7 +103,8 @@ int AlsaProxyImpl::write(
     return -1;
   }
 
-  int result = alsa_write(samples, alsa_dev_, data, channels, format, shutdown_flag);
+  int result = alsa_write(
+    samples, alsa_dev_, data, channels, to_alsa_format(format), shutdown_flag);
   if (result < 0) {
     error_str_ = std::string("ALSA write failed: ") + snd_strerror(result);
   }
@@ -114,7 +115,7 @@ int AlsaProxyImpl::read(
   int samples,
   void * data,
   int channels,
-  snd_pcm_format_t format,
+  SampleFormat format,
   std::atomic<bool> * shutdown_flag
 )
 {
@@ -123,7 +124,7 @@ int AlsaProxyImpl::read(
     return -1;
   }
 
-  int result = alsa_read(samples, alsa_dev_, data, channels, format, shutdown_flag);
+  int result = alsa_read(samples, alsa_dev_, data, channels, to_alsa_format(format), shutdown_flag);
   if (result < 0) {
     error_str_ = std::string("ALSA read failed: ") + snd_strerror(result);
   }

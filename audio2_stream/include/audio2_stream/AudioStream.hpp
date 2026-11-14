@@ -3,7 +3,7 @@
 
 #include "audio2_stream/config.hpp"
 #include "audio2_stream/visibility_control.hpp"
-#include "audio2_stream/alsaops.hpp"
+#include "audio2_stream/timestamp.hpp"
 #include "audio2_stream/IAudioDeviceProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
@@ -194,7 +194,7 @@ public:
   std::optional<std::string> open(AudioDirection direction, AudioStream * audio_stream);
 
   std::string device_name_;
-  snd_pcm_format_t sample_format_;
+  SampleFormat sample_format_;
   std::unique_ptr<IAudioDeviceProxy> proxy_;
   bool are_parms_fixed_;
 

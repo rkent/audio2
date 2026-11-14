@@ -32,7 +32,7 @@ def generate_test_description():
         name='audio2_play_node_test',
         parameters=[{
             'device_name': 'null',  # ALSA null device; on Windows no such device exists
-            'sample_format': 14,  # SND_PCM_FORMAT_FLOAT
+            'sample_format': 14,  # SampleFormat::Float
             'stream_queue_frames': 480
         }],
         output='screen',

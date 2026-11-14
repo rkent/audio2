@@ -16,14 +16,14 @@ enum class AudioDirection
 
 /**
  * Requested audio device configuration. open() may adjust these to what the device accepted.
- * Sample formats use the snd_pcm_format_t values on all platforms (see alsa_compat.hpp).
+ * Sample formats are backend-neutral SampleFormat values (see sample_format.hpp).
  */
 struct DeviceParams
 {
   std::string device = DEFAULT_DEVICE_NAME;
   unsigned int channels = 1;
   unsigned int samplerate = DEFAULT_SAMPLERATE;
-  snd_pcm_format_t format = DEFAULT_SAMPLE_FORMAT;
+  SampleFormat format = DEFAULT_SAMPLE_FORMAT;
   unsigned long period_frames = DEVICE_PERIOD_SIZE;
   unsigned long buffer_frames = DEVICE_BUFFER_SIZE;
 };
@@ -77,7 +77,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) = 0;
 
@@ -94,7 +94,7 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
+    SampleFormat format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) = 0;
 
@@ -118,7 +118,7 @@ public:
      * Get the current format being used.
      * \return Sample format.
      */
-  virtual snd_pcm_format_t get_format() const = 0;
+  virtual SampleFormat get_format() const = 0;
 };
 
 /**
