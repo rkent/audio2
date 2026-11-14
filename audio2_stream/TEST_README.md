@@ -8,19 +8,21 @@ The audio2_stream package now includes comprehensive unit tests using GTest and 
 
 ## Architecture Changes
 
-### Dependency Injection for ALSA Operations
+### Dependency Injection for Audio Device Operations
 
-The ALSA hardware operations have been abstracted behind the `IAlsaProxy` interface:
+Audio device operations are abstracted behind the `IAudioDeviceProxy` interface, with one
+backend per platform:
 
-- **IAlsaProxy**: Interface defining ALSA proxy operations (open, close, read, write)
-- **AlsaProxyImpl**: Real implementation that wraps actual ALSA hardware
-- **MockAlsaProxy**: GMock-based mock for unit testing
+- **IAudioDeviceProxy**: Interface defining device operations (preopen, open, close, read, write)
+- **AlsaProxyImpl**: Linux backend that wraps ALSA
+- **WasapiProxyImpl**: Windows backend that wraps WASAPI
+- **make_default_device_proxy()**: Creates the backend for the current platform
 
-### Refactored Classes
+### Device Terminal Classes
 
-- **AlsaTerminal**: Now accepts `std::unique_ptr<IAlsaProxy>` in constructor
-- **AlsaSink**: Accepts optional IAlsaProxy; creates AlsaProxyImpl if none provided
-- **AlsaSource**: Accepts optional IAlsaProxy; creates AlsaProxyImpl if none provided
+- **DeviceTerminal**: Accepts `std::unique_ptr<IAudioDeviceProxy>` in constructor
+- **DeviceSink**: Accepts an optional proxy; uses `make_default_device_proxy()` if none provided
+- **DeviceSource**: Accepts an optional proxy; uses `make_default_device_proxy()` if none provided
 
 ## Test Structure
 
@@ -28,9 +30,9 @@ The ALSA hardware operations have been abstracted behind the `IAlsaProxy` interf
 
 ```
 repos/audio2/audio2_stream/test/
-├── MockAlsaProxy.hpp           # GMock implementation of IAlsaProxy
 ├── test_audio_stream.cpp        # Unit tests for AudioStream queue and format conversion
-└── test_alsa_mocked.cpp         # Unit tests for ALSA operations with mocking
+├── test_device_terminal.cpp     # DeviceSink/DeviceSource against the platform backend
+└── test_wasapi.cpp              # WASAPI backend tests (Windows only)
 ```
 
 ### Test Coverage
@@ -44,12 +46,20 @@ repos/audio2/audio2_stream/test/
 - Format conversion functions
 - Concurrent queue access (thread safety)
 
-#### test_alsa_mocked.cpp
-- AlsaSink open success/failure
-- AlsaSink audio data writing
-- AlsaSource audio data reading
-- Error handling for write failures
-- Thread synchronization with mock devices
+#### test_device_terminal.cpp
+- DeviceSink open success/failure
+- DeviceSink audio data writing
+- DeviceSource audio data reading
+- Source-to-sink streaming
+
+Uses the ALSA `null` device on Linux. On Windows it uses the default WASAPI endpoint, and
+tests needing an endpoint are skipped on machines without one.
+
+#### test_wasapi.cpp (Windows only)
+- Sample format mapping
+- Unknown device errors that list the available devices
+- Playback with sample rate conversion, pre-open, and drain on close
+- Capture, including leftover packet handling and the shutdown flag
 
 ## Building with Tests
 
@@ -83,7 +93,7 @@ colcon test-result --verbose
 
 # Run tests manually (after building)
 ./build/audio2_stream/test_audio_stream
-./build/audio2_stream/test_alsa_mocked
+./build/audio2_stream/test_device_terminal
 ```
 
 ## Thread Safety Validation
@@ -124,20 +134,18 @@ TEST_F(AudioStreamTest, YourTestName)
 }
 ```
 
-### For ALSA-Related Tests
+### For Audio Device Tests
 
-Add tests to `test_alsa_mocked.cpp`:
+Add tests to `test_device_terminal.cpp`. A test can also inject its own `IAudioDeviceProxy`
+implementation (for example a GMock mock) into `DeviceSink`/`DeviceSource`:
 
 ```cpp
-TEST_F(AlsaMockedTest, YourMockedTest)
+TEST_F(DeviceTerminalTest, YourDeviceTest)
 {
-    // Create mock device with expectations
-    auto mock_device = std::make_unique<MockAlsaDevice>();
-    EXPECT_CALL(*mock_device, write(_, _, _, _, _))
-        .WillOnce(Return(samples));
-
-    // Create AlsaSink/AlsaSource with mock
-    auto sink = std::make_unique<AlsaSink>(..., std::move(mock_device));
+    REQUIRE_TEST_DEVICE(AudioDirection::Playback);
+    auto sink = std::make_unique<DeviceSink>(TEST_DEVICE, make_default_device_proxy());
+    auto stream = std::make_unique<AudioStream>(nullptr, std::move(sink), "test_stream", 100);
+    StreamShutdownGuard guard{stream.get()};  // shuts down even if an ASSERT fails
 
     // Test behavior
     // ...
@@ -155,7 +163,8 @@ colcon test --packages-select audio2_stream
 colcon test-result --verbose
 ```
 
-All ALSA-dependent tests use mocks, so they will pass without audio hardware.
+On Linux, device tests use the ALSA `null` device, so they pass without audio hardware.
+On Windows, tests that need an audio endpoint are skipped when none is present.
 
 ## Debugging Tests
 

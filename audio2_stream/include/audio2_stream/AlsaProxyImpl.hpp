@@ -1,28 +1,36 @@
 #ifndef AUDIO2_STREAM_ALSAPROXYIMPL_HPP
 #define AUDIO2_STREAM_ALSAPROXYIMPL_HPP
 
-#include "audio2_stream/IAlsaProxy.hpp"
+#include "audio2_stream/IAudioDeviceProxy.hpp"
+#include "audio2_stream/visibility_control.hpp"
 #include <memory>
 
+// Declared as in <alsa/asoundlib.h>, so users of this header do not need ALSA headers
+typedef struct _snd_pcm snd_pcm_t;
+
 /**
- * Real implementation of IAlsaProxy that wraps actual ALSA hardware operations.
- * This is used in production code for actual audio I/O.
+ * ALSA implementation of IAudioDeviceProxy that wraps actual ALSA hardware operations.
+ * This is used in production code for actual audio I/O on Linux.
  */
-class AlsaProxyImpl : public IAlsaProxy
+class AUDIO2_STREAM_PUBLIC AlsaProxyImpl : public IAudioDeviceProxy
 {
 public:
-  AlsaProxyImpl(snd_pcm_t * alsa_dev = nullptr)
-  : alsa_dev_(alsa_dev), error_str_(""), format_(SND_PCM_FORMAT_UNKNOWN) {}
+  AlsaProxyImpl()
+  : alsa_dev_(nullptr), error_str_(""), format_(SampleFormat::Unknown) {}
 
   virtual ~AlsaProxyImpl()
   {
     close();
   }
 
+  std::optional<std::string> preopen(
+    const std::string & device,
+    AudioDirection direction
+  ) override;
+
   std::optional<std::string> open(
-    AlsaHwParams & hw_vals,
-    AlsaSwParams & sw_vals,
-    snd_pcm_stream_t direction
+    DeviceParams & params,
+    AudioDirection direction
   ) override;
 
   void close() override;
@@ -31,7 +39,6 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
@@ -39,13 +46,17 @@ public:
     int samples,
     void * data,
     int channels,
-    snd_pcm_format_t format,
     std::atomic<bool> * shutdown_flag = nullptr
   ) override;
 
-  snd_pcm_t * get_handle() override
+  bool is_open() const override
   {
-    return alsa_dev_;
+    return alsa_dev_ != nullptr;
+  }
+
+  std::string device_name() const override
+  {
+    return device_name_;
   }
 
   std::string get_error() const override
@@ -53,15 +64,22 @@ public:
     return error_str_;
   }
 
-  snd_pcm_format_t get_format() const override
+  SampleFormat get_format() const override
   {
     return format_;
   }
 
+  snd_pcm_t * get_handle()
+  {
+    return alsa_dev_;
+  }
+
 private:
   snd_pcm_t * alsa_dev_;
+  int epipe_count_ = 0;  // recent xrun score for this stream, see alsa_write
+  std::string device_name_;
   std::string error_str_;
-  snd_pcm_format_t format_;
+  SampleFormat format_;
 };
 
 #endif // AUDIO2_STREAM_ALSAPROXYIMPL_HPP

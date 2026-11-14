@@ -125,7 +125,7 @@ If tests report that `audio2_play_node_test` is not found:
 ### ALSA Errors
 
 The tests use the ALSA "null" device which should always work. If you see ALSA-related errors:
-- Verify that `alsa_device_name` parameter is set to "null" in the launch file
+- Verify that `device_name` parameter is set to "null" in the launch file
 - Check Docker container has ALSA support
 
 ### Timeout Errors

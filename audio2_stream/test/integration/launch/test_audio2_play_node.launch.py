@@ -1,5 +1,6 @@
 """Launch file for audio2_play_node integration tests."""
 
+import sys
 import unittest
 
 import launch
@@ -30,8 +31,8 @@ def generate_test_description():
         executable='audio2_play_node',
         name='audio2_play_node_test',
         parameters=[{
-            'alsa_device_name': 'null',  # Use ALSA null device for testing
-            'alsa_format': 14,  # SND_PCM_FORMAT_FLOAT
+            'device_name': 'null',  # ALSA null device; on Windows no such device exists
+            'sample_format': 14,  # SampleFormat::Float
             'stream_queue_frames': 480
         }],
         output='screen',
@@ -86,4 +87,8 @@ class TestProcessOutput(unittest.TestCase):
         """Verify that the node exits with code 0 or SIGINT."""
         from launch_testing.asserts import assertExitCodes
         # Accept both 0 (clean exit) and -2 (SIGINT) as valid
-        assertExitCodes(proc_info, [0, -2], process=node_under_test)
+        allowed = [0, -2]
+        if sys.platform == 'win32':
+            # Windows cannot deliver SIGINT, so launch terminates the process with exit code 1
+            allowed.append(1)
+        assertExitCodes(proc_info, allowed, process=node_under_test)

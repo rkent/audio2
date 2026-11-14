@@ -2,7 +2,7 @@
 
 ## Description
 
-ROS2 node for capturing audio from an ALSA device and publishing it as audio chunks on a ROS2 topic. The node supports configurable audio format, sample rate, and channels. Audio capture can be started automatically on initialization or triggered programmatically.
+ROS2 node for capturing audio from an audio device (ALSA on Linux, WASAPI on Windows) and publishing it as audio chunks on a ROS2 topic. The node supports configurable audio format, sample rate, and channels. Audio capture can be started automatically on initialization or triggered programmatically.
 
 ## Publishers
 
@@ -14,8 +14,8 @@ ROS2 node for capturing audio from an ALSA device and publishing it as audio chu
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `alsa_device_name` | string | `"default"` | ALSA device name for audio capture |
-| `alsa_format` | integer | `14` (SND_PCM_FORMAT_FLOAT) | ALSA audio format for capture (snd_pcm_format_t value) |
+| `device_name` | string | `"default"` | Audio device for capture. Linux: ALSA device name. Windows: `"default"` for the default endpoint, or part of a device's friendly name, or its endpoint ID |
+| `sample_format` | integer | `14` (`SampleFormat::Float`) | Audio sample format for capture (`SampleFormat` value) |
 | `channels` | integer | `2` | Number of audio channels for capture |
 | `samplerate` | integer | `48000` | Sample rate for audio capture (Hz) |
 | `stream_queue_frames` | integer | `480` | Number of frames per audio chunk in the stream |
@@ -30,7 +30,7 @@ ros2 run audio2_stream audio2_capture_node
 
 # Run with custom device and mono audio
 ros2 run audio2_stream audio2_capture_node --ros-args \
-  -p alsa_device_name:="hw:1,0" \
+  -p device_name:="hw:1,0" \
   -p channels:=1
 
 # Run with custom sample rate and topic
@@ -45,6 +45,7 @@ ros2 run audio2_stream audio2_capture_node --ros-args \
 
 ## Notes
 
-- The `alsa_format` parameter corresponds to ALSA's `snd_pcm_format_t` enum values (14 = SND_PCM_FORMAT_FLOAT)
+- On Windows, WASAPI shared mode converts the device's audio to the requested sample rate and channel count. An unknown `device_name` logs the available device names
+- The `sample_format` parameter is a `SampleFormat` value (`sample_format.hpp`), numbered like ALSA's `snd_pcm_format_t` (14 = `SampleFormat::Float`)
 - Audio chunks are published with a UUID that identifies the audio stream
 - The node automatically cleans up finished audio streams

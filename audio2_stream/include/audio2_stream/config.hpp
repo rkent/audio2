@@ -1,8 +1,7 @@
 #ifndef AUDIO2_STREAM_CONFIG_HPP
 #define AUDIO2_STREAM_CONFIG_HPP
 
-#include <limits>
-#include <alsa/asoundlib.h>
+#include "audio2_stream/sample_format.hpp"
 #include <sndfile.hh>
 
 // These are set in order of preference so sorting gives the lowest as preferable.
@@ -28,26 +27,20 @@ const int MAX_HEADER = 128;
 // Number of frames per audio queue chunk
 const int STREAM_QUEUE_FRAMES = 480;
 
-// ALSA configuration defaults
-const int ALSA_PERIOD_SIZE = 1024;
-const int ALSA_BUFFER_PERIODS = 4;
-const long unsigned int ALSA_BUFFER_SIZE = ALSA_PERIOD_SIZE * ALSA_BUFFER_PERIODS;
-//#define ALSA_DEVICE_NAME "plughw:CARD=sofhdadsp,DEV=0"
-//#define ALSA_DEVICE_NAME "speaker_plug"
+// Audio device configuration defaults (all backends)
+const int DEVICE_PERIOD_SIZE = 1024;
+const int DEVICE_BUFFER_PERIODS = 4;
+const long unsigned int DEVICE_BUFFER_SIZE = DEVICE_PERIOD_SIZE * DEVICE_BUFFER_PERIODS;
+//#define DEFAULT_DEVICE_NAME "plughw:CARD=sofhdadsp,DEV=0"
+//#define DEFAULT_DEVICE_NAME "speaker_plug"
 // TODO: this is locking out pipewire, and vice versa when pipewire is active.
 //   The issue is that in Docker, I am not connecting to pipewire, but
 //   to a dmixer device. Apparently I can't do that.
-#define ALSA_DEVICE_NAME "default"
-const snd_pcm_format_t ALSA_FORMAT = SND_PCM_FORMAT_FLOAT;
-const int ALSA_CHANNELS = 2;
-const int ALSA_SAMPLERATE = 48000;
-const int ALSA_START_PERIODS = ALSA_BUFFER_PERIODS / 2;
-const long unsigned int ALSA_START_THRESHOLD = ALSA_PERIOD_SIZE * ALSA_START_PERIODS;
-// Never automatically stop the alsa device
-const long unsigned int ALSA_STOP_THRESHOLD = std::numeric_limits<snd_pcm_uframes_t>::max();
-// settings for "samples are zeroed after they are played back"
-const long unsigned int ALSA_SILENCE_SIZE = std::numeric_limits<snd_pcm_uframes_t>::max();
-const long unsigned int ALSA_SILENCE_THRESHOLD = 0;
+// "default" selects the system default device (ALSA) or default endpoint (WASAPI)
+#define DEFAULT_DEVICE_NAME "default"
+const SampleFormat DEFAULT_SAMPLE_FORMAT = SampleFormat::Float;
+const int DEFAULT_CHANNELS = 2;
+const int DEFAULT_SAMPLERATE = 48000;
 
 // Size of audio queue for buffering between source and sink
 const int AUDIO_QUEUE_SIZE = 100;

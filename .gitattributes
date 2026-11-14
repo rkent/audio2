@@ -1,0 +1,5 @@
+# Use LF line endings in the repository and in working copies on all platforms
+* text=auto eol=lf
+
+# Binary files, never converted
+*.wav binary

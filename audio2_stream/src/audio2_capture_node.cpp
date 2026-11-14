@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstring>
 #include <sndfile.h>
-#include <alsa/asoundlib.h>
 #include <string>
 #include <vector>
 #include <thread>
@@ -12,7 +11,6 @@
 #include <functional>
 
 #include "rclcpp/rclcpp.hpp"
-#include "audio2_stream/alsaops.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "audio2_stream/AudioStream.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
@@ -31,16 +29,19 @@ public:
         // Parameters
 
     auto param_desc = rcl_interfaces::msg::ParameterDescriptor();
-    param_desc.description = "ALSA device name for audio capture";
-    param_desc.additional_constraints = "Must be a valid ALSA device name (a string).";
+    param_desc.description = "Audio device name for capture";
+    param_desc.additional_constraints =
+      "An ALSA device name on Linux; on Windows \"default\", or part of a device's name or its ID.";
     param_desc.read_only = false;
-    this->declare_parameter<std::string>("alsa_device_name", ALSA_DEVICE_NAME, param_desc);
-    printf("ALSA device name: %s\n", get_parameter("alsa_device_name").as_string().c_str());
+    this->declare_parameter<std::string>("device_name", DEFAULT_DEVICE_NAME, param_desc);
+    printf("Audio device name: %s\n", get_parameter("device_name").as_string().c_str());
 
-    param_desc.description = "ALSA audio format for capture";
-    param_desc.additional_constraints = "Must be a valid snd_pcm_format_t integer value.";
+    param_desc.description = "Audio sample format for capture";
+    param_desc.additional_constraints =
+      "A SampleFormat integer value (same numbering as ALSA snd_pcm_format_t; 14 = float).";
     param_desc.read_only = false;
-    this->declare_parameter<int>("alsa_format", static_cast<int>(ALSA_FORMAT), param_desc);
+    this->declare_parameter<int>("sample_format", static_cast<int>(DEFAULT_SAMPLE_FORMAT),
+      param_desc);
 
     param_desc.description = "Number of audio channels for capture";
     param_desc.additional_constraints = "Must be a positive integer (typically 1 or 2).";
@@ -114,12 +115,15 @@ public:
     RCLCPP_INFO(rcl_logger, "Starting audio capture: channels=%d, samplerate=%d, topic=%s",
             channels, samplerate, audio_topic.c_str());
 
-        // Create the AlsaSource for capturing audio
-        // FIXME: need actual IAlsaProxy implementation for capture to set format and handle capture-specific operations
-    std::unique_ptr<AlsaSource> alsa_source = std::make_unique<AlsaSource>(
-            get_parameter("alsa_device_name").as_string(),
+        // Create the DeviceSource for capturing audio, using the platform's default backend
+    std::unique_ptr<DeviceSource> device_source = std::make_unique<DeviceSource>(
+            get_parameter("device_name").as_string(),
             nullptr
     );
+        // Capture with the requested parameters
+    device_source->config_ranges_->samplerate_values = {samplerate};
+    device_source->config_ranges_->channel_values = {channels};
+    DeviceSource * device_source_raw = device_source.get();  // still used after the move below
 
         // Create the message publisher
     auto publisher = this->create_publisher<audio2_stream_msgs::msg::AudioChunk>(audio_topic,
@@ -130,21 +134,21 @@ public:
             audio_topic,
             SF_FORMAT_DEFAULT,
             publisher,
-            std::string("Audio capture from ") + get_parameter("alsa_device_name").as_string()
+            std::string("Audio capture from ") + get_parameter("device_name").as_string()
     );
 
         // Create the AudioStream to connect source and sink
     auto audio_stream = std::make_unique<AudioStream>(
-            std::move(alsa_source),
+            std::move(device_source),
             std::move(message_sink),
             std::string("Audio capture stream on ") + audio_topic,
             get_parameter("stream_queue_frames").as_int()
     );
 
-    auto alsa_open_result = alsa_source->open(SND_PCM_STREAM_CAPTURE, audio_stream.get());
-    if (alsa_open_result.has_value()) {
-      RCLCPP_ERROR(rcl_logger, "Cannot open ALSA device for capture: %s",
-        alsa_open_result->c_str());
+    auto open_result = device_source_raw->open(AudioDirection::Capture, audio_stream.get());
+    if (open_result.has_value()) {
+      RCLCPP_ERROR(rcl_logger, "Cannot open audio device for capture: %s",
+        open_result->c_str());
       return;
     }
 

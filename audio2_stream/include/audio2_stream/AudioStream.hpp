@@ -2,14 +2,16 @@
 #define AUDIO2_STREAM_AUDIOSTREAM_HPP
 
 #include "audio2_stream/config.hpp"
-#include "audio2_stream/alsaops.hpp"
-#include "audio2_stream/IAlsaProxy.hpp"
+#include "audio2_stream/visibility_control.hpp"
+#include "audio2_stream/timestamp.hpp"
+#include "audio2_stream/IAudioDeviceProxy.hpp"
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <cstring>
 #include <random>
 #include <curl/curl.h>
 #include <set>
@@ -19,15 +21,18 @@
 #include "rclcpp/rclcpp.hpp"
 #include "unique_identifier_msgs/msg/uuid.hpp"
 
-// Adapted from https://github.com/autowarefoundation/autoware_utils/tree/main/autoware_utils_uuid
+// Random (version 4) UUID, per RFC 9562. Bytes come straight from std::random_device
+// (OS entropy on glibc and MSVC), giving the full 122 random bits.
 inline unique_identifier_msgs::msg::UUID generate_uuid()
 {
-  // Generate random number
   unique_identifier_msgs::msg::UUID uuid;
-  std::mt19937 gen(std::random_device{}());
-  std::independent_bits_engine<std::mt19937, 8, uint8_t> bit_eng(gen);
-  std::generate(uuid.uuid.begin(), uuid.uuid.end(), bit_eng);
-
+  std::random_device rd;
+  for (std::size_t i = 0; i < uuid.uuid.size(); i += sizeof(uint32_t)) {
+    uint32_t r = rd();
+    std::memcpy(&uuid.uuid[i], &r, sizeof(r));
+  }
+  uuid.uuid[6] = (uuid.uuid[6] & 0x0F) | 0x40;  // version 4
+  uuid.uuid[8] = (uuid.uuid[8] & 0x3F) | 0x80;  // RFC 9562 variant
   return uuid;
 }
 
@@ -75,7 +80,7 @@ public:
 // Forward declaration
 class AudioTerminal;
 
-class AudioStream
+class AUDIO2_STREAM_PUBLIC AudioStream
 {
 public:
   AudioStream(
@@ -135,7 +140,7 @@ public:
 
 };
 
-class AudioTerminal
+class AUDIO2_STREAM_PUBLIC AudioTerminal
 {
 public:
   AudioTerminal()
@@ -153,7 +158,7 @@ public:
   virtual void run(AudioStream * audio_stream) = 0;
 };
 
-class SndFileSource : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC SndFileSource : public AudioTerminal
 {
 public:
   SndFileSource(const std::string & file_path)
@@ -167,65 +172,67 @@ protected:
   std::string file_path_;
 };
 
-class AlsaTerminal : public AudioTerminal
+// An audio device endpoint, using the platform backend through IAudioDeviceProxy
+class AUDIO2_STREAM_PUBLIC DeviceTerminal : public AudioTerminal
 {
 public:
-  AlsaTerminal(
-    std::string alsa_device_name,
-    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
+  DeviceTerminal(
+    std::string device_name,
+    std::unique_ptr<IAudioDeviceProxy> proxy = nullptr
   )
   : AudioTerminal(),
-    alsa_device_name_(alsa_device_name),
-    alsa_format_(ALSA_FORMAT),
-    alsa_proxy_(std::move(alsa_proxy)),
+    device_name_(device_name),
+    sample_format_(DEFAULT_SAMPLE_FORMAT),
+    proxy_(std::move(proxy)),
     are_parms_fixed_(false)
   {
-     // We assume that ALSA is configured to allow any samplerate or channel.
+     // We assume that the device backend converts any samplerate or channel count
+     // (ALSA plug/default devices, WASAPI auto-conversion).
     are_parms_bound_ = true;
   }
 
-  std::optional<std::string> open(snd_pcm_stream_t direction, AudioStream * audio_stream);
+  std::optional<std::string> open(AudioDirection direction, AudioStream * audio_stream);
 
-  std::string alsa_device_name_;
-  snd_pcm_format_t alsa_format_;
-  std::unique_ptr<IAlsaProxy> alsa_proxy_;
+  std::string device_name_;
+  SampleFormat sample_format_;
+  std::unique_ptr<IAudioDeviceProxy> proxy_;
   bool are_parms_fixed_;
 
   void close();
 };
 
-class AlsaSink : public AlsaTerminal
+class AUDIO2_STREAM_PUBLIC DeviceSink : public DeviceTerminal
 {
 public:
-  AlsaSink(
-    std::string alsa_device_name,
-    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
+  DeviceSink(
+    std::string device_name,
+    std::unique_ptr<IAudioDeviceProxy> proxy = nullptr
   )
-  :AlsaTerminal(alsa_device_name, std::move(alsa_proxy))
+  :DeviceTerminal(device_name, std::move(proxy))
   {}
 
   void run(AudioStream * audio_stream) override;
 };
 
-class AlsaSource : public AlsaTerminal
+class AUDIO2_STREAM_PUBLIC DeviceSource : public DeviceTerminal
 {
 public:
-  AlsaSource(
-    std::string alsa_device_name,
-    std::unique_ptr<IAlsaProxy> alsa_proxy = nullptr
+  DeviceSource(
+    std::string device_name,
+    std::unique_ptr<IAudioDeviceProxy> proxy = nullptr
   )
-  :AlsaTerminal(alsa_device_name, std::move(alsa_proxy))
+  :DeviceTerminal(device_name, std::move(proxy))
   {}
 
-  ~AlsaSource()
+  ~DeviceSource()
   {
-    printf("AlsaSource::~AlsaSource called\n");
+    printf("DeviceSource::~DeviceSource called\n");
   }
 
   void run(AudioStream * audio_stream) override;
 };
 
-class MessageSink : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC MessageSink : public AudioTerminal
 {
 public:
   MessageSink(
@@ -255,7 +262,7 @@ protected:
   std::string description_;
 };
 
-class MessageSource : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC MessageSource : public AudioTerminal
 {
 public:
   MessageSource(std::string topic)
@@ -278,7 +285,7 @@ protected:
   std::string topic_;
 };
 
-class TtsSource : public AudioTerminal
+class AUDIO2_STREAM_PUBLIC TtsSource : public AudioTerminal
 {
 public:
   TtsSource(

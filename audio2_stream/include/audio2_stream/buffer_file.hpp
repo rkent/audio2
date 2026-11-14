@@ -2,6 +2,7 @@
 #define SNDPLAY_BUFFER_FILE_HPP
 
 #include "audio2_stream/config.hpp"
+#include "audio2_stream/visibility_control.hpp"
 #include <sndfile.hh>
 #include <chrono>
 #include <thread>
@@ -10,19 +11,19 @@
 #include <memory>
 #include <atomic>
 #include <optional>
+#include <string>
 #include "boost/lockfree/spsc_queue.hpp"
-
-#include "audio2_stream/alsaops.hpp"
 
 /**
  * Convert sndfile format to human-readable string.
  * \param format The sndfile format integer.
  * \return       A string representing the format.
  */
+AUDIO2_STREAM_PUBLIC
 std::string format_to_string(int format);
 
 // Virtual I/O context for reading/writing from/to memory
-typedef struct
+typedef struct VIO_DATA
 {
   char *data = nullptr;
   sf_count_t length = 0;
@@ -30,7 +31,7 @@ typedef struct
   sf_count_t capacity = 0;
 } VIO_DATA;
 
-typedef struct
+typedef struct VIO_SOUNDFILE_HANDLE
 {
   SndfileHandle fileh;
   VIO_DATA vio_data;
@@ -43,6 +44,7 @@ typedef struct
  * \param channels     The number of channels (only for write mode).
  * \param samplerate   The sample rate (only for write mode).
  */
+AUDIO2_STREAM_PUBLIC
 std::optional<std::string>
 open_sndfile_from_buffer(
   VIO_SOUNDFILE_HANDLE & vio_sndfileh, int mode = SFM_READ,
@@ -56,6 +58,7 @@ open_sndfile_from_buffer(
  * \param samples The number of samples to read.
  * \return        The number of samples read, or a negative error code.
  */
+AUDIO2_STREAM_PUBLIC
 int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int samples);
 
 /**
@@ -65,20 +68,15 @@ int sfg_read(SndfileHandle & sndfileh, SfgRwFormat format, void * buffer, int sa
  * \param buffer  The buffer containing samples to write
  * \param samples The number of samples to write
  */
+AUDIO2_STREAM_PUBLIC
 int sfg_write(SNDFILE * sndfile, SfgRwFormat format, void * buffer, int samples);
-
-/**
- * Get the sample size in bytes for a given ALSA format.
- * \param format The ALSA format.
- * \return       The sample size in bytes, or -1 if unsupported.
- */
-int sample_size_from_alsa_format(snd_pcm_format_t format);
 
 /**
  * Get sample size from our SfgRwFormat enum
  * \param format The SfgRwFormat enum value.
  * \return       The sample size in bytes.
  */
+AUDIO2_STREAM_PUBLIC
 int sample_size_from_sfg_format(SfgRwFormat format);
 
 /**
@@ -86,20 +84,15 @@ int sample_size_from_sfg_format(SfgRwFormat format);
  * \param sf_format The sndfile format integer.
  * \return          Corresponding SfgRwFormat enum value.
  */
+AUDIO2_STREAM_PUBLIC
 SfgRwFormat sfg_format_from_sndfile_format(int sf_format);
-
-/**
- * Read/write type to use for different ALSA formats
- * \param alsa_format The ALSA format enum value.
- * \return            Corresponding SfgRwFormat enum value.
- */
-SfgRwFormat sfg_format_from_alsa_format(snd_pcm_format_t alsa_format);
 
 /**
  * String representation of SfgRwFormat
  * \param format The SfgRwFormat enum value.
  * \return       A string representing the format.
  */
+AUDIO2_STREAM_PUBLIC
 const char * sfg_format_to_string(SfgRwFormat format);
 
 /**
@@ -111,6 +104,7 @@ const char * sfg_format_to_string(SfgRwFormat format);
  * \param samples     Number of samples to convert.
  * \return            Number of samples converted, or negative error code.
  */
+AUDIO2_STREAM_PUBLIC
 int convert_types(
   SfgRwFormat from_format, SfgRwFormat to_format, const void * in_buffer,
   void * out_buffer, int samples);
@@ -124,22 +118,10 @@ int convert_types(
  * \param samples The number of samples to write.
  * \return        The number of samples written, or a negative error code.
  */
+AUDIO2_STREAM_PUBLIC
 int sfg_write_convert(
   SndfileHandle & fileh, SfgRwFormat from_format, SfgRwFormat to_format,
   char * buffer, int samples);
-
-/**
- * alsa_play: Play audio from a SNDFILE using ALSA
- * @param fileh SndfileHandle to read audio data from
- * @param alsa_dev Pointer to the opened ALSA PCM device
- * @param alsa_format ALSA format to use for playback
- * @param shutdown_flag optional atomic boolean flag to signal shutdown
- * @return Optional error message string if an error occurs, std::nullopt on success
- */
-std::optional<std::string>
-alsa_play(
-  SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
-  std::atomic<bool> * shutdown_flag);
 
 /**
  * Create read and write buffers for format conversion.
@@ -149,6 +131,7 @@ alsa_play(
  * \param r_buffer    Reference to the read buffer vector.
  * \param w_buffer    Reference to the write buffer vector.
  */
+AUDIO2_STREAM_PUBLIC
 std::optional<std::string> create_convert_vectors(
   SfgRwFormat from_format, SfgRwFormat to_format, int samples,
   std::vector<uint8_t> & r_buffer, std::vector<uint8_t> & w_buffer);
@@ -160,6 +143,7 @@ std::optional<std::string> create_convert_vectors(
  * \param vio_sndfileh The VIO_SOUNDFILE_HANDLE to initialize.
  * \return             Optional error string if an error occurs.
  */
+AUDIO2_STREAM_PUBLIC
 std::optional<std::string>
 ropen_vio_from_vector(
   const std::vector<unsigned char> & vector,
@@ -177,6 +161,7 @@ ropen_vio_from_vector(
  * \param frames       Number of frames to allocate space for.
  * \return             Optional error string if an error occurs.
  */
+AUDIO2_STREAM_PUBLIC
 std::optional<std::string>
 wopen_vio_to_vector(
   std::vector<unsigned char> & vector,
