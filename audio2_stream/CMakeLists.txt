@@ -88,21 +88,18 @@ target_include_directories(${PROJECT_NAME}
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-# ALSA-only test tools, which use alsaops directly rather than an IAudioDeviceProxy
+# ALSA-only test tool, which uses alsaops directly rather than an IAudioDeviceProxy
 if(NOT WIN32)
-  add_executable(file_play src/file_play.cpp)
   add_executable(loop_file src/loop_file.cpp)
-  foreach(tool file_play loop_file)
-    target_link_libraries(${tool}
-      PRIVATE
-        ${PROJECT_NAME}
-        ${SNDFILE_LIBRARIES}
-        ALSA::ALSA
-        rclcpp::rclcpp
-        ${audio2_stream_msgs_TARGETS}
-    )
-  endforeach()
-  install(TARGETS file_play loop_file DESTINATION lib/${PROJECT_NAME})
+  target_link_libraries(loop_file
+    PRIVATE
+      ${PROJECT_NAME}
+      ${SNDFILE_LIBRARIES}
+      ALSA::ALSA
+      rclcpp::rclcpp
+      ${audio2_stream_msgs_TARGETS}
+  )
+  install(TARGETS loop_file DESTINATION lib/${PROJECT_NAME})
 endif()
 
 target_link_libraries(audio2_play_remote_node
