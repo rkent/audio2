@@ -74,6 +74,7 @@ public:
 
 private:
   snd_pcm_t * alsa_dev_;
+  int epipe_count_ = 0;  // recent xrun score for this stream, see alsa_write
   std::string device_name_;
   std::string error_str_;
   SampleFormat format_;

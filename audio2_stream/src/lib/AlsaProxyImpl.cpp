@@ -81,6 +81,7 @@ std::optional<std::string> AlsaProxyImpl::open(
   params.period_frames = hw_vals.period_size;
   params.buffer_frames = hw_vals.buffer_size;
   format_ = from_alsa_format(hw_vals.format);
+  epipe_count_ = 0;
 
   return std::nullopt;
 }
@@ -112,7 +113,7 @@ int AlsaProxyImpl::write(
   }
 
   int result = alsa_write(
-    samples, alsa_dev_, data, channels, to_alsa_format(format_), shutdown_flag);
+    samples, alsa_dev_, data, channels, to_alsa_format(format_), shutdown_flag, epipe_count_);
   if (result < 0) {
     error_str_ = std::string("ALSA write failed: ") + snd_strerror(result);
   }
@@ -136,7 +137,7 @@ int AlsaProxyImpl::read(
   }
 
   int result = alsa_read(
-    samples, alsa_dev_, data, channels, to_alsa_format(format_), shutdown_flag);
+    samples, alsa_dev_, data, channels, to_alsa_format(format_), shutdown_flag, epipe_count_);
   if (result < 0) {
     error_str_ = std::string("ALSA read failed: ") + snd_strerror(result);
   }

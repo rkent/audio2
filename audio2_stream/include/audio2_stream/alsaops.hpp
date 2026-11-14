@@ -17,7 +17,6 @@
 #include <tuple>
 #include <optional>
 #include <string>
-#include "boost/lockfree/spsc_queue.hpp"
 
 // ALSA software parameter defaults
 const int ALSA_START_PERIODS = DEVICE_BUFFER_PERIODS / 2;
@@ -107,9 +106,6 @@ typedef struct AlsaSwParams
 
 // Function declarations
 
-AUDIO2_STREAM_PUBLIC
-std::optional<std::string>
-alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev);
 /**
  * Open an ALSA PCM device with specified hardware and software parameters.
  * \param hw_vals  Hardware parameters for the ALSA device.
@@ -129,17 +125,24 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& device);
  * \param channels  Number of audio channels.
  * \param alsa_format ALSA format of the audio data.
  * \param shutdown_flag Pointer to atomic boolean to signal shutdown.
+ * \param epipe_count Score of recent xruns on this stream, owned by the caller and starting at 0.
+ *                    It decays by 1 per call and rises by 100 per xrun; a further xrun while it
+ *                    is above 140 makes the call give up and return -EPIPE.
  * \return          Number of samples written, or negative error code.
  */
 AUDIO2_STREAM_PUBLIC
 int alsa_write(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
-  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag);
+  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag, int & epipe_count);
 
+/**
+ * Read audio data from an ALSA device. Parameters are as for alsa_write.
+ * \return Number of samples read, or negative error code.
+ */
 AUDIO2_STREAM_PUBLIC
 int alsa_read(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
-  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag);
+  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag, int & epipe_count);
 
 /**
  * alsa_play: Play audio from a SNDFILE using ALSA
@@ -154,32 +157,5 @@ std::optional<std::string>
 alsa_play(
   SndfileHandle fileh, snd_pcm_t * alsa_dev, snd_pcm_format_t alsa_format,
   std::atomic<bool> * shutdown_flag);
-
-/**
- * Thread-safe ALSA writer class that consumes audio data from a lock-free queue.
- */
-class AUDIO2_STREAM_PUBLIC AlsaWriteThread
-{
-public:
-  AlsaWriteThread(
-    AlsaHwParams hw_vals,
-    AlsaSwParams sw_vals,
-    boost::lockfree::spsc_queue<std::vector<uint8_t>> * queue,
-    std::atomic<bool> * shutdown_flag = nullptr,
-    std::atomic<bool> * data_available = nullptr);
-  ~AlsaWriteThread() = default;
-  snd_pcm_t * get_alsa_dev();
-  std::string get_error();
-  void close();
-  void run();
-
-private:
-  snd_pcm_t * alsa_dev_ = nullptr;
-  std::string error_str_;
-  AlsaHwParams hw_vals_;
-  boost::lockfree::spsc_queue<std::vector<uint8_t>> * queue_;
-  std::atomic<bool> * shutdown_flag_;
-  std::atomic<bool> * data_available_;
-};
 
 #endif

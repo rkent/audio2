@@ -14,100 +14,100 @@
 #include <cstdio>
 #include <cstdarg>
 
+namespace
+{
+
+// Write frames, recovering from xruns. epipe_count is the caller's per-stream score of
+// recent xruns: it decays by 1 per call and rises by 100 per xrun, and a further xrun while it
+// is above 140 gives up and returns -EPIPE.
 template<typename T>
-class AlsaWrite {
-public:
-  int operator()(
-    snd_pcm_t * alsa_dev, T * data, int frames, int channels,
-    std::atomic<bool> * shutdown_flag = nullptr)
-  {
-    static  int epipe_count = 0;
+int alsa_write_frames(
+  snd_pcm_t * alsa_dev, T * data, int frames, int channels,
+  std::atomic<bool> * shutdown_flag, int & epipe_count)
+{
+  int total = 0;
+  int retval;
 
-    int total = 0;
-    int retval;
+  if (epipe_count > 0) {
+    epipe_count--;
+  }
 
-    if (epipe_count > 0) {
-      epipe_count--;
+  while (total < frames) {
+          // Check if shutdown has been requested
+    if (shutdown_flag && shutdown_flag->load()) {
+      break;
     }
 
-    while (total < frames) {
-            // Check if shutdown has been requested
-      if (shutdown_flag && shutdown_flag->load()) {
-        break;
+    retval = snd_pcm_writei (alsa_dev, data + total * channels, frames - total);
+
+    if (retval > 0) {
+      total += retval;
+      if (total == frames) {
+        return total;
       }
 
-      retval = snd_pcm_writei (alsa_dev, data + total * channels, frames - total);
+      continue;
+    }
 
-      if (retval > 0) {
-        total += retval;
-        if (total == frames) {
-          return total;
+    switch (retval) {
+      case 0:
+        if (snd_pcm_state(alsa_dev) == SND_PCM_STATE_PREPARED) {
+                  // I don't understand why we get here, but for some reason the card refuses to start
+                  // unless we explicitly start it.
+          snd_pcm_start (alsa_dev);
+        } else {
+          printf("alsa_write: wrote zero frames.n");
         }
-
         continue;
-      }
+      case -EAGAIN:
+        puts ("alsa_write: EAGAIN");
+        continue;
+        break;
 
-      switch (retval) {
-        case 0:
-          if (snd_pcm_state(alsa_dev) == SND_PCM_STATE_PREPARED) {
-                    // I don't understand why we get here, but for some reason the card refuses to start
-                    // unless we explicitly start it.
-            snd_pcm_start (alsa_dev);
-          } else {
-            printf("alsa_write: wrote zero frames.n");
+      case -EPIPE:
+        if (epipe_count > 0) {
+          printf ("alsa_write: EPIPE %d\n", epipe_count);
+          if (epipe_count > 140) {
+            return retval;
           }
-          continue;
-        case -EAGAIN:
-          puts ("alsa_write: EAGAIN");
-          continue;
-          break;
+        }
+        epipe_count += 100;
 
-        case -EPIPE:
-          if (epipe_count > 0) {
-            printf ("alsa_write: EPIPE %d\n", epipe_count);
-            if (epipe_count > 140) {
-              return retval;
-            }
-          }
-          epipe_count += 100;
+        snd_pcm_prepare (alsa_dev);
+        break;
 
-          snd_pcm_prepare (alsa_dev);
-          break;
+      case -EBADFD:
+        fprintf (stderr, "alsa_write: Bad PCM state.n");
+        return 0;
+        break;
 
-        case -EBADFD:
-          fprintf (stderr, "alsa_write: Bad PCM state.n");
-          return 0;
-          break;
+  #if defined ESTRPIPE && ESTRPIPE != EPIPE
+      case -ESTRPIPE:
+        fprintf (stderr, "alsa_write: Suspend event.n");
+        return 0;
+        break;
+  #endif
 
-    #if defined ESTRPIPE && ESTRPIPE != EPIPE
-        case -ESTRPIPE:
-          fprintf (stderr, "alsa_write: Suspend event.n");
-          return 0;
-          break;
-    #endif
+      case -EIO:
+        puts ("alsa_write: EIO");
+        return 0;
 
-        case -EIO:
-          puts ("alsa_write: EIO");
-          return 0;
+      default:
+        fprintf (stderr, "alsa_write: retval = %d\n", retval);
+        return 0;
+        break;
+    }            /* switch */
+  }          /* while */
 
-        default:
-          fprintf (stderr, "alsa_write: retval = %d\n", retval);
-          return 0;
-          break;
-      }            /* switch */
-    }          /* while */
+  return total;
+} /* alsa_write_frames */
 
-    return total;
-  }
-}; /* AlsaWrite */
 
-AlsaWrite<float> alsa_write_float;
-AlsaWrite<short> alsa_write_short;
-AlsaWrite<int> alsa_write_int;
-AlsaWrite<double> alsa_write_double;
+}  // namespace
+
 int alsa_write(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
-  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag)
+  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag, int & epipe_count)
 {
   if (channels <= 0) {
     return -2;
@@ -119,17 +119,17 @@ int alsa_write(
     channels, alsa_format, format_timestamp().c_str());
   int frames = samples / channels;
   if (alsa_format == SND_PCM_FORMAT_S16) {
-    return channels * alsa_write_short(alsa_dev, reinterpret_cast<short *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_write_frames(alsa_dev, reinterpret_cast<short *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else if (alsa_format == SND_PCM_FORMAT_S32) {
-    return channels * alsa_write_int(alsa_dev, reinterpret_cast<int *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_write_frames(alsa_dev, reinterpret_cast<int *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
-    return channels * alsa_write_float(alsa_dev, reinterpret_cast<float *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_write_frames(alsa_dev, reinterpret_cast<float *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
-    return channels * alsa_write_double(alsa_dev, reinterpret_cast<double *>(data), frames,
-      channels, shutdown_flag);
+    return channels * alsa_write_frames(alsa_dev, reinterpret_cast<double *>(data), frames,
+      channels, shutdown_flag, epipe_count);
   } else {
     return -1;
   }
@@ -234,216 +234,98 @@ alsa_open(AlsaHwParams & hw_vals, AlsaSwParams & sw_vals, snd_pcm_t *& alsa_dev)
   return error_str;
 } /* alsa_open */
 
-AlsaWriteThread::AlsaWriteThread(
-  AlsaHwParams hw_vals,
-  AlsaSwParams sw_vals,
-  boost::lockfree::spsc_queue<std::vector<uint8_t>> * queue,
-  std::atomic<bool> * shutdown_flag,
-  std::atomic<bool> * data_available
-)
-: queue_(queue), shutdown_flag_(shutdown_flag), data_available_(data_available)
+namespace
 {
-  snd_pcm_t * alsa_dev = nullptr;
-  auto open_result = alsa_open(hw_vals, sw_vals, alsa_dev);
-  if (open_result.has_value()) {
-    error_str_ = open_result.value();
-    return;
+
+// Read frames, recovering from xruns; epipe_count works as in alsa_write_frames.
+template<typename T>
+int alsa_read_frames(
+  snd_pcm_t * alsa_dev, T * data, int frames, int channels,
+  std::atomic<bool> * shutdown_flag, int & epipe_count)
+{
+  int total = 0;
+  int retval;
+
+  if (epipe_count > 0) {
+    epipe_count--;
   }
-  alsa_dev_ = alsa_dev;
-  hw_vals_ = hw_vals;
-}
 
-snd_pcm_t * AlsaWriteThread::get_alsa_dev()
-{
-  return alsa_dev_;
-}
-
-std::string AlsaWriteThread::get_error()
-{
-  return error_str_;
-}
-
-void AlsaWriteThread::close()
-{
-  if (alsa_dev_) {
-    snd_pcm_drain(alsa_dev_);
-    snd_pcm_close(alsa_dev_);
-    alsa_dev_ = nullptr;
-  }
-  return;
-}
-
-void AlsaWriteThread::run()
-{
-  while (!shutdown_flag_->load()) {
-    if (error_str_.length() > 0) {
+  while (total < frames) {
+          // Check if shutdown has been requested
+    if (shutdown_flag && shutdown_flag->load()) {
       break;
     }
-    if (!alsa_dev_) {
-      error_str_ = "ALSA device is not opened";
-      break;
-    }
-    std::vector<uint8_t> audio_data;
-        // Try to pop from queue
-    if (data_available_) {
-      data_available_->wait(false);       // Wait until there's something to process
-      data_available_->store(false);
-    }
-    if (!queue_->pop(audio_data)) {
-            // Check if shutdown has been requested
-      if (shutdown_flag_ && shutdown_flag_->load()) {
-        error_str_ = "Playback interrupted by shutdown signal";
-        break;
+
+    retval = snd_pcm_readi(alsa_dev, data + total * channels, frames - total);
+
+    if (retval > 0) {
+      total += retval;
+      if (total == frames) {
+        return total;
       }
-            // Queue is empty, sleep briefly and continue. We should not reach this
-      printf("Audio queue is empty, waiting...");
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
-    int bytes_per_sample = snd_pcm_format_width(hw_vals_.format) / 8;
-    int write_result = alsa_write(
-            static_cast<int>(audio_data.size() / bytes_per_sample),
-            alsa_dev_,
-            audio_data.data(),
-            hw_vals_.channels, // channels
-            hw_vals_.format,
-            shutdown_flag_);
-    if (write_result < 0) {
-      printf("Error writing to ALSA device: %s\n", snd_strerror(write_result));
-    }
-  }
-  close();
-}
 
-template<typename T>
-class AlsaRead {
-public:
-  int operator()(
-    snd_pcm_t * alsa_dev, T * data, int frames, int channels,
-    std::atomic<bool> * shutdown_flag = nullptr)
-  {
-    static  int epipe_count = 0;
-
-    int total = 0;
-    int retval;
-
-    if (epipe_count > 0) {
-      epipe_count--;
-    }
-
-    while (total < frames) {
-            // Check if shutdown has been requested
-      if (shutdown_flag && shutdown_flag->load()) {
-        break;
-      }
-
-      retval = snd_pcm_readi(alsa_dev, data + total * channels, frames - total);
-
-      if (retval > 0) {
-        total += retval;
-        if (total == frames) {
-          return total;
-        }
+    switch (retval) {
+      case 0:
         continue;
-      }
+      case -EAGAIN:
+        puts ("alsa_read: EAGAIN");
+        continue;
+        break;
 
-      switch (retval) {
-        case 0:
-          continue;
-        case -EAGAIN:
-          puts ("alsa_read: EAGAIN");
-          continue;
-          break;
-
-        case -EPIPE:
-          if (epipe_count > 0) {
-            printf ("alsa_read: EPIPE %d\n", epipe_count);
-            if (epipe_count > 140) {
-              return retval;
-            }
+      case -EPIPE:
+        if (epipe_count > 0) {
+          printf ("alsa_read: EPIPE %d\n", epipe_count);
+          if (epipe_count > 140) {
+            return retval;
           }
-          epipe_count += 100;
-          snd_pcm_prepare (alsa_dev);
-          break;
+        }
+        epipe_count += 100;
+        snd_pcm_prepare (alsa_dev);
+        break;
 
-        case -EBADFD:
-          fprintf (stderr, "alsa_read: Bad PCM state.n");
-          return 0;
-          break;
+      case -EBADFD:
+        fprintf (stderr, "alsa_read: Bad PCM state.n");
+        return 0;
+        break;
 
-        default:
-          fprintf (stderr, "alsa_read: retval = %d\n", retval);
-          return 0;
-          break;
-      }            /* switch */
-    }          /* while */
+      default:
+        fprintf (stderr, "alsa_read: retval = %d\n", retval);
+        return 0;
+        break;
+    }            /* switch */
+  }          /* while */
 
-    return total;
-  }
-}; /* AlsaRead */
+  return total;
+} /* alsa_read_frames */
 
-AlsaRead<float> alsa_read_float;
-AlsaRead<short> alsa_read_short;
-AlsaRead<int> alsa_read_int;
-AlsaRead<double> alsa_read_double;
+
+}  // namespace
+
 int alsa_read(
   int samples, snd_pcm_t * alsa_dev, void * data, int channels,
-  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag)
+  snd_pcm_format_t alsa_format, std::atomic<bool> * shutdown_flag, int & epipe_count)
 {
   std::size_t hash_id = std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000;
   printf("alsa_read: thread: %zu, samples=%d, channels=%d, format=%x at %s\n", hash_id, samples,
     channels, alsa_format, format_timestamp().c_str());
   int frames = samples / channels;
   if (alsa_format == SND_PCM_FORMAT_S16) {
-    return channels * alsa_read_short(alsa_dev, reinterpret_cast<short *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_read_frames(alsa_dev, reinterpret_cast<short *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else if (alsa_format == SND_PCM_FORMAT_S32) {
-    return channels * alsa_read_int(alsa_dev, reinterpret_cast<int *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_read_frames(alsa_dev, reinterpret_cast<int *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else if (alsa_format == SND_PCM_FORMAT_FLOAT) {
-    return channels * alsa_read_float(alsa_dev, reinterpret_cast<float *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_read_frames(alsa_dev, reinterpret_cast<float *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else if (alsa_format == SND_PCM_FORMAT_FLOAT64) {
-    return channels * alsa_read_double(alsa_dev, reinterpret_cast<double *>(data), frames, channels,
-      shutdown_flag);
+    return channels * alsa_read_frames(alsa_dev, reinterpret_cast<double *>(data), frames, channels,
+      shutdown_flag, epipe_count);
   } else {
     return -1;
   }
-}
-
-std::optional<std::string>
-alsa_fix_rate(unsigned int rate, snd_pcm_t *& alsa_dev)
-{
-  int err;
-  std::string error_str;
-
-  snd_pcm_hw_params_t *hw_params;
-  snd_pcm_hw_params_alloca(&hw_params);
-  unsigned int current_rate;
-  int dir;
-  do {
-    ECALL(snd_pcm_hw_params_current, "cannot get current hw params", alsa_dev, hw_params);
-    ECALL(snd_pcm_hw_params_get_rate, "cannot get current rate", hw_params, &current_rate, &dir);
-
-    snd_output_t *output_handle;
-    snd_output_stdio_attach(&output_handle, stdout, 0);
-    snd_pcm_hw_params_dump(hw_params, output_handle);
-    snd_output_close(output_handle);
-
-    printf("alsa_fix_rate: current ALSA rate is %u, requested rate is %u\n", current_rate, rate);
-    if (current_rate != rate) {
-      printf("alsa_fix_rate: attempting to set ALSA rate to %u\n", rate);
-      // ECALL(snd_pcm_hw_params_set_rate_near, "cannot set sample rate", alsa_dev, hw_params, &rate, 0);
-      ECALL(snd_pcm_hw_params, "cannot install hw params", alsa_dev, hw_params);
-      printf("alsa_fix_rate: ALSA rate set to %u\n", rate);
-    } else {
-      printf("alsa_fix_rate: ALSA rate is already correct, no change needed\n");
-    }
-  } while (false);
-  if (error_str.empty()) {
-    return std::nullopt;
-  }
-  return error_str;
 }
 
 #define BUFFER_LEN                      (1000 * 4)
@@ -462,6 +344,7 @@ alsa_play(
   static char w_buffer [BUFFER_LEN];    // write buffer
 
   int readcount;
+  int epipe_count = 0;  // xrun score for this playback, see alsa_write
   auto read_sfg_format = sfg_format_from_sndfile_format(format);
 
     // Disable normalization since we are handling scaling ourselves.
@@ -486,7 +369,8 @@ alsa_play(
     } else if (samples_converted != readcount) {
       return std::string("Mismatch in converted samples count");
     }
-    auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format, shutdown_flag);
+    auto count = alsa_write(readcount, alsa_dev, w_buffer, channels, alsa_format, shutdown_flag,
+      epipe_count);
     if (count < 0) {
       return std::string("Error writing to ALSA device");
     } else if (count != readcount) {
