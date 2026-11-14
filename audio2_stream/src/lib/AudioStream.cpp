@@ -19,27 +19,32 @@
 #define NULL_DEVICE "/dev/null"
 #endif
 
-static auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
+namespace
+{
 
-static bool isProgramInstalled(const std::string & program)
+auto rcl_logger = rclcpp::get_logger("audio2_stream/AudioStream");
+
+bool isProgramInstalled(const std::string & program)
 {
   std::string command = WHICH_COMMAND + program + " > " NULL_DEVICE " 2>&1";
   return system(command.c_str()) == 0;
 }
 
-static bool hasEspeak()
+bool hasEspeak()
 {
     // Initialized only the first time this function is called
   static bool installed = isProgramInstalled("espeak");
   return installed;
 }
 
-static bool hasEspeakNG()
+bool hasEspeakNG()
 {
     // Initialized only the first time this function is called
   static bool installed = isProgramInstalled("espeak-ng");
   return installed;
 }
+
+}  // namespace
 
 std::set<int> AudioStream::combine_samplerates()
 {
@@ -848,8 +853,11 @@ void AudioStream::push_empty_to_queue()
   data_available_.notify_one();
 }
 
+namespace
+{
+
 // Callback function for CURL to write response data
-static size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
+size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
 {
   printf("CURL write_callback called with nmemb %zu at %s\n", nmemb,
     format_timestamp().c_str());
@@ -861,6 +869,8 @@ static size_t write_callback(void * contents, size_t size, size_t nmemb, void * 
 
   return realsize;
 }
+
+}  // namespace
 
 // Helper function to split a string by a delimiter
 /*

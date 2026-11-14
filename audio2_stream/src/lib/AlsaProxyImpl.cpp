@@ -7,10 +7,15 @@ std::unique_ptr<IAudioDeviceProxy> make_default_device_proxy()
   return std::make_unique<AlsaProxyImpl>();
 }
 
-static snd_pcm_stream_t to_alsa_stream(AudioDirection direction)
+namespace
+{
+
+snd_pcm_stream_t to_alsa_stream(AudioDirection direction)
 {
   return direction == AudioDirection::Capture ? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK;
 }
+
+}  // namespace
 
 std::optional<std::string> AlsaProxyImpl::preopen(
   const std::string & device,
