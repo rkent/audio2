@@ -41,8 +41,9 @@ void ensure_com()
 {
   thread_local bool initialized = false;
   if (!initialized) {
-    // RPC_E_CHANGED_MODE means the thread already uses a single-threaded apartment,
-    // which WASAPI also supports.
+    // The result is ignored: RPC_E_CHANGED_MODE means the thread is already a
+    // single-threaded apartment, which WASAPI also supports. Any other failure
+    // surfaces as CO_E_NOTINITIALIZED from the next WASAPI call.
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     initialized = true;
   }
