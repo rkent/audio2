@@ -18,21 +18,19 @@
 import io
 import json
 import logging
-import wave
 from typing import Any, Optional
+import wave
 
-import numpy as np
-import torch
 from flask import Flask, request
-
+import numpy as np
 import rclpy
 from rclpy.node import Node
-
 from tiny_tts import TinyTTS
 from tiny_tts.nn import commons
 from tiny_tts.text import phonemes_to_ids
 from tiny_tts.text.english import grapheme_to_phoneme, normalize_text
 from tiny_tts.utils.config import ADD_BLANK, SAMPLING_RATE, SPK2ID
+import torch
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +47,7 @@ def _synthesize_to_wav(
     speed: float = 1.0,
 ) -> bytes:
     """Run TinyTTS inference and return WAV bytes (no disk I/O)."""
-    _LOGGER.debug("Synthesizing: %s", text)
+    _LOGGER.debug('Synthesizing: %s', text)
     normalized = normalize_text(text)
     phones, tones, _ = grapheme_to_phoneme(normalized)
     phone_ids, tone_ids, lang_ids = phonemes_to_ids(phones, tones, 'EN')
@@ -158,7 +156,8 @@ class TinyTtsServerNode(Node):
 
         @app.route('/', methods=['POST'])
         def app_synthesize() -> bytes:
-            """Synthesize audio from text (OpenAI-compatible TTS endpoint).
+            """
+            Synthesize audio from text (OpenAI-compatible TTS endpoint).
 
             Expected JSON body::
 
@@ -170,7 +169,7 @@ class TinyTtsServerNode(Node):
 
             Returns WAV audio bytes.
             """
-            print("Received request:", request.data)
+            print('Received request:', request.data)
             data = json.loads(request.data)
             text: str = data.get('input', data.get('text', '')).strip()
             if not text:
