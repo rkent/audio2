@@ -251,7 +251,9 @@ void DeviceSink::run(AudioStream * audio_stream)
       if (open_result.has_value()) {
         RCLCPP_ERROR(rcl_logger, "Failed to open audio device in DeviceSink: %s",
           open_result->c_str());
-        return;
+        // Leave through the common exit, which completes the stream's shutdown. Returning
+        // here would leave the stream counted as running forever.
+        break;
       }
       printf("DeviceSink::run audio device opened successfully\n");
     }
@@ -311,7 +313,9 @@ void DeviceSink::run(AudioStream * audio_stream)
             audio_stream->channels_,
             nullptr  // no shutdown flag so we can finish writing silence
     );
-    if (written < 0) {
+    // The backends return 0 for unrecoverable errors (e.g. a removed device), so stop on
+    // that too, or this loops forever and the stream never completes shutdown.
+    if (written <= 0) {
       printf("Error writing silence to audio device: %s\n", proxy_->get_error().c_str());
       break;
     }
@@ -642,11 +646,34 @@ std::optional<std::string> AudioStream::start()
     std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000, description_.c_str(),
     format_timestamp().c_str());
   started_ = true;
+  // An exception escaping a thread would terminate the whole process, so contain it here and
+  // end the stream the way the terminal would have.
   if (sink_) {
-    sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
+    sink_thread_ = std::make_unique<std::jthread>([this]() {
+        try {
+          sink_->run(this);
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR(rcl_logger, "Sink of <%s> failed: %s", description_.c_str(), e.what());
+          shutdown();
+        } catch (...) {
+          RCLCPP_ERROR(rcl_logger, "Sink of <%s> failed: unknown exception", description_.c_str());
+          shutdown();
+        }
+    });
   }
   if (source_) {
-    source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
+    source_thread_ = std::make_unique<std::jthread>([this]() {
+        try {
+          source_->run(this);
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR(rcl_logger, "Source of <%s> failed: %s", description_.c_str(), e.what());
+          push_empty_to_queue();
+        } catch (...) {
+          RCLCPP_ERROR(rcl_logger, "Source of <%s> failed: unknown exception",
+            description_.c_str());
+          push_empty_to_queue();
+        }
+    });
   }
   return std::nullopt;
 }
@@ -785,10 +812,6 @@ void AudioStream::process_fileh(SndfileHandle & fileh)
 
 void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_format)
 {
-    // Messages will be sent at a constant rate based on samplerate and buffer size.
-  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
-      queue_frames_ / (samplerate_)));
-
   if (!parms_fixed()) {
     auto fix_result = fix_parms();
     if (fix_result.has_value()) {
@@ -797,6 +820,11 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
       return;
     }
   }
+
+    // Messages will be sent at a constant rate based on samplerate and buffer size.
+    // samplerate_ is only known once the parameters are fixed.
+  auto duration = std::chrono::microseconds(static_cast<int64_t>(1'000'000.0 *
+      queue_frames_ / (samplerate_)));
 
   auto w_format = sink_->rw_format_;
   std::vector<uint8_t> w_buffer;
@@ -807,9 +835,7 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
   // Calculate chunk size in samples for each iteration
   int chunk_samples = queue_frames_ * channels_;
   int chunk_bytes = chunk_samples * r_sample_size;
-
-  // Resize write buffer to hold converted chunk
-  w_buffer.reserve(chunk_samples * w_sample_size);
+  const std::size_t w_chunk_bytes = static_cast<std::size_t>(chunk_samples) * w_sample_size;
   bool done = false;
   printf("AudioStream::process_raw: length %zu bytes from audio chunk\n", audio_data.size());
   auto next_time = std::chrono::steady_clock::now();
@@ -832,6 +858,9 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
     printf("AudioStream::process_raw: read %d samples from audio chunk at offset %zu at %s\n",
       samples_read, offset, format_timestamp().c_str());
 
+    // convert_types writes through data(), so the buffer must hold a full chunk. It may have
+    // been shrunk to a partial chunk by the previous iteration.
+    w_buffer.resize(w_chunk_bytes);
     // Convert from the current position in audio_data
     int samples_converted = convert_types(r_format, w_format,
       audio_data.data() + offset, w_buffer.data(), samples_read);
@@ -904,6 +933,15 @@ size_t write_callback(void * contents, size_t size, size_t nmemb, void * userp)
   return realsize;
 }
 
+// A string escaped for use between the quotes of a JSON string literal. Invalid UTF-8 is
+// replaced rather than throwing.
+std::string json_string_contents(const std::string & value)
+{
+  std::string quoted = nlohmann::json(value).dump(-1, ' ', false,
+      nlohmann::json::error_handler_t::replace);
+  return quoted.substr(1, quoted.size() - 2);
+}
+
 }  // namespace
 
 // Helper function to split a string by a delimiter
@@ -941,24 +979,33 @@ std::optional<std::string> TtsSource::open()
       return std::string(var_value ? var_value : "");
   });
 
-  nlohmann::json json_payload;
+  // Templates place the values inside JSON string literals ("{{ text }}"), so escape them as
+  // JSON string contents. Otherwise a quote, backslash or newline in the request makes the
+  // rendered JSON invalid, or injects other fields into it.
   nlohmann::json vars_json;
   if (!model_.empty()) {
-    vars_json["model"] = model_;
+    vars_json["model"] = json_string_contents(model_);
   }
   if (!tts_format_.empty()) {
-    vars_json["format"] = tts_format_;
+    vars_json["format"] = json_string_contents(tts_format_);
   }
   if (!voice_.empty()) {
-    vars_json["voice"] = voice_;
+    vars_json["voice"] = json_string_contents(voice_);
   }
-  vars_json["text"] = text_;
+  vars_json["text"] = json_string_contents(text_);
 
   if (name_.empty()) {
     name_ = "espeak";
   }
   if (text_.empty()) {
     return std::string("TTS text cannot be empty");
+  }
+  // The name selects a template file, so it must not be able to reach outside the template folder
+  if (!std::all_of(name_.begin(), name_.end(), [](unsigned char c) {
+      return std::isalnum(c) || c == '-' || c == '_';
+    }))
+  {
+    return std::string("Invalid TTS provider name: ") + name_;
   }
 
   if (name_ == "espeak") {
@@ -1001,9 +1048,12 @@ std::optional<std::string> TtsSource::open()
     } else if (!template_rendered_json_["body"].is_object()) {
       return std::string("Template rendering failed: body is not an object");
     }
+    for (const auto & header : template_rendered_json_["headers"]) {
+      if (!header.is_string()) {
+        return std::string("Template rendering failed: a header is not a string");
+      }
+    }
   }
-  json_str_ = json_payload.dump();
-  headers_ = curl_slist_append(headers_, "Content-Type: application/json");
   return std::nullopt;
 }
 

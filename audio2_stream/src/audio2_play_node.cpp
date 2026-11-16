@@ -38,6 +38,10 @@ static constexpr std::size_t BACKLOG_QUEUE_MARGIN = 10;
 // Chunks of an ignored or cancelled stream are discarded until its end-of-stream chunk, or until
 // no chunk has arrived for this long.
 static constexpr double DROPPED_UUID_TIMEOUT_S = 10.0;
+// A started chunk stream that has received no chunk for this long is ended as if its
+// end-of-stream chunk had arrived, so a lost end-of-stream (e.g. the publisher died) cannot
+// leave it running forever.
+static constexpr double CHUNK_STREAM_TIMEOUT_S = 2.0;
 
 class Audio2PlayNode : public rclcpp::Node
 {
@@ -138,8 +142,11 @@ public:
     std::erase_if(audio_streams_, [](const std::unique_ptr<AudioStream> & stream) {
         return stream->shutdown_complete_.load();
     });
-    // Drop backlogs of streams that no longer exist
+    // Drop backlogs and chunk times of streams that no longer exist
     std::erase_if(backlog_, [this](const auto & entry) {
+        return !find_active(entry.first) && !find_pending(entry.first);
+    });
+    std::erase_if(last_chunk_times_, [this](const auto & entry) {
         return !find_active(entry.first) && !find_pending(entry.first);
     });
 
@@ -154,6 +161,7 @@ public:
     drain_backlogs();
 
     auto now = this->now();
+    end_silent_chunk_streams(now);
     std::erase_if(dropped_uuids_, [&now](const auto & entry) {
         return (now - entry.second).seconds() > DROPPED_UUID_TIMEOUT_S;
     });
@@ -184,6 +192,7 @@ public:
   {
     pending_.clear();
     backlog_.clear();
+    last_chunk_times_.clear();
     for (auto & stream : audio_streams_) {
       stream->shutdown();
     }
@@ -209,6 +218,14 @@ public:
         dropped->second = this->now();
       }
       return;
+    }
+
+    // Track when each live chunk stream last received a chunk; once its end-of-stream has
+    // arrived it no longer needs a timeout
+    if (eos) {
+      last_chunk_times_.erase(key);
+    } else {
+      last_chunk_times_[key] = this->now();
     }
 
         // Hold chunks of a queued stream until it starts
@@ -387,6 +404,35 @@ public:
     }
   }
 
+  // End started chunk streams whose chunks stopped arriving without an end-of-stream chunk.
+  // Their queued audio still plays out; any chunks arriving later are discarded.
+  void end_silent_chunk_streams(const rclcpp::Time & now)
+  {
+    for (auto & stream : audio_streams_) {
+      if (stream->source_ || stream->shutdown_flag_.load()) {
+        continue;  // Not a chunk stream, or already stopping
+      }
+      const UuidKey & key = stream->stream_uuid_.uuid;
+      auto last = last_chunk_times_.find(key);
+      if (last == last_chunk_times_.end() ||
+        (now - last->second).seconds() <= CHUNK_STREAM_TIMEOUT_S)
+      {
+        continue;  // End-of-stream already received, or still receiving
+      }
+      if (auto backlog = backlog_.find(key);
+        backlog != backlog_.end() && !backlog->second.empty())
+      {
+        continue;  // Buffered chunks are still being fed to it
+      }
+      RCLCPP_WARN(rcl_logger,
+        "No audio chunk for %.1f s on stream <%s>, ending it without end-of-stream",
+        CHUNK_STREAM_TIMEOUT_S, stream->description_.c_str());
+      stream->push_empty_to_queue();
+      last_chunk_times_.erase(last);
+      dropped_uuids_[key] = now;
+    }
+  }
+
   void refresh_mutes()
   {
     std::vector<AudioStream *> streams;
@@ -460,6 +506,8 @@ private:
   std::map<UuidKey, std::deque<AudioChunk::SharedPtr>> backlog_;
   // UUIDs of ignored or cancelled chunk streams, with the time their last chunk arrived
   std::map<UuidKey, rclcpp::Time> dropped_uuids_;
+  // Arrival time of the latest chunk of each chunk stream still awaiting its end-of-stream
+  std::map<UuidKey, rclcpp::Time> last_chunk_times_;
   std::unique_ptr<MessageSource> message_source_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::unique_ptr<std::jthread> check_thread_;

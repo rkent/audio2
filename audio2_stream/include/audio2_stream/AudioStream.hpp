@@ -325,10 +325,7 @@ public:
     tts_format_(tts_format)
   {}
 
-  virtual ~TtsSource()
-  {
-    curl_slist_free_all(headers_);
-  }
+  virtual ~TtsSource() = default;
 
   void run(AudioStream * audio_stream) override;
   std::optional<std::string> fetch_tts_template(std::vector<uint8_t> & audio_data);
@@ -341,8 +338,6 @@ protected:
   std::string voice_;
   std::string model_;
   std::string tts_format_;
-  struct curl_slist * headers_ = nullptr;
-  std::string json_str_;
   std::string url_;
   TtsMethod tts_method_;
   nlohmann::json template_rendered_json_;
