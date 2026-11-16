@@ -646,36 +646,46 @@ std::optional<std::string> AudioStream::start()
     std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000, description_.c_str(),
     format_timestamp().c_str());
   started_ = true;
-  // An exception escaping a thread would terminate the whole process, so contain it here and
-  // end the stream the way the terminal would have.
+  source_done_.store(!source_);
   if (sink_) {
-    sink_thread_ = std::make_unique<std::jthread>([this]() {
-        try {
-          sink_->run(this);
-        } catch (const std::exception & e) {
-          RCLCPP_ERROR(rcl_logger, "Sink of <%s> failed: %s", description_.c_str(), e.what());
-          shutdown();
-        } catch (...) {
-          RCLCPP_ERROR(rcl_logger, "Sink of <%s> failed: unknown exception", description_.c_str());
-          shutdown();
-        }
-    });
+    sink_thread_ = std::make_unique<std::jthread>(&AudioStream::run_sink_thread, this);
   }
   if (source_) {
-    source_thread_ = std::make_unique<std::jthread>([this]() {
-        try {
-          source_->run(this);
-        } catch (const std::exception & e) {
-          RCLCPP_ERROR(rcl_logger, "Source of <%s> failed: %s", description_.c_str(), e.what());
-          push_empty_to_queue();
-        } catch (...) {
-          RCLCPP_ERROR(rcl_logger, "Source of <%s> failed: unknown exception",
-            description_.c_str());
-          push_empty_to_queue();
-        }
-    });
+    source_thread_ = std::make_unique<std::jthread>(&AudioStream::run_source_thread, this);
   }
   return std::nullopt;
+}
+
+// An exception escaping a thread would terminate the whole process, so the thread functions
+// contain it and end the stream the way the terminal would have.
+void AudioStream::run_sink_thread()
+{
+  sink_thread_id_.store(std::this_thread::get_id());
+  try {
+    sink_->run(this);
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(rcl_logger, "Sink of <%s> failed: %s", description_.c_str(), e.what());
+    shutdown();
+  } catch (...) {
+    RCLCPP_ERROR(rcl_logger, "Sink of <%s> failed: unknown exception", description_.c_str());
+    shutdown();
+  }
+}
+
+void AudioStream::run_source_thread()
+{
+  source_thread_id_.store(std::this_thread::get_id());
+  try {
+    source_->run(this);
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(rcl_logger, "Source of <%s> failed: %s", description_.c_str(), e.what());
+    push_empty_to_queue();
+  } catch (...) {
+    RCLCPP_ERROR(rcl_logger, "Source of <%s> failed: unknown exception", description_.c_str());
+    push_empty_to_queue();
+  }
+  source_done_.store(true);
+  source_done_.notify_all();
 }
 
 void AudioStream::request_shutdown()
@@ -699,22 +709,28 @@ void AudioStream::shutdown()
   data_available_.store(true);
   data_available_.notify_all();
 
-    // Avoid deadlock: don't join a thread from within itself
+  // The stream's own threads never join: a thread cannot join itself, and the sink calls this
+  // when it finishes, possibly while another thread is also shutting the stream down. Two
+  // threads joining the same thread at once is undefined and can hang. The sink instead waits
+  // for the source to finish.
   auto current_thread_id = std::this_thread::get_id();
-
-  if (source_thread_ && source_thread_->joinable()) {
-    if (source_thread_->get_id() != current_thread_id) {
-      source_thread_->join();
-    } else {
-      printf("AudioStream::shutdown: skipping source_thread join (called from source thread)\n");
-    }
+  if (current_thread_id == source_thread_id_.load()) {
+    return;  // The source finishes on its own once shutdown_flag_ is seen
   }
-  if (sink_thread_ && sink_thread_->joinable()) {
-    if (sink_thread_->get_id() != current_thread_id) {
-      sink_thread_->join();
-    } else {
-      printf("AudioStream::shutdown: skipping sink_thread join (called from sink thread)\n");
+  if (current_thread_id == sink_thread_id_.load()) {
+    source_done_.wait(false);
+  } else if (!join_claimed_.exchange(true)) {
+    // The first other thread to get here joins; any others wait until it has finished
+    if (source_thread_ && source_thread_->joinable()) {
+      source_thread_->join();
     }
+    if (sink_thread_ && sink_thread_->joinable()) {
+      sink_thread_->join();
+    }
+    joined_.store(true);
+    joined_.notify_all();
+  } else {
+    joined_.wait(false);
   }
   printf("AudioStream: sending shutdown_complete for %s at %s\n", description_.c_str(),
     format_timestamp().c_str());

@@ -8,6 +8,7 @@
 #include "audio2_stream/buffer_file.hpp"
 #include "boost/lockfree/spsc_queue.hpp"
 #include <atomic>
+#include <thread>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -136,8 +137,20 @@ public:
   // The source has ended. Set in place of the end marker when the queue is full; the sink
   // stops once it has emptied the queue.
   std::atomic<bool> end_of_stream_{false};
+  // Set when the source thread has finished, or at start() if there is no source
+  std::atomic<bool> source_done_{false};
+  // Ids of the stream's threads, set by each thread as it starts
+  std::atomic<std::thread::id> sink_thread_id_;
+  std::atomic<std::thread::id> source_thread_id_;
+  // Claimed by the one thread that joins the stream's threads; joined_ is set when it is done
+  std::atomic<bool> join_claimed_{false};
+  std::atomic<bool> joined_{false};
 
+  // Stop the stream and wait for its threads to finish. Safe to call from any thread,
+  // including the stream's own threads and several threads at once.
   void shutdown();
+  void run_sink_thread();
+  void run_source_thread();
   // Ask the stream to stop without waiting for its threads. The sink thread completes
   // the shutdown, after which shutdown_complete_ is set.
   void request_shutdown();

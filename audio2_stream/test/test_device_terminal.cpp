@@ -9,9 +9,6 @@
 #include <thread>
 #include <chrono>
 
-// TODO: SSometimes this test hangs - need to investigate why. Maybe related to thread sanitizer?
-// Occurs in  [ RUN      ] DeviceTerminalTest.SourceToSinkComplete with a timeout after 60 seconds.
-// Generates lots of output. See log/latest_test/audio2_stream/stdout_stderr.log for details.
 /**
  * Test fixture for DeviceSink/DeviceSource tests using the platform's audio backend.
  * On Linux this is the ALSA 'null' device, which accepts all writes and returns silence on reads.
@@ -212,11 +209,13 @@ TEST_F(DeviceTerminalTest, SourceToSinkComplete)
     );
     StreamShutdownGuard guard{stream.get()};
 
-    stream->start();
+    // Open both devices before starting the threads. Once the source pushes audio, the sink
+    // thread opens its device itself if it is not open, which would race with an open here.
     auto source_result = psource->open(AudioDirection::Capture, stream.get());
     ASSERT_FALSE(source_result.has_value()) << "Source open should succeed";
     auto sink_result = psink->open(AudioDirection::Playback, stream.get());
     ASSERT_FALSE(sink_result.has_value()) << "Sink open should succeed";
+    stream->start();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     // Test passes if no crash occurs - data flows from source to sink
