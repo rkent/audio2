@@ -96,7 +96,8 @@ public:
             msg->topic,
             SF_FORMAT_DEFAULT,
             publisher,
-            file_path
+            file_path,
+            msg->handle
     );
 
     auto audio_stream = std::make_unique<AudioStream>(

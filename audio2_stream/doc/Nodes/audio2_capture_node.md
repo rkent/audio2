@@ -21,6 +21,7 @@ ROS2 node for capturing audio from an audio device (ALSA on Linux, WASAPI on Win
 | `stream_queue_frames` | integer | `480` | Number of frames per audio chunk in the stream |
 | `audio_topic` | string | `"audio_stream_chunks"` | Topic name for publishing captured audio chunks |
 | `auto_start` | bool | `true` | Auto-start capturing on node initialization |
+| `handle` | integer | `0` | `StreamHeader.HANDLE_*` value sent in each chunk, telling players how to handle the captured stream relative to other streams (0 = mix, 1 = mute others, 2 = queue, 3 = cancel others, 4 = ignore if others are playing) |
 
 ## Example Usage
 

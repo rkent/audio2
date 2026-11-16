@@ -1,9 +1,9 @@
 # This header is sent with every audio chunk.
 
 # How to handle this stream with respect to other streams.
-uint8 HANDLE_QUEUE=0   # Queue behind any existing streams (default).
+uint8 HANDLE_MIX=0     # Mix with any existing streams (default).
 uint8 HANDLE_MUTE=1    # Mute any existing streams while this stream plays.
-uint8 HANDLE_MIX=2     # Mix with any existing streams.
+uint8 HANDLE_QUEUE=2   # Queue behind any existing streams.
 uint8 HANDLE_CANCEL=3  # Cancel any existing streams and play this one.
 uint8 HANDLE_IGNORE=4  # Ignore (don't play) this stream if others are playing.
 uint8 handle 0

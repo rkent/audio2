@@ -17,6 +17,7 @@
 #include <set>
 
 #include "audio2_stream_msgs/msg/audio_chunk.hpp"
+#include "audio2_stream_msgs/msg/stream_header.hpp"
 #include "nlohmann/json.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "unique_identifier_msgs/msg/uuid.hpp"
@@ -126,8 +127,20 @@ public:
   int queue_frames_;
   int samplerate_;
   int channels_;
+  // How this stream is handled relative to other streams (StreamHeader::HANDLE_*)
+  uint8_t handle_ = audio2_stream_msgs::msg::StreamHeader::HANDLE_MIX;
+  // When set, the device sink plays silence in place of this stream's audio
+  std::atomic<bool> muted_{false};
+  // Set once start() has launched the stream's threads
+  bool started_ = false;
+  // The source has ended. Set in place of the end marker when the queue is full; the sink
+  // stops once it has emptied the queue.
+  std::atomic<bool> end_of_stream_{false};
 
   void shutdown();
+  // Ask the stream to stop without waiting for its threads. The sink thread completes
+  // the shutdown, after which shutdown_complete_ is set.
+  void request_shutdown();
   std::optional<std::string> start();
   void process_fileh(SndfileHandle & fileh);
   void process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_format);
@@ -136,6 +149,8 @@ public:
   std::optional<std::string> merge_parms();
   std::optional<std::string> fix_parms();
   bool parms_fixed();
+  // Tell the sink the stream has ended, after the audio already queued. Pushes the end marker
+  // (an empty buffer), or sets end_of_stream_ if the queue has no room for it.
   void push_empty_to_queue();
 
 };
@@ -239,13 +254,15 @@ public:
     std::string topic,
     int sfFormat,
     rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher,
-    std::string description
+    std::string description,
+    uint8_t handle = audio2_stream_msgs::msg::StreamHeader::HANDLE_MIX
   )
   : AudioTerminal(),
     topic_(topic),
     sfFormat_(sfFormat),
     publisher_(publisher),
-    description_(description)
+    description_(description),
+    handle_(handle)
   {
     // Chunks are encoded at whatever samplerate and channel count the stream uses,
     // so the default config ranges apply.
@@ -264,6 +281,7 @@ protected:
   int sfFormat_;
   rclcpp::Publisher<audio2_stream_msgs::msg::AudioChunk>::SharedPtr publisher_;
   std::string description_;
+  uint8_t handle_;
 };
 
 class AUDIO2_STREAM_PUBLIC MessageSource : public AudioTerminal

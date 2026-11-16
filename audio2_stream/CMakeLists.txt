@@ -157,6 +157,21 @@ if(BUILD_TESTING)
     $<INSTALL_INTERFACE:include>
   )
 
+  # Stream handle (StreamHeader.handle) policy
+  ament_add_gtest(test_stream_policy
+    test/test_stream_policy.cpp
+  )
+  target_link_libraries(test_stream_policy
+    ${PROJECT_NAME}
+    ${SNDFILE_LIBRARIES}
+    rclcpp::rclcpp
+    ${audio2_stream_msgs_TARGETS}
+  )
+  target_include_directories(test_stream_policy PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+
   # Round trip through the in-memory sound file encoding used for AudioChunk messages
   ament_add_gtest(test_audio_chunk_codec
     test/test_audio_chunk_codec.cpp

@@ -63,6 +63,13 @@ public:
     param_desc.read_only = false;
     this->declare_parameter<std::string>("audio_topic", "audio_stream_chunks", param_desc);
 
+    param_desc.description = "How players handle the captured stream relative to other streams";
+    param_desc.additional_constraints =
+      "A StreamHeader HANDLE_* value: 0 = mix, 1 = mute others, 2 = queue, 3 = cancel others, "
+      "4 = ignore if others are playing.";
+    param_desc.read_only = false;
+    this->declare_parameter<int>("handle", 0, param_desc);
+
     param_desc.description = "Auto-start capturing on node initialization";
     param_desc.additional_constraints = "Boolean value (true/false).";
     param_desc.read_only = false;
@@ -134,7 +141,8 @@ public:
             audio_topic,
             SF_FORMAT_DEFAULT,
             publisher,
-            std::string("Audio capture from ") + get_parameter("device_name").as_string()
+            std::string("Audio capture from ") + get_parameter("device_name").as_string(),
+            static_cast<uint8_t>(get_parameter("handle").as_int())
     );
 
         // Create the AudioStream to connect source and sink

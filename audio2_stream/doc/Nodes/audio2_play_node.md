@@ -20,6 +20,20 @@ ROS2 node for playing audio through an audio device (ALSA on Linux, WASAPI on Wi
 | `sample_format` | integer | `14` (`SampleFormat::Float`) | Audio sample format for playback (`SampleFormat` value) |
 | `stream_queue_frames` | integer | `480` | Number of frames per audio chunk in the stream |
 
+## Stream Handling
+
+Each stream carries a `handle` (in `PlayFile`, `TtsRequest`, and the `StreamHeader` of each `AudioChunk`) that says what happens when it arrives while other streams are playing. Values are the `StreamHeader.HANDLE_*` constants:
+
+| Value | Name | Behavior |
+|-------|------|----------|
+| `0` | `HANDLE_MIX` (default) | Play at once, mixed with the other streams |
+| `1` | `HANDLE_MUTE` | Play at once and silence all older streams while this one plays. Muted streams keep running (their audio is replaced by silence, not paused) and become audible again when it ends |
+| `2` | `HANDLE_QUEUE` | Wait until all playing and earlier queued streams have finished, then play. Chunks of a queued chunk stream are buffered until it starts |
+| `3` | `HANDLE_CANCEL` | Stop all playing and queued streams, then play. Later chunks of cancelled chunk streams are discarded |
+| `4` | `HANDLE_IGNORE` | Do not play if any stream is playing or queued. Later chunks of an ignored chunk stream are discarded |
+
+An unknown value is treated as `HANDLE_MIX`, with a warning. A chunk stream's handle is taken from its first chunk.
+
 ## Example Usage
 
 ```bash
@@ -45,13 +59,17 @@ ros2 topic pub /tts_request audio2_stream_msgs/msg/TtsRequest \
 # Test file playback
 ros2 topic pub /play_file_local audio2_stream_msgs/msg/PlayFile \
   "{path: '/path/to/audio.wav', play_type: 0}"
+
+# Play a file after any current playback finishes
+ros2 topic pub --once /play_file_local audio2_stream_msgs/msg/PlayFile \
+  "{path: '/path/to/audio.wav', handle: 2}"
 ```
 
 ## Notes
 
 - The node pre-opens the audio device to reduce latency on first playback
 - On Windows, WASAPI shared mode converts any sample rate and channel count to the device mix format. An unknown `device_name` logs the available device names
-- Multiple audio streams can play concurrently, managed by unique UUIDs
+- Multiple audio streams can play concurrently, managed by unique UUIDs. See [Stream Handling](#stream-handling)
 - The node automatically handles format conversions for TTS sources
 - Finished audio streams are automatically cleaned up every 20ms
 - The `sample_format` parameter value 14 corresponds to `SampleFormat::Float` (`sample_format.hpp`), numbered like ALSA's `snd_pcm_format_t`

@@ -40,6 +40,7 @@ ros2 topic pub /play_file_remote audio2_stream_msgs/msg/PlayFile \
 ## Notes
 
 - The topic name for publishing audio chunks is specified in the `PlayFile` message
+- The `PlayFile` message's `handle` is sent in the header of every chunk, so the receiving `audio2_play_node` applies it (see its Stream Handling section)
 - Multiple files can be streamed concurrently on different topics
 - The node automatically handles audio file format conversions
 - Finished streams are cleaned up automatically every 20ms

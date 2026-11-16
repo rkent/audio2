@@ -258,16 +258,33 @@ void DeviceSink::run(AudioStream * audio_stream)
 
         // empty the queue
     do {
+      if (audio_stream->shutdown_flag_.load()) {
+          // Stopped (e.g. cancelled): discard the rest of the queued audio
+        break;
+      }
       printf("DeviceSink: popping audio data from queue ra: %zu wa: %zu \n",
         audio_stream->queue_.read_available(), audio_stream->queue_.write_available());
       auto pop_result = audio_stream->queue_.pop(audio_data);
       if (!pop_result) {
+        if (audio_stream->end_of_stream_.load()) {
+            // Nothing is pushed after end_of_stream_ is set, but audio may have been pushed
+            // between the failed pop and setting it
+          if (audio_stream->queue_.read_available() == 0) {
+            done = true;
+            break;
+          }
+          continue;
+        }
         break;
       }
       if (audio_data.empty()) {
           // This is the signal to close
         done = true;
         break;
+      }
+      if (audio_stream->muted_.load()) {
+        // Muted by another stream: play silence (all-zero bytes in every sample format)
+        std::fill(audio_data.begin(), audio_data.end(), 0);
       }
       int bytes_per_sample = sample_format_bytes(sample_format_);
       int write_result = proxy_->write(
@@ -440,13 +457,17 @@ void MessageSink::run(AudioStream * audio_stream)
   while (!done) {
         // Send a single chunk as a message
     if (audio_stream->queue_.pop(audio_data)) {
+      if (audio_data.empty()) {
+            // The source signals end of stream with an empty buffer
+        done = true;
+        break;
+      }
 
             // Create and populate the AudioChunk message
       auto message = std::make_unique<audio2_stream_msgs::msg::AudioChunk>();
-      message->header.handle = 0;       // Placeholder handle
+      message->header.handle = handle_;
       message->header.description = description_;
       message->header.volume = 1.0f;       // Placeholder volume
-      message->header.handle = 0;       // Placeholder handle
       message->header.sequence = ++sequence_number;
       message->header.chunk_start_time = rclcpp::Clock().now();
       message->header.uuid = uuid;
@@ -510,10 +531,9 @@ void MessageSink::run(AudioStream * audio_stream)
 
     // Send a last message indicating end of stream.
   auto message = std::make_unique<audio2_stream_msgs::msg::AudioChunk>();
-  message->header.handle = 0;   // Placeholder handle
+  message->header.handle = handle_;
   message->header.description = description_;
   message->header.volume = 1.0f;   // Placeholder volume
-  message->header.handle = 0;   // Placeholder handle
   message->header.sequence = message->header.SEQUENCE_EOS;
   message->header.chunk_start_time = rclcpp::Clock().now();
   message->header.uuid = uuid;
@@ -540,7 +560,9 @@ void MessageSource::callback(
     hash_id, message->data.size(), message->header.sequence, format_timestamp().c_str());
   if ((message->header.sequence == message->header.SEQUENCE_EOS)) {
     printf("MessageSource received end-of-stream message\n");
-    audio_stream->shutdown();
+        // Let the sink play out the queued audio and then shut the stream down on its own
+        // thread. Calling shutdown() here would block the executor until playback ends.
+    audio_stream->push_empty_to_queue();
     return;
   }
 
@@ -619,6 +641,7 @@ std::optional<std::string> AudioStream::start()
   printf("AudioStream::start thread %zu called for <%s> at %s\n",
     std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000, description_.c_str(),
     format_timestamp().c_str());
+  started_ = true;
   if (sink_) {
     sink_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, sink_.get(), this);
   }
@@ -626,6 +649,19 @@ std::optional<std::string> AudioStream::start()
     source_thread_ = std::make_unique<std::jthread>(&AudioTerminal::run, source_.get(), this);
   }
   return std::nullopt;
+}
+
+void AudioStream::request_shutdown()
+{
+  printf("AudioStream::request_shutdown called for <%s> at %s\n", description_.c_str(),
+    format_timestamp().c_str());
+  shutdown_flag_.store(true);
+  data_available_.store(true);
+  data_available_.notify_all();
+  if (!sink_thread_ && !source_thread_) {
+    // No thread will complete the shutdown
+    shutdown_complete_.store(true);
+  }
 }
 
 void AudioStream::shutdown()
@@ -844,8 +880,9 @@ void AudioStream::process_raw(std::vector<uint8_t> & audio_data, SfgRwFormat r_f
 void AudioStream::push_empty_to_queue()
 {
   std::vector<uint8_t> empty_buffer;
-      // todo: what if queue is full?
-  queue_.push(empty_buffer);
+  if (!queue_.push(empty_buffer)) {
+    end_of_stream_.store(true);
+  }
   data_available_.store(true);
   data_available_.notify_one();
 }
