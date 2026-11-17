@@ -324,6 +324,8 @@ TEST_F(AudioStreamTest, SndFileSourceDecodesAppleLossless)
   ASSERT_EQ(decoded.size(), original.size());
   float max_error = 0.0f;
   for (size_t i = 0; i < original.size(); ++i) {
+    // False positive: cppcheck does not know the ASSERT_EQ above returns on a size mismatch
+    // cppcheck-suppress containerOutOfBounds
     max_error = std::max(max_error, std::fabs(decoded[i] - original[i] / 32768.0f));
   }
   EXPECT_LE(max_error, 1.0f / 32768);

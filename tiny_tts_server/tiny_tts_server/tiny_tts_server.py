@@ -21,7 +21,7 @@ import logging
 from typing import Any, Optional
 import wave
 
-from flask import Flask, request
+from flask import Flask, request, Response
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -155,7 +155,7 @@ class TinyTtsServerNode(Node):
         app = Flask(__name__)
 
         @app.route('/', methods=['POST'])
-        def app_synthesize() -> bytes:
+        def app_synthesize() -> Response:
             """
             Synthesize audio from text (OpenAI-compatible TTS endpoint).
 
@@ -167,7 +167,7 @@ class TinyTtsServerNode(Node):
                     "speed": 1.0         # optional, 1.5=faster, 0.7=slower
                 }
 
-            Returns WAV audio bytes.
+            Returns a response with the WAV audio.
             """
             print('Received request:', request.data)
             data = json.loads(request.data)
@@ -190,7 +190,6 @@ class TinyTtsServerNode(Node):
             speed: float = float(data.get('speed', default_speed))
 
             wav_bytes = _synthesize_to_wav(tts, text, speaker=speaker, speed=speed)
-            from flask import Response
             return Response(wav_bytes, mimetype='audio/wav')
 
         @app.route('/speakers', methods=['GET'])

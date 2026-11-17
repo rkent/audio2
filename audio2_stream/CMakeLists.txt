@@ -130,6 +130,9 @@ if(BUILD_TESTING)
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   list(APPEND AMENT_LINT_AUTO_FILE_EXCLUDE "include/inja/inja.hpp")
+  # cppcheck still reads inja.hpp through #include, and refers to it by a path the exclude
+  # above does not match, so also suppress it by pattern (cppcheck-only setting)
+  set(ament_cmake_cppcheck_ADDITIONAL_EXCLUDE "*/inja/inja.hpp")
   ament_lint_auto_find_test_dependencies()
 
   # Add GTest and GMock for unit testing

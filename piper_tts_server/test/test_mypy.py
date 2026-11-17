@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+
 from ament_mypy.main import main
 import pytest
 
@@ -19,5 +21,6 @@ import pytest
 @pytest.mark.mypy
 @pytest.mark.linter
 def test_mypy() -> None:
-    rc = main(argv=[])
+    config = Path(__file__).parent / 'mypy.ini'
+    rc = main(argv=['--config', str(config)])
     assert rc == 0, 'Found type errors!'
